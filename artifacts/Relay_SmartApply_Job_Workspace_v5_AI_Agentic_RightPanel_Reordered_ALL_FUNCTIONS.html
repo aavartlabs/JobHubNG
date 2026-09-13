@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relay · SmartApply AI Job Workspace</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f2f4f7;
+            color: #1e293b;
+        }
+
+        :root {
+            --primary: #0b5ed7;
+            --primary-dark: #084298;
+            --primary-light: #e7f1ff;
+            --accent: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #f2f4f7;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+        }
+
+        /* ---------- AUTH ---------- */
+        #authScreen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0b1d3a, #0b5ed7);
+            position: relative;
+            overflow: hidden;
+        }
+        .auth-card {
+            background: white;
+            border-radius: 24px;
+            width: 480px;
+            padding: 40px;
+            box-shadow: 0 25px 70px rgba(0, 0, 0, .3);
+            z-index: 2;
+        }
+        .auth-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .auth-logo i {
+            font-size: 40px;
+            color: var(--primary);
+        }
+        .auth-logo h1 {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        .tabs {
+            display: flex;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 5px;
+            margin-bottom: 28px;
+            border: 1px solid var(--border);
+        }
+        .tabs button {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: .2s;
+        }
+        .tabs button.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: .3px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color .3s;
+        }
+        .form-group input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(11, 94, 215, .1);
+        }
+        .primary-btn {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: .3s;
+        }
+        .primary-btn:hover {
+            background: var(--primary-dark);
+        }
+        .social-login {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .social-btn {
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            background: white;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: .2s;
+        }
+        .social-btn:hover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .social-btn.linkedin { color: #0a66c2; }
+        .social-btn.upwork { color: #14a800; }
+        .social-btn.google { color: #ea4335; }
+        .social-btn.github { color: #333; }
+
+        /* ---------- DASHBOARD ---------- */
+        #dashboard {
+            display: none;
+            min-height: 100vh;
+        }
+        .topbar {
+            background: white;
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .notification-bell {
+            font-size: 22px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            position: relative;
+        }
+        .notification-bell::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 10px;
+            height: 10px;
+            background: var(--danger);
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+        .user-block {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #f8fafc;
+            border-radius: 30px;
+            padding: 6px 14px 6px 6px;
+        }
+        .user-avatar {
+            width: 38px;
+            height: 38px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        .user-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .app-layout {
+            display: flex;
+            min-height: calc(100vh - 72px);
+        }
+
+        .sidebar {
+            width: 300px;
+            background: white;
+            border-right: 1px solid var(--border);
+            padding: 24px;
+            overflow-y: auto;
+        }
+        .sidebar-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 18px;
+        }
+        .portal-list {
+            list-style: none;
+            margin-bottom: 28px;
+        }
+        .portal-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 12px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            color: #1e293b;
+            font-weight: 500;
+            text-decoration: none;
+            transition: .2s;
+        }
+        .portal-item:hover,
+        .portal-item.active {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .portal-item i {
+            width: 24px;
+            font-size: 18px;
+            text-align: center;
+        }
+        .portal-badge {
+            margin-left: auto;
+            background: var(--primary);
+            color: white;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-weight: 700;
+        }
+        .ai-insight-card {
+            background: linear-gradient(135deg, var(--primary), #3b82f6);
+            border-radius: 20px;
+            padding: 20px;
+            color: white;
+            margin-top: 30px;
+            box-shadow: 0 8px 24px rgba(11, 94, 215, .2);
+        }
+        .ai-insight-card h4 {
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+        .ai-insight-card p {
+            font-size: 13px;
+            line-height: 1.5;
+            opacity: .95;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 28px;
+            overflow-y: auto;
+        }
+        .page-title-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+        .page-title {
+            font-size: 26px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .filter-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+        .filter-bar .search-box {
+            flex: 1;
+            min-width: 250px;
+            position: relative;
+        }
+        .filter-bar .search-box i {
+            position: absolute;
+            left: 16px;
+            top: 14px;
+            color: var(--text-muted);
+        }
+        .filter-bar input,
+        .filter-bar select {
+            padding: 14px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            outline: none;
+            font-size: 14px;
+        }
+        .filter-bar input {
+            width: 100%;
+            padding-left: 46px;
+        }
+
+        .job-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .job-card {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            transition: .3s;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, .02);
+        }
+        .job-card:hover {
+            box-shadow: 0 12px 30px rgba(0, 0, 0, .08);
+            transform: translateY(-2px);
+            border-color: var(--primary);
+        }
+        .job-logo {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: var(--primary-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        .job-info {
+            flex: 1;
+        }
+        .job-title-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 6px;
+        }
+        .job-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .job-company {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        .job-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .job-desc {
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        .match-stats {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 120px;
+            border-left: 1px solid var(--border);
+            padding-left: 20px;
+        }
+        .match-percent {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        .match-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+        .match-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .match-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--primary));
+        }
+
+        .right-panel {
+            width: 360px;
+            background: white;
+            border-left: 1px solid var(--border);
+            padding: 24px;
+            overflow-y: auto;
+        }
+        .right-panel-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .right-panel-title i {
+            color: var(--primary);
+        }
+        .cv-card {
+            background: var(--primary-light);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border: 2px solid #dbeafe;
+        }
+        .cv-card h3 {
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+        .cv-card button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .course-section {
+            margin-bottom: 24px;
+        }
+        .course-card {
+            background: #fff7ed;
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #fcd34d;
+        }
+        .course-card h4 {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .course-meta {
+            font-size: 12px;
+            color: #b45309;
+            margin-bottom: 8px;
+        }
+        .course-link {
+            font-size: 13px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .progress-section {
+            background: #ecfdf5;
+            border-radius: 14px;
+            padding: 16px;
+        }
+        .progress-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+        .progress-bar {
+            flex: 1;
+            height: 6px;
+            border-radius: 10px;
+            background: #d1fae5;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 10px;
+            background: var(--accent);
+        }
+
+        /* ---------- MODALS ---------- */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, .6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .2);
+        }
+        .modal-close {
+            float: right;
+            background: #f1f5f9;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-header {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 24px;
+            margin-top: 10px;
+        }
+        .modal-header .job-logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            font-size: 28px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .modal-company {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .modal-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .modal-section {
+            margin-bottom: 24px;
+        }
+        .modal-section h4 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 8px;
+        }
+        .modal-section p {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #475569;
+        }
+
+        /* SmartApply specific */
+        .smart-apply-section {
+            margin-top: 20px;
+            border-top: 2px solid var(--border);
+            padding-top: 20px;
+        }
+        .smart-apply-section h4 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--primary);
+        }
+        .note-generator,
+        .cv-preview {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .note-header,
+        .cv-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .btn-sm {
+            background: var(--primary-light);
+            color: var(--primary);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: .2s;
+        }
+        .btn-sm:hover {
+            background: var(--primary);
+            color: white;
+        }
+        #applicationNote {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            resize: vertical;
+            background: white;
+        }
+        .trace-info {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .cv-draft {
+            white-space: pre-wrap;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .apply-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: .2s;
+        }
+        .apply-btn:hover {
+            background: #047857;
+        }
+
+        /* Skill Analysis */
+        .skill-analysis {
+            background: #fdf4ff;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 20px;
+            border: 1px solid #e9d5ff;
+        }
+        .skill-analysis h5 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #6d28d9;
+        }
+        .skill-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .skill-tag {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .skill-matched {
+            background: #d1fae5;
+            color: #047857;
+        }
+        .skill-missing {
+            background: #fef3c7;
+            color: #b45309;
+        }
+        .upskill-btn {
+            background: #6d28d9;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: .2s;
+        }
+        .upskill-btn:hover {
+            background: #5b21b6;
+        }
+
+        /* CV editor modal */
+        .cv-editor-textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: monospace;
+            min-height: 200px;
+            resize: vertical;
+        }
+
+        @media (max-width: 992px) {
+            .app-layout {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                border-right: none;
+            }
+            .right-panel {
+                display: none;
+            }
+        }
+        @media (max-width: 768px) {
+            .topbar {
+                padding: 0 16px;
+            }
+            .filter-bar {
+                flex-direction: column;
+            }
+            .job-card {
+                flex-direction: column;
+            }
+            .match-stats {
+                border-left: none;
+                padding-left: 0;
+                margin-top: 12px;
+            }
+        }
+    
+/* ================= ADDITIVE CAREER WORKSPACE V3 ================= */
+.workspace-nav{margin-bottom:22px}
+.workspace-nav .sidebar-section-title{margin-bottom:10px}
+.workspace-nav .workspace-item{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border-radius:12px;margin-bottom:5px;text-decoration:none;color:#1e293b;font-weight:600;cursor:pointer;border:0;background:transparent;text-align:left}
+.workspace-nav .workspace-item:hover,.workspace-nav .workspace-item.active{background:var(--primary-light);color:var(--primary)}
+.workspace-nav .workspace-item i{width:22px;text-align:center;color:var(--primary)}
+.workspace-nav .workspace-badge{margin-left:auto;background:var(--primary);color:#fff;font-size:10px;padding:3px 8px;border-radius:20px}
+.portal-logo-img{width:31px;height:31px;object-fit:contain}
+.portal-logo-text{font-size:22px;font-weight:900;line-height:1}
+.naukri-logo{color:#e83e8c}.upwork-logo{color:#14a800}
+.workspace-extra{display:none}
+.workspace-extra.active{display:block}
+.workspace-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+.workspace-panel-head h2{font-size:26px;font-weight:800}
+.workspace-panel-head p{font-size:14px;color:var(--text-secondary);margin-top:4px}
+.ws-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.ws-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 2px 4px rgba(0,0,0,.02)}
+.ws-card h3{font-size:16px;margin-bottom:14px}
+.ws-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.ws-stat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px}
+.ws-stat strong{font-size:24px;display:block;color:var(--primary)}
+.ws-stat span{font-size:11px;color:var(--text-secondary)}
+.ws-skill{margin:14px 0}.ws-skill-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.ws-track{height:8px;background:#e2e8f0;border-radius:10px;overflow:hidden}.ws-track span{display:block;height:100%;background:var(--accent);border-radius:10px}
+.ws-demand{display:flex;align-items:center;gap:12px;margin:15px 0}.ws-demand label{width:125px;font-size:12px}.ws-demand .ws-track{flex:1}.ws-demand b{font-size:11px;width:35px;text-align:right}
+.ws-course{border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px}
+.ws-course strong{font-size:13px}.ws-course small{display:block;color:var(--text-secondary);font-size:11px;margin:5px 0 9px}
+.ws-btn{border:0;background:var(--primary);color:#fff;border-radius:9px;padding:9px 13px;font-size:11px;font-weight:700;cursor:pointer}
+.ws-btn.secondary{background:var(--primary-light);color:var(--primary)}
+.ws-btn.green{background:#d1fae5;color:#047857}
+.ws-feed-post{border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px}
+.ws-person{display:flex;align-items:center;gap:10px}.ws-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#dbeafe;color:var(--primary);font-weight:800}
+.ws-person small{display:block;color:var(--text-muted);font-size:10px;margin-top:3px}.ws-post-body{font-size:12px;color:#475569;line-height:1.6;margin:12px 0}.ws-actions{display:flex;gap:20px;color:var(--text-secondary);font-size:11px}
+.ws-connect-row{display:flex;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--border)}.ws-connect-row:last-child{border-bottom:0}.ws-connect-row .ws-person{flex:1}
+.ws-search{width:100%;padding:11px;border:2px solid var(--border);border-radius:10px;margin-bottom:12px;outline:none}
+.ws-table{width:100%;border-collapse:collapse;font-size:12px}.ws-table th,.ws-table td{padding:12px 9px;border-bottom:1px solid var(--border);text-align:left}.ws-table th{font-size:10px;color:var(--text-muted);text-transform:uppercase}
+.status{padding:4px 8px;border-radius:12px;font-size:10px;font-weight:700}.status.review{background:#dbeafe;color:#1d4ed8}.status.interview{background:#d1fae5;color:#047857}.status.saved{background:#fef3c7;color:#b45309}
+.ws-question{font-size:18px;font-weight:700;line-height:1.45;margin:15px 0}.ws-option{width:100%;padding:12px;text-align:left;background:#fff;border:1px solid var(--border);border-radius:10px;margin:5px 0;cursor:pointer}.ws-option:hover{border-color:var(--primary);background:var(--primary-light)}
+.ws-profile{background:var(--primary-light);border-radius:14px;padding:16px}.ws-profile-bar{height:8px;background:#dbeafe;border-radius:10px;margin:9px 0}.ws-profile-bar span{display:block;height:100%;width:78%;background:var(--primary);border-radius:10px}
+@media(max-width:1200px){.sidebar{width:260px}.right-panel{width:320px}.ws-grid{grid-template-columns:1fr}}
+@media(max-width:850px){.app-layout{display:block}.sidebar,.right-panel{width:100%;border:0}.main-content{padding:18px}.ws-stat-grid{grid-template-columns:1fr 1fr}}
+
+
+/* ================= AI + AGENTIC CAREER LAYER V4 ================= */
+.ai-copilot-card{background:linear-gradient(135deg,#f5f3ff,#eef6ff);border:1px solid #d9ccff;border-radius:18px;padding:18px;margin-bottom:18px;box-shadow:0 4px 14px rgba(59,41,120,.06)}
+.ai-copilot-head{display:flex;align-items:center;gap:12px}.ai-copilot-icon{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#6d28d9;color:#fff;font-size:18px}
+.ai-copilot-head h3{font-size:16px}.ai-copilot-head p{font-size:11px;color:#64748b;margin-top:3px}
+.ai-copilot-body{display:flex;gap:10px;margin-top:13px}.ai-copilot-input{flex:1;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;background:#fff;outline:none;font-size:12px}
+.ai-chip-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.ai-chip{border:1px solid #cbd5e1;background:#fff;border-radius:18px;padding:7px 10px;font-size:10px;cursor:pointer}.ai-chip:hover{border-color:#6d28d9;color:#6d28d9}
+.ai-response{margin-top:13px;background:#fff;border-radius:12px;padding:12px;font-size:11px;line-height:1.65;color:#334155;border:1px solid #e2e8f0;display:none}
+.agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.agent-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px;position:relative;overflow:hidden}
+.agent-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#6d28d9}.agent-top{display:flex;align-items:center;gap:11px}.agent-icon{width:38px;height:38px;border-radius:11px;background:#f1eaff;color:#6d28d9;display:grid;place-items:center}.agent-card h3{font-size:14px}.agent-card p{font-size:11px;color:#64748b;line-height:1.55;margin:8px 0 13px}
+.agent-status{display:inline-flex;align-items:center;gap:5px;font-size:9px;background:#ecfdf5;color:#047857;border-radius:12px;padding:4px 8px;font-weight:700}
+.agent-actions{display:flex;gap:7px;flex-wrap:wrap}.agent-log{margin-top:18px;background:#0f172a;color:#e2e8f0;border-radius:14px;padding:15px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;line-height:1.7;max-height:210px;overflow:auto}
+.agent-log .ok{color:#86efac}.agent-log .wait{color:#fde68a}.agent-log .info{color:#93c5fd}
+.agent-approval{background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:12px;margin-top:13px;font-size:10px;color:#9a3412}
+.agent-metric{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:15px 0}.agent-metric div{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px}.agent-metric strong{display:block;font-size:19px;color:#6d28d9}.agent-metric span{font-size:9px;color:#64748b}
+.agent-result{margin-top:12px;padding:12px;border:1px solid #dbeafe;background:#eff6ff;border-radius:11px;font-size:11px;line-height:1.6}
+.network-draft{width:100%;min-height:105px;border:1px solid var(--border);border-radius:10px;padding:11px;font-size:11px;resize:vertical}
+.ai-trust{display:flex;gap:8px;align-items:flex-start;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:11px;margin-top:12px;font-size:10px;color:#64748b;line-height:1.5}
+@media(max-width:900px){.agent-grid{grid-template-columns:1fr}.agent-metric{grid-template-columns:1fr 1fr}.ai-copilot-body{flex-direction:column}}
+
+</style>
+</head>
+<body>
+    <!-- AUTH -->
+    <div id="authScreen">
+        <div class="auth-card">
+            <div class="auth-logo">
+                <i class="fas fa-robot"></i>
+                <h1>Relay</h1>
+            </div>
+            <div class="tabs">
+                <button class="active" onclick="showLogin()">Login</button>
+                <button onclick="showRegister()">Register</button>
+            </div>
+            <div id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" placeholder="you@example.com" id="loginEmail">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" placeholder="••••••••" id="loginPassword">
+                </div>
+                <button class="primary-btn" onclick="handleLogin()">Sign In</button>
+            </div>
+            <div id="registerForm" style="display:none;">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" placeholder="John Doe">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" placeholder="Create password">
+                </div>
+                <button class="primary-btn" onclick="handleLogin()">Create Account</button>
+            </div>
+            <div style="text-align:center; color:var(--text-muted); margin:16px 0; font-size:14px;">or continue with</div>
+            <div class="social-login">
+                <button class="social-btn linkedin" onclick="handleLogin()"><i class="fab fa-linkedin"></i> LinkedIn</button>
+                <button class="social-btn upwork" onclick="handleLogin()"><i class="fas fa-briefcase"></i> Upwork</button>
+                <button class="social-btn google" onclick="handleLogin()"><i class="fab fa-google"></i> Google</button>
+                <button class="social-btn github" onclick="handleLogin()"><i class="fab fa-github"></i> GitHub</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard">
+        <header class="topbar">
+            <div class="topbar-logo"><i class="fas fa-robot"></i> Relay</div>
+            <div class="topbar-right">
+                <div class="notification-bell"><i class="fas fa-bell"></i></div>
+                <div class="user-block">
+                    <div class="user-avatar">JD</div>
+                    <span class="user-name">John Doe</span>
+                    <i class="fas fa-chevron-down" style="font-size:12px;color:var(--text-muted);"></i>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-layout">
+            <aside class="sidebar">
+                <div class="workspace-nav">
+                    <div class="sidebar-section-title">Career Workspace</div>
+                    <button class="workspace-item active" onclick="showWorkspace('jobInboxView',this)"><i class="fas fa-inbox"></i> Job Inbox <span class="workspace-badge">41</span></button>
+                    <button class="workspace-item" onclick="showWorkspace('upskillView',this)"><i class="fas fa-graduation-cap"></i> Upskill</button>
+                    <button class="workspace-item" onclick="showWorkspace('forecastView',this)"><i class="fas fa-chart-line"></i> Forecast Demand</button>
+                    <button class="workspace-item" onclick="showWorkspace('applicationsView',this)"><i class="fas fa-paper-plane"></i> Applications</button>
+                    <button class="workspace-item" onclick="showWorkspace('savedView',this)"><i class="far fa-bookmark"></i> Saved Jobs</button>
+                    <button class="workspace-item" onclick="showWorkspace('profileView',this)"><i class="fas fa-user-circle"></i> Career Profile</button>
+                    <button class="workspace-item" onclick="showWorkspace('agentCenterView',this)"><i class="fas fa-robot"></i> AI Agent Center <span class="workspace-badge" style="background:#6d28d9;">AI</span></button>
+                </div>
+
+                <div class="sidebar-section-title">Connected Portals</div>
+                <ul class="portal-list">
+                    <li><a href="#" class="portal-item active" onclick="filterPortalFromMenu('LinkedIn');return false;"><i class="fab fa-linkedin"></i> LinkedIn <span class="portal-badge">8</span></a></li>
+                    <li><a href="#" class="portal-item" onclick="filterPortalFromMenu('Upwork');return false;"><i class="fas fa-briefcase"></i> Upwork <span class="portal-badge">5</span></a></li>
+                    <li><a href="#" class="portal-item" onclick="filterPortalFromMenu('Indeed');return false;"><i class="fas fa-search"></i> Indeed <span class="portal-badge">12</span></a></li>
+                    <li><a href="#" class="portal-item" onclick="filterPortalFromMenu('GitHub Jobs');return false;"><i class="fab fa-github"></i> GitHub Jobs <span class="portal-badge">3</span></a></li>
+                    <li><a href="#" class="portal-item" onclick="filterPortalFromMenu('Naukri');return false;"><i class="fas fa-user-tie"></i> Naukri <span class="portal-badge">7</span></a></li>
+                    <li><a href="#" class="portal-item" onclick="filterPortalFromMenu('Freelancer');return false;"><i class="fas fa-laptop-code"></i> Freelancer <span class="portal-badge">4</span></a></li>
+                    <li><a href="#" class="portal-item" onclick="filterPortalFromMenu('Glassdoor');return false;"><i class="fas fa-building"></i> Glassdoor <span class="portal-badge">6</span></a></li>
+                </ul>
+                <div class="ai-insight-card">
+                    <h4><i class="fas fa-magic"></i> AI Career Insight</h4>
+                    <p>Your profile matches <strong>3 emerging roles</strong> in AI and Data. Boost your skills to increase chances by 35%.</p>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <div id="jobInboxView" class="workspace-extra active">
+
+                    <div class="ai-copilot-card">
+                        <div class="ai-copilot-head">
+                            <div class="ai-copilot-icon"><i class="fas fa-sparkles"></i></div>
+                            <div>
+                                <h3>AI Career Copilot</h3>
+                                <p>Ask about jobs, skills, applications, interviews or networking.</p>
+                            </div>
+                            <span class="agent-status" style="margin-left:auto;"><i class="fas fa-circle"></i> Ready</span>
+                        </div>
+                        <div class="ai-copilot-body">
+                            <input id="copilotInput" class="ai-copilot-input" placeholder="e.g. Find my best React jobs and tell me what to improve...">
+                            <button class="ws-btn" onclick="runCopilot()">Ask AI</button>
+                        </div>
+                        <div class="ai-chip-row">
+                            <button class="ai-chip" onclick="copilotPrompt('Which job should I apply to first?')">Best job to apply</button>
+                            <button class="ai-chip" onclick="copilotPrompt('What skills should I learn next?')">Skills to learn</button>
+                            <button class="ai-chip" onclick="copilotPrompt('Prepare me for my next interview')">Interview prep</button>
+                            <button class="ai-chip" onclick="copilotPrompt('Who should I network with?')">Networking</button>
+                        </div>
+                        <div id="copilotResponse" class="ai-response"></div>
+                    </div>
+                <div class="page-title-wrap">
+                    <div>
+                        <h2 class="page-title">Job Inbox</h2>
+                        <p class="page-subtitle">AI-curated from all connected portals · Updated 2 min ago</p>
+                    </div>
+                    <span style="background:var(--primary); color:white; font-size:13px; padding:6px 14px; border-radius:20px;">SmartMatch Active</span>
+                </div>
+                <div class="filter-bar">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Search jobs, companies..." oninput="filterJobs(this.value)">
+                    </div>
+                    <select>
+                        <option>All Portals</option>
+                        <option>LinkedIn</option>
+                        <option>Upwork</option>
+                        <option>Indeed</option>
+                        <option>Naukri</option>
+                    </select>
+                    <select>
+                        <option>Sort by Match</option>
+                        <option>Date</option>
+                    </select>
+                </div>
+                <div class="job-list" id="jobList"></div>
+
+                </div>
+
+                <!-- ADDITIVE WORKSPACE VIEWS: original Job Inbox + SmartApply remain above -->
+                <div id="upskillView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Upskill</h2><p>Close the skill gaps that improve your SmartMatch score.</p></div><span style="background:#ecfdf5;color:#047857;padding:7px 12px;border-radius:20px;font-size:11px;font-weight:700;">AI Recommended</span></div>
+                    <div class="ws-stat-grid"><div class="ws-stat"><strong>6</strong><span>Skills in demand</span></div><div class="ws-stat"><strong>3</strong><span>Priority gaps</span></div><div class="ws-stat"><strong>+35%</strong><span>Potential match lift</span></div></div>
+                    <div class="ws-grid">
+                        <div class="ws-card"><h3>Priority Skill Gaps</h3>
+                            <div class="ws-skill"><div class="ws-skill-head"><span>SQL</span><b>30%</b></div><div class="ws-track"><span style="width:30%"></span></div></div>
+                            <div class="ws-skill"><div class="ws-skill-head"><span>Statistics</span><b>45%</b></div><div class="ws-track"><span style="width:45%"></span></div></div>
+                            <div class="ws-skill"><div class="ws-skill-head"><span>Tableau</span><b>15%</b></div><div class="ws-track"><span style="width:15%"></span></div></div>
+                            <div class="ws-skill"><div class="ws-skill-head"><span>AWS</span><b>45%</b></div><div class="ws-track"><span style="width:45%"></span></div></div>
+                        </div>
+                        <div class="ws-card"><h3>Recommended Learning</h3>
+                            <div class="ws-course"><strong>SQL for Data Analysis</strong><small>8 hrs · Beginner → Intermediate</small><button class="ws-btn" onclick="toastWS('SQL course added to learning path')">Start Learning</button></div>
+                            <div class="ws-course"><strong>AWS Cloud Foundations</strong><small>10 hrs · Certificate</small><button class="ws-btn" onclick="toastWS('AWS course added to learning path')">Start Learning</button></div>
+                            <div class="ws-course"><strong>Tableau Dashboards</strong><small>6 hrs · Project based</small><button class="ws-btn" onclick="toastWS('Tableau course added to learning path')">Start Learning</button></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="forecastView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Forecast Demand</h2><p>See which skills and roles are expected to be stronger in the next 6–12 months.</p></div></div>
+                    <div class="ws-grid">
+                        <div class="ws-card"><h3>Role Demand Forecast</h3>
+                            <div class="ws-demand"><label>AI Engineer</label><div class="ws-track"><span style="width:91%"></span></div><b>91%</b></div>
+                            <div class="ws-demand"><label>Cloud Engineer</label><div class="ws-track"><span style="width:84%"></span></div><b>84%</b></div>
+                            <div class="ws-demand"><label>Data Analyst</label><div class="ws-track"><span style="width:78%"></span></div><b>78%</b></div>
+                            <div class="ws-demand"><label>DevOps</label><div class="ws-track"><span style="width:74%"></span></div><b>74%</b></div>
+                            <div class="ws-demand"><label>React Developer</label><div class="ws-track"><span style="width:69%"></span></div><b>69%</b></div>
+                        </div>
+                        <div class="ws-card"><h3>AI Career Strategy</h3><p style="font-size:13px;color:#475569;line-height:1.7;">Your strongest path is <b>Data + AI + Cloud</b>. Keep React as a supporting strength while improving SQL, Python analytics, dashboards and cloud.</p><button class="ws-btn" style="margin-top:14px" onclick="showWorkspace('upskillView')">Build Skill Plan</button></div>
+                    </div>
+                </div>
+
+                <div id="applicationsView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Applications</h2><p>One place to track applications prepared through SmartApply.</p></div><span style="background:#e7f1ff;color:#0b5ed7;padding:7px 12px;border-radius:20px;font-size:11px;font-weight:700;">18 Total</span></div>
+                    <div class="ws-stat-grid"><div class="ws-stat"><strong>18</strong><span>Applied</span></div><div class="ws-stat"><strong>6</strong><span>In Review</span></div><div class="ws-stat"><strong>3</strong><span>Interviews</span></div></div>
+                    <div class="ws-card"><table class="ws-table"><thead><tr><th>Role</th><th>Company</th><th>Source</th><th>Match</th><th>Status</th></tr></thead><tbody>
+                        <tr><td>Senior React Developer</td><td>TechCorp Inc.</td><td>LinkedIn</td><td>85%</td><td><span class="status interview">Interview</span></td></tr>
+                        <tr><td>Data Analyst</td><td>DataCorp</td><td>Naukri</td><td>55%</td><td><span class="status review">In Review</span></td></tr>
+                        <tr><td>Full Stack Developer</td><td>StartUpWorld</td><td>Upwork</td><td>64%</td><td><span class="status review">Proposal Sent</span></td></tr>
+                        <tr><td>UI Developer</td><td>Glassdoor</td><td>Glassdoor</td><td>78%</td><td><span class="status saved">Saved</span></td></tr>
+                    </tbody></table></div>
+                </div>
+
+                <div id="savedView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Saved Jobs</h2><p>Your shortlist for the next application cycle.</p></div></div>
+                    <div class="job-list" id="savedJobList"></div>
+                </div>
+
+                <div id="profileView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Career Profile</h2><p>The profile powers SmartMatch, SmartApply and your learning recommendations.</p></div><button class="ws-btn" onclick="toastWS('Career profile saved')">Save Profile</button></div>
+                    <div class="ws-grid">
+                        <div class="ws-card"><h3>Profile Strength · 78%</h3><div class="ws-profile"><b>Good foundation</b><div class="ws-profile-bar"><span></span></div><span style="font-size:11px;color:#64748b;">Add two quantified projects to improve your profile.</span></div></div>
+                        <div class="ws-card"><h3>Core Skills</h3><div style="display:flex;flex-wrap:wrap;gap:7px;"><span class="skill-tag skill-matched">React</span><span class="skill-tag skill-matched">JavaScript</span><span class="skill-tag skill-matched">Python</span><span class="skill-tag skill-matched">AWS</span><span class="skill-tag skill-matched">Docker</span><span class="skill-tag skill-missing">SQL · Improve</span><span class="skill-tag skill-missing">Tableau · Learn</span></div></div>
+                    </div>
+                </div>
+
+
+                <div id="agentCenterView" class="workspace-extra">
+                    <div class="workspace-panel-head">
+                        <div><h2><i class="fas fa-robot" style="color:#6d28d9;"></i> AI Agent Center</h2>
+                        <p>Specialized agents work together across your job search. You stay in control of every external action.</p></div>
+                        <span class="agent-status"><i class="fas fa-shield-halved"></i> Human approval enabled</span>
+                    </div>
+
+                    <div class="agent-metric">
+                        <div><strong id="agentJobsScanned">0</strong><span>Jobs scanned</span></div>
+                        <div><strong id="agentShortlist">0</strong><span>Shortlisted</span></div>
+                        <div><strong id="agentGaps">3</strong><span>Skill gaps</span></div>
+                        <div><strong id="agentActions">0</strong><span>Agent actions</span></div>
+                    </div>
+
+                    <div class="agent-grid">
+                        <div class="agent-card">
+                            <div class="agent-top"><div class="agent-icon"><i class="fas fa-magnifying-glass"></i></div><div><h3>Job Scout Agent</h3><span class="agent-status">Ready</span></div></div>
+                            <p>Scans connected portals, ranks jobs against your profile and creates a shortlist. It never submits an application automatically.</p>
+                            <div class="agent-actions">
+                                <button class="ws-btn" onclick="runAgent('jobScout')"><i class="fas fa-play"></i> Run Scout</button>
+                                <button class="ws-btn secondary" onclick="showWorkspace('jobInboxView')">Review Jobs</button>
+                            </div>
+                            <div id="jobScoutResult" class="agent-result" style="display:none;"></div>
+                        </div>
+
+                        <div class="agent-card">
+                            <div class="agent-top"><div class="agent-icon"><i class="fas fa-file-signature"></i></div><div><h3>Application Agent</h3><span class="agent-status">Ready</span></div></div>
+                            <p>Builds a job-specific application package: match explanation, application note, tailored CV and a pre-submit checklist.</p>
+                            <div class="agent-actions">
+                                <button class="ws-btn" onclick="runAgent('application')"><i class="fas fa-wand-magic-sparkles"></i> Prepare Top Match</button>
+                                <button class="ws-btn secondary" onclick="showWorkspace('applicationsView')">Track</button>
+                            </div>
+                            <div id="applicationAgentResult" class="agent-result" style="display:none;"></div>
+                            <div class="agent-approval"><i class="fas fa-hand"></i> Approval gate: you must review before any application handoff.</div>
+                        </div>
+
+                        <div class="agent-card">
+                            <div class="agent-top"><div class="agent-icon"><i class="fas fa-graduation-cap"></i></div><div><h3>Skill Coach Agent</h3><span class="agent-status">Ready</span></div></div>
+                            <p>Converts job-market demand and your SmartMatch gaps into a prioritized learning plan with measurable outcomes.</p>
+                            <div class="agent-actions">
+                                <button class="ws-btn" onclick="runAgent('skill')"><i class="fas fa-route"></i> Build Plan</button>
+                                <button class="ws-btn secondary" onclick="showWorkspace('upskillView')">Open Upskill</button>
+                            </div>
+                            <div id="skillAgentResult" class="agent-result" style="display:none;"></div>
+                        </div>
+
+                        <div class="agent-card">
+                            <div class="agent-top"><div class="agent-icon"><i class="fas fa-microphone-lines"></i></div><div><h3>Interview Coach Agent</h3><span class="agent-status">Ready</span></div></div>
+                            <p>Creates role-specific questions, scores answers and gives feedback on technical depth, clarity and STAR structure.</p>
+                            <div class="agent-actions">
+                                <button class="ws-btn" onclick="showWorkspace('interviewView')"><i class="fas fa-play"></i> Start Coach</button>
+                            </div>
+                            <div class="agent-result">Next recommended: Senior React Developer mock interview · 5 questions · 12 min.</div>
+                        </div>
+
+                        <div class="agent-card">
+                            <div class="agent-top"><div class="agent-icon"><i class="fas fa-user-group"></i></div><div><h3>Networking Agent</h3><span class="agent-status">Ready</span></div></div>
+                            <p>Finds relevant people, suggests who to connect with and drafts personalized connection messages based on shared goals.</p>
+                            <div class="agent-actions">
+                                <button class="ws-btn" onclick="runAgent('network')"><i class="fas fa-user-plus"></i> Find Connections</button>
+                                <button class="ws-btn secondary" onclick="showWorkspace('networkView')">Open Network</button>
+                            </div>
+                            <div id="networkAgentResult" class="agent-result" style="display:none;"></div>
+                        </div>
+
+                        <div class="agent-card">
+                            <div class="agent-top"><div class="agent-icon"><i class="fas fa-chart-line"></i></div><div><h3>Market Intelligence Agent</h3><span class="agent-status">Ready</span></div></div>
+                            <p>Combines role demand, your current skills and target roles to explain where your career opportunities are increasing.</p>
+                            <div class="agent-actions">
+                                <button class="ws-btn" onclick="runAgent('market')"><i class="fas fa-chart-simple"></i> Analyze Market</button>
+                                <button class="ws-btn secondary" onclick="showWorkspace('forecastView')">Forecast</button>
+                            </div>
+                            <div id="marketAgentResult" class="agent-result" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <div class="ws-card" style="margin-top:16px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                            <h3><i class="fas fa-timeline"></i> Agent Activity & Decisions</h3>
+                            <button class="ws-btn secondary" onclick="clearAgentLog()">Clear</button>
+                        </div>
+                        <div id="agentLog" class="agent-log">
+                            <div class="info">[system] AI Career Agent Center initialized.</div>
+                            <div class="ok">[guardrail] External applications and messages require human approval.</div>
+                            <div class="info">[ready] Job Scout, Application, Skill Coach, Interview, Networking and Market agents are available.</div>
+                        </div>
+                        <div class="ai-trust"><i class="fas fa-circle-info" style="color:#2563eb;"></i><span><b>AI transparency:</b> this prototype simulates agent reasoning and orchestration locally in the browser. In a production version, each agent can call approved AI models, job APIs and learning/networking services, with permissions, audit logs and human approval gates.</span></div>
+                    </div>
+                </div>
+
+                <div id="learningPathView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>My Learning Path</h2><p>Role-based roadmap connected to your job matches.</p></div></div>
+                    <div class="ws-card"><h3>Data Analyst Path</h3>
+                        <div class="ws-skill"><div class="ws-skill-head"><span>Python</span><b>80%</b></div><div class="ws-track"><span style="width:80%"></span></div></div>
+                        <div class="ws-skill"><div class="ws-skill-head"><span>Statistics</span><b>45%</b></div><div class="ws-track"><span style="width:45%"></span></div></div>
+                        <div class="ws-skill"><div class="ws-skill-head"><span>SQL</span><b>30%</b></div><div class="ws-track"><span style="width:30%"></span></div></div>
+                        <div class="ws-skill"><div class="ws-skill-head"><span>Tableau</span><b>15%</b></div><div class="ws-track"><span style="width:15%"></span></div></div>
+                    </div>
+                </div>
+
+                <div id="interviewView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Mock Interview Preparation</h2><p>Practice job-specific questions before your interview.</p></div><span style="background:#e7f1ff;color:#0b5ed7;padding:7px 12px;border-radius:20px;font-size:11px;font-weight:700;">AI Interview Coach</span></div>
+                    <div class="ws-card"><div style="font-size:11px;color:#64748b;">Question 1 of 5 · Senior React Developer</div><div class="ws-question">How would you optimize a React application that has slow rendering and unnecessary re-renders?</div>
+                        <button class="ws-option" onclick="mockAnswer(this,true)">Use profiling, fix unnecessary state updates, and apply memoization where it provides value.</button>
+                        <button class="ws-option" onclick="mockAnswer(this,false)">Add more CSS and increase browser cache.</button>
+                        <button class="ws-option" onclick="mockAnswer(this,false)">Rewrite the application immediately.</button>
+                        <button class="ws-option" onclick="mockAnswer(this,false)">Remove TypeScript.</button>
+                        <div id="mockFeedback" style="margin-top:12px;font-size:12px;color:#64748b;"></div>
+                    </div>
+                </div>
+
+                <div id="networkView" class="workspace-extra">
+                    <div class="workspace-panel-head"><div><h2>Networking</h2><p>Build a focused professional network around your target roles.</p></div><span style="background:#e7f1ff;color:#0b5ed7;padding:7px 12px;border-radius:20px;font-size:11px;font-weight:700;">286 Connections</span></div>
+                    <div class="ws-grid">
+                        <div class="ws-card"><h3>People You May Know</h3><input class="ws-search" placeholder="Search people..." oninput="filterPeople(this.value)">
+                        <div style="margin-bottom:12px;background:#f8fafc;border-radius:11px;padding:11px;font-size:10px;color:#64748b;">
+                            <b style="color:#334155;">Networking Agent</b> can draft a message after you select a person. You approve it before sending.
+                        </div>
+<div id="networkPeople"></div></div>
+                        <div class="ws-card"><h3>Professional Feed</h3>
+                            <div class="ws-feed-post"><div class="ws-person"><div class="ws-avatar">AS</div><div><b style="font-size:12px;">Ananya Sharma</b><small>Data Analyst · 2h</small></div></div><div class="ws-post-body">Just completed a dashboard project using Python, SQL and Tableau. Happy to connect with people working in data analytics.</div><div class="ws-actions"><span>♡ 18</span><span>💬 4</span><span>↗ Share</span></div></div>
+                            <div class="ws-feed-post"><div class="ws-person"><div class="ws-avatar">RK</div><div><b style="font-size:12px;">Rahul Kapoor</b><small>Cloud Engineering · 5h</small></div></div><div class="ws-post-body">Looking for engineers interested in AWS and platform engineering. Open to knowledge-sharing conversations.</div><div class="ws-actions"><span>♡ 31</span><span>💬 7</span><span>↗ Share</span></div></div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+
+            <aside class="right-panel">
+                <!-- V5 RIGHT PANEL ORDER: Skill Enrichment -> Recommendations -> Mock Interview Preparation -> Networking -> Learning Path -->
+                <!-- Requested order: A Learning Path, B Mock Interview, C Networking -->
+                <!-- ORIGINAL FUNCTIONALITY RETAINED -->
+                <div class="right-panel-title"><i class="fas fa-graduation-cap"></i> Skill Enrichment</div>
+                <div class="cv-card">
+                    <h3><i class="fas fa-file-alt"></i> My CV</h3>
+                    <p>Last updated: Today</p>
+                    <button onclick="openCVModal()"><i class="fas fa-upload"></i> Update CV</button>
+                </div>
+
+                <div class="right-panel-title" style="font-size:16px; margin-top:24px;"><i class="fas fa-bolt"></i> Recommended Courses</div>
+                <div class="course-section">
+                    <div class="course-card">
+                        <h4>Complete Machine Learning</h4>
+                        <div class="course-meta">Course · 8 hrs · Free</div>
+                        <a href="#" class="course-link">Start Learning →</a>
+                    </div>
+                    <div class="course-card">
+                        <h4>React Advanced Patterns</h4>
+                        <div class="course-meta">Course · 12 hrs · $19</div>
+                        <a href="#" class="course-link">View Course →</a>
+                    </div>
+                    <div class="course-card">
+                        <h4>Cloud Foundations (AWS)</h4>
+                        <div class="course-meta">Certificate · 20 hrs</div>
+                        <a href="#" class="course-link">Enroll Now →</a>
+                    </div>
+                </div>
+
+                <div class="right-panel-title" style="font-size:16px;"><i class="fas fa-microphone-lines"></i> Mock Interview Preparation</div>
+                <div class="cv-card" style="margin-bottom:20px;">
+                    <h3><i class="fas fa-robot"></i> Senior React Developer</h3>
+                    <p>5 questions · 12 min · AI feedback</p>
+                    <button onclick="showWorkspace('interviewView')"><i class="fas fa-play"></i> Start Mock Interview</button>
+                </div>
+
+                <div class="right-panel-title" style="font-size:16px;"><i class="fas fa-user-group"></i> Networking</div>
+                <div class="cv-card" style="margin-bottom:20px;">
+                    <h3><i class="fas fa-users"></i> Professional Network</h3>
+                    <p>12 people match your career goals in Data, AI, React and Cloud.</p>
+                    <button onclick="showWorkspace('networkView')"><i class="fas fa-user-plus"></i> Open Network</button>
+                </div>
+
+                <div class="right-panel-title"><i class="fas fa-route"></i> Learning Path</div>
+                <div class="progress-section" style="margin-bottom:20px;">
+                    <h4 style="margin-bottom:14px;">Data Analyst Path</h4>
+                    <div class="progress-item"><span>Python</span><div class="progress-bar"><div class="progress-fill" style="width:80%"></div></div><span>80%</span></div>
+                    <div class="progress-item"><span>Statistics</span><div class="progress-bar"><div class="progress-fill" style="width:45%"></div></div><span>45%</span></div>
+                    <div class="progress-item"><span>SQL</span><div class="progress-bar"><div class="progress-fill" style="width:30%"></div></div><span>30%</span></div>
+                    <button class="ws-btn secondary" style="width:100%;margin-top:10px;" onclick="showWorkspace('learningPathView')">Open Learning Path</button>
+                </div>
+</aside>
+        </div>
+    </div>
+
+    <!-- JOB DETAIL MODAL -->
+    <div class="modal-overlay" id="jobDetailModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeJobDetail()"><i class="fas fa-times"></i></button>
+            <div id="jobDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- CV EDITOR MODAL -->
+    <div class="modal-overlay" id="cvEditorModal">
+        <div class="modal-content" style="max-width:700px;">
+            <button class="modal-close" onclick="closeCVEditor()"><i class="fas fa-times"></i></button>
+            <h3 style="margin-bottom:16px;">Edit Tailored CV</h3>
+            <textarea id="cvEditorText" class="cv-editor-textarea" rows="12"></textarea>
+            <button class="primary-btn" onclick="saveCVEditor()" style="margin-top:16px;">Save Changes</button>
+        </div>
+    </div>
+
+    <!-- CV UPLOAD MODAL -->
+    <div class="modal-overlay" id="cvModal">
+        <div class="modal-content" style="max-width:520px;">
+            <button class="modal-close" onclick="closeCVModal()"><i class="fas fa-times"></i></button>
+            <h3 style="margin-bottom:16px;"><i class="fas fa-file-alt"></i> Update CV & Skills</h3>
+            <div class="form-group">
+                <label>Your Skills (comma separated)</label>
+                <input type="text" id="skillInput" value="JavaScript, React, Python, SQL, AWS, Git, Docker, Excel" style="width:100%; padding:14px; border:2px solid var(--border); border-radius:12px;">
+            </div>
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">AI will analyze your CV against market demand and suggest learning paths.</p>
+            <button class="primary-btn" onclick="saveSkills()">Save & Analyze</button>
+        </div>
+    </div>
+
+    <script>
+        // MOCK DATA
+        const mockJobs = [
+            { id:1, title:"Senior React Developer", company:"TechCorp Inc.", portal:"LinkedIn", shortDesc:"Build modern React apps with TypeScript and Redux.", postDate:"Sep 1, 2026", jd:"We are looking for a Senior React Developer to join our platform team. You will build scalable React applications using TypeScript, Redux, and modern tools. 5+ years experience required.", requirements:["React","TypeScript","Redux","Node.js"], cvSkills:["React","JavaScript","Redux","Node.js","Git"], matchScore:85, location:"Remote", salary:"$120k-$150k", color:"#4f46e5" },
+            { id:2, title:"Full Stack Developer (MERN)", company:"StartUpWorld", portal:"Upwork", shortDesc:"Full-stack role with Node.js and React for SaaS product.", postDate:"Aug 28, 2026", jd:"Looking for a full-stack developer to build a SaaS MVP. Must be proficient in Node.js, React, and MongoDB. Experience with AWS is a plus.", requirements:["React","Node.js","MongoDB","AWS"], cvSkills:["React","Node.js","AWS"], matchScore:64, location:"Remote", salary:"$80/hr", color:"#14a800" },
+            { id:3, title:"Frontend Engineer", company:"Google", portal:"Indeed", shortDesc:"Frontend role focused on Angular and design systems.", postDate:"Sep 3, 2026", jd:"Join our frontend team to build consumer-facing applications. Strong Angular and TypeScript skills required.", requirements:["Angular","TypeScript","CSS","HTML"], cvSkills:["JavaScript","CSS","HTML","React"], matchScore:42, location:"Mountain View, CA", salary:"$140k-$180k", color:"#0a66c2" },
+            { id:4, title:"Data Analyst", company:"DataCorp", portal:"Naukri", shortDesc:"Analyze trends with Python, SQL, and dashboards.", postDate:"Sep 2, 2026", jd:"We need a Data Analyst who can work with large datasets, create dashboards, and provide insights using Python, SQL, and Tableau.", requirements:["Python","SQL","Tableau","Excel","Statistics"], cvSkills:["Python","SQL","Excel"], matchScore:55, location:"New York, NY", salary:"$90k-$120k", color:"#f97316" },
+            { id:5, title:"DevOps Engineer", company:"CloudWorks", portal:"GitHub Jobs", shortDesc:"Manage CI/CD, Docker, and Kubernetes.", postDate:"Aug 29, 2026", jd:"Join our DevOps team to build and maintain CI/CD pipelines using Jenkins, Docker, and Kubernetes.", requirements:["Docker","Kubernetes","AWS","Jenkins"], cvSkills:["Docker","AWS"], matchScore:35, location:"Austin, TX", salary:"$120k-$160k", color:"#0ea5e9" },
+            { id:6, title:"UI Developer (React)", company:"Glassdoor", portal:"Glassdoor", shortDesc:"Build beautiful UI components for our job search platform.", postDate:"Aug 25, 2026", jd:"We're seeking a UI Developer with strong React and CSS skills to build reusable components. Experience with Tailwind CSS is a plus.", requirements:["React","CSS","Tailwind CSS","JavaScript"], cvSkills:["React","JavaScript","CSS"], matchScore:78, location:"San Francisco, CA", salary:"$110k-$140k", color:"#0a66c2" }
+        ];
+
+        let currentJobId = null;
+        let currentCv = '';
+
+        // LOGIN
+        function handleLogin() {
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            renderJobList();
+        }
+        function showLogin() {
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('registerForm').style.display = 'none';
+            document.querySelector('.tabs').children[0].classList.add('active');
+            document.querySelector('.tabs').children[1].classList.remove('active');
+        }
+        function showRegister() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+            document.querySelector('.tabs').children[1].classList.add('active');
+            document.querySelector('.tabs').children[0].classList.remove('active');
+        }
+
+        // RENDER JOB LIST
+        function renderJobList() {
+            const list = document.getElementById('jobList');
+            list.innerHTML = '';
+            mockJobs.forEach(job => {
+                const card = document.createElement('div');
+                card.className = 'job-card';
+                card.dataset.title = job.title.toLowerCase();
+                card.dataset.portal = job.portal.toLowerCase();
+                card.innerHTML = `
+                    <div class="job-logo portal-logo-render" style="background:${job.color}20; color:${job.color};">${portalLogo(job.portal)}</div>
+                    <div class="job-info">
+                        <div class="job-title-row">
+                            <span class="job-title">${job.title}</span>
+                            <span style="font-size:12px; background:var(--primary-light); color:var(--primary); padding:2px 8px; border-radius:10px;">${job.portal}</span>
+                        </div>
+                        <div class="job-company">${job.company}</div>
+                        <div class="job-meta">
+                            <span><i class="fas fa-calendar"></i> ${job.postDate}</span>
+                            <span><i class="fas fa-map-marker-alt"></i> ${job.location}</span>
+                            <span><i class="fas fa-dollar-sign"></i> ${job.salary}</span>
+                        </div>
+                        <div class="job-desc">${job.shortDesc}</div>
+                    </div>
+                    <div class="match-stats">
+                        <div class="match-percent">${job.matchScore}%</div>
+                        <div class="match-label">Match</div>
+                        <div class="match-bar"><div class="match-bar-fill" style="width:${job.matchScore}%"></div></div>
+                    </div>
+                `;
+                card.addEventListener('click', () => openJobDetail(job));
+                list.appendChild(card);
+            });
+        }
+
+        function filterJobs(query) {
+            const cards = document.querySelectorAll('.job-card');
+            cards.forEach(card => {
+                const title = card.dataset.title;
+                const portal = card.dataset.portal;
+                if (title.includes(query.toLowerCase()) || portal.includes(query.toLowerCase())) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        // JOB DETAIL MODAL (including SmartApply)
+        function openJobDetail(job) {
+            currentJobId = job.id;
+            const content = document.getElementById('jobDetailContent');
+            const matchedSkills = job.cvSkills.filter(s => job.requirements.includes(s));
+            const missingSkills = job.requirements.filter(s => !job.cvSkills.includes(s));
+            
+            const note = generateApplicationNote(job);
+            const cvDraft = generateTailoredCV(job);
+            currentCv = cvDraft;
+
+            content.innerHTML = `
+                <div class="modal-header">
+                    <div class="job-logo portal-logo-render" style="background:${job.color}20; color:${job.color}; font-size:28px;">${portalLogo(job.portal)}</div>
+                    <div>
+                        <div class="modal-title">${job.title}</div>
+                        <div class="modal-company">${job.company}</div>
+                    </div>
+                </div>
+                <div class="modal-meta">
+                    <span><i class="fas fa-calendar"></i> ${job.postDate}</span>
+                    <span><i class="fas fa-map-marker-alt"></i> ${job.location}</span>
+                    <span><i class="fas fa-dollar-sign"></i> ${job.salary}</span>
+                    <span><i class="fas fa-building"></i> ${job.portal}</span>
+                </div>
+                <div class="modal-section">
+                    <h4>Job Description</h4>
+                    <p>${job.jd}</p>
+                </div>
+                <div class="skill-analysis">
+                    <h5><i class="fas fa-crosshairs"></i> TAS & SmartMatch Analysis</h5>
+                    <div style="margin-bottom:12px;">
+                        <strong>Matching skills:</strong>
+                        <div class="skill-tags">
+                            ${matchedSkills.map(s => `<span class="skill-tag skill-matched">✓ ${s}</span>`).join('')}
+                        </div>
+                    </div>
+                    <div>
+                        <strong>Missing skills:</strong>
+                        <div class="skill-tags">
+                            ${missingSkills.map(s => `<span class="skill-tag skill-missing">✗ ${s}</span>`).join('')}
+                        </div>
+                    </div>
+                    <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Fill these gaps to increase match score by up to 40%.</p>
+                    <button class="upskill-btn" onclick="upskillForJob('${missingSkills.join(', ')}')"><i class="fas fa-graduation-cap"></i> Upskill for this Job</button>
+                </div>
+
+                <!-- SMART APPLY SECTION -->
+                <div class="smart-apply-section">
+                    <h4><i class="fas fa-wand-magic-sparkles"></i> SmartApply — Tailored Application</h4>
+                    <div class="note-generator">
+                        <div class="note-header">
+                            <span style="font-weight:600;">AI Application Note</span>
+                            <button class="btn-sm" onclick="regenerateNote()">Regenerate</button>
+                        </div>
+                        <textarea id="applicationNote" rows="5" readonly>${note}</textarea>
+                        <p class="trace-info">Traceability: derived from your profile facts</p>
+                    </div>
+                    <div class="cv-preview">
+                        <div class="cv-header">
+                            <span style="font-weight:600;">Tailored CV (for this job)</span>
+                            <button class="btn-sm" onclick="openCVEditor()">Edit CV Draft</button>
+                        </div>
+                        <pre id="cvDraftPreview" class="cv-draft">${cvDraft}</pre>
+                    </div>
+                    <button class="apply-btn" onclick="downloadCV()"><i class="fas fa-download"></i> Download Tailored CV</button>
+                </div>
+            `;
+            document.getElementById('jobDetailModal').classList.add('active');
+        }
+
+        function closeJobDetail() {
+            document.getElementById('jobDetailModal').classList.remove('active');
+        }
+
+        // SmartApply Functions
+        function generateApplicationNote(job) {
+            const matched = job.cvSkills.filter(s => job.requirements.includes(s));
+            const note = `I am excited to apply for the ${job.title} position at ${job.company}. With my expertise in ${matched.join(', ')}, I am well-equipped to contribute to your team. ${job.jd.split('.')[0]}. I look forward to discussing how my background aligns with your goals.`;
+            return note;
+        }
+
+        function generateTailoredCV(job) {
+            const matchedSkills = job.cvSkills.filter(s => job.requirements.includes(s));
+            const missingSkills = job.requirements.filter(s => !job.cvSkills.includes(s));
+            let cvContent = `**John Doe**\nSenior Engineer | Full-Stack Developer\n\n**Summary**\nExperienced professional with strong skills in ${matchedSkills.join(', ')}.\n\n**Key Skills**\n` + matchedSkills.map(s => `• ${s}`).join('\n') + `\n\n**Experience**\n- TechCorp Inc. (2020-Present) - Senior Developer\n- WebWorks (2018-2020) - Full-Stack Developer\n\n**Education**\nB.S. in Computer Science\n\n**Note:** Missing skills (${missingSkills.join(', ')}) - consider adding to profile.`;
+            return cvContent;
+        }
+
+        function regenerateNote() {
+            if (currentJobId) {
+                const job = mockJobs.find(j => j.id === currentJobId);
+                const note = generateApplicationNote(job);
+                document.getElementById('applicationNote').value = note;
+            }
+        }
+
+        function openCVEditor() {
+            const cv = document.getElementById('cvDraftPreview').textContent;
+            document.getElementById('cvEditorText').value = cv;
+            document.getElementById('cvEditorModal').classList.add('active');
+        }
+
+        function closeCVEditor() {
+            document.getElementById('cvEditorModal').classList.remove('active');
+        }
+
+        function saveCVEditor() {
+            const edited = document.getElementById('cvEditorText').value;
+            document.getElementById('cvDraftPreview').textContent = edited;
+            currentCv = edited;
+            closeCVEditor();
+            alert('CV draft updated!');
+        }
+
+        function downloadCV() {
+            const cv = document.getElementById('cvDraftPreview').textContent;
+            const blob = new Blob([cv], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tailored_cv.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Apply
+        function applyToJob(job) {
+            alert(`✅ Application handoff ready!\n\nYour tailored CV and note are downloaded. Please submit manually on ${job.portal} — we've prepared everything.`);
+        }
+
+        function upskillForJob(missingSkills) {
+            alert(`📚 Recommended courses for: ${missingSkills}\n\nWe curated top resources for you.`);
+        }
+
+        // CV MODAL
+        function openCVModal() {
+            document.getElementById('cvModal').classList.add('active');
+            document.getElementById('skillInput').value = "JavaScript, React, Python, SQL, AWS, Git, Docker, Excel";
+        }
+        function closeCVModal() {
+            document.getElementById('cvModal').classList.remove('active');
+        }
+        function saveSkills() {
+            const input = document.getElementById('skillInput').value;
+            alert(`✅ Skills updated! AI analysis:\nYou have ${input.split(',').length} skills.\nRecommended next: Learn "Tableau" and "AWS" for higher market demand.`);
+            closeCVModal();
+        }
+
+
+        /* ================= ADDITIVE CAREER WORKSPACE V3 ================= */
+        const savedJobIds = new Set([2,4]);
+        const networkDirectory = [
+            {initials:'AS',name:'Ananya Sharma',role:'Data Analyst · Python · SQL'},
+            {initials:'RK',name:'Rahul Kapoor',role:'Cloud Engineer · AWS'},
+            {initials:'PM',name:'Priya Menon',role:'Senior React Engineer'},
+            {initials:'DV',name:'Daniel Verma',role:'AI / ML Engineer'},
+            {initials:'NK',name:'Neha Kulkarni',role:'Technology Recruiter'}
+        ];
+
+        function portalLogo(portal) {
+            const p = (portal || '').toLowerCase();
+            if (p === 'linkedin') return '<i class="fab fa-linkedin" style="color:#0a66c2;font-size:30px"></i>';
+            if (p === 'github jobs') return '<i class="fab fa-github" style="color:#111827;font-size:29px"></i>';
+            if (p === 'upwork') return '<span class="portal-logo-text upwork-logo">Up</span>';
+            if (p === 'naukri') return '<span class="portal-logo-text naukri-logo">N</span>';
+            if (p === 'indeed') return '<span style="font-weight:900;color:#2164f3;font-size:22px;">indeed</span>';
+            if (p === 'glassdoor') return '<i class="fas fa-building" style="color:#0baa4f;font-size:27px"></i>';
+            if (p === 'freelancer') return '<i class="fas fa-laptop-code" style="color:#29a9ea;font-size:27px"></i>';
+            return '<i class="fas fa-briefcase" style="color:#64748b;font-size:27px"></i>';
+        }
+
+        function showWorkspace(viewId, btn) {
+            document.querySelectorAll('.workspace-extra').forEach(v => v.classList.remove('active'));
+            const target = document.getElementById(viewId);
+            if (target) target.classList.add('active');
+
+            document.querySelectorAll('.workspace-nav .workspace-item').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            else {
+                const map = {
+                    jobInboxView:'Job Inbox', upskillView:'Upskill', forecastView:'Forecast Demand',
+                    applicationsView:'Applications', savedView:'Saved Jobs', profileView:'Career Profile', agentCenterView:'AI Agent Center'
+                };
+                document.querySelectorAll('.workspace-nav .workspace-item').forEach(b => {
+                    if (b.textContent.trim().startsWith(map[viewId] || '__none__')) b.classList.add('active');
+                });
+            }
+            if (viewId === 'savedView') renderSavedWorkspaceJobs();
+            if (viewId === 'networkView') renderNetworkPeople();
+            document.querySelector('.main-content').scrollTop = 0;
+        }
+
+        function filterPortalFromMenu(portal) {
+            showWorkspace('jobInboxView');
+            const selects = document.querySelectorAll('.filter-bar select');
+            if (selects[0]) {
+                selects[0].value = portal;
+                // Keep original filter UI intact; filtering is additive.
+                document.querySelectorAll('.job-card').forEach(card => {
+                    card.style.display = card.dataset.portal === portal.toLowerCase() ? 'flex' : 'none';
+                });
+            }
+        }
+
+        function renderSavedWorkspaceJobs() {
+            const list = document.getElementById('savedJobList');
+            if (!list) return;
+            list.innerHTML = '';
+            mockJobs.filter(j => savedJobIds.has(j.id)).forEach(job => {
+                const card = document.createElement('div');
+                card.className = 'job-card';
+                card.innerHTML = `
+                    <div class="job-logo portal-logo-render" style="background:${job.color}20;color:${job.color};">${portalLogo(job.portal)}</div>
+                    <div class="job-info">
+                        <div class="job-title-row"><span class="job-title">${job.title}</span><span style="font-size:12px;background:var(--primary-light);color:var(--primary);padding:2px 8px;border-radius:10px;">${job.portal}</span></div>
+                        <div class="job-company">${job.company}</div>
+                        <div class="job-meta"><span><i class="fas fa-calendar"></i> ${job.postDate}</span><span><i class="fas fa-map-marker-alt"></i> ${job.location}</span><span><i class="fas fa-dollar-sign"></i> ${job.salary}</span></div>
+                        <div class="job-desc">${job.shortDesc}</div>
+                    </div>
+                    <div class="match-stats"><div class="match-percent">${job.matchScore}%</div><div class="match-label">Match</div><div class="match-bar"><div class="match-bar-fill" style="width:${job.matchScore}%"></div></div></div>`;
+                card.addEventListener('click', () => openJobDetail(job));
+                list.appendChild(card);
+            });
+            if (!list.innerHTML) list.innerHTML = '<div class="ws-card">No saved jobs yet.</div>';
+        }
+
+        function renderNetworkPeople(query='') {
+            const el = document.getElementById('networkPeople');
+            if (!el) return;
+            const q = query.toLowerCase();
+            el.innerHTML = networkDirectory.filter(p => `${p.name} ${p.role}`.toLowerCase().includes(q)).map((p,i) => `
+                <div class="ws-connect-row">
+                    <div class="ws-person"><div class="ws-avatar">${p.initials}</div><div><b style="font-size:12px">${p.name}</b><small>${p.role}</small></div></div>
+                    <button class="ws-btn secondary" onclick="toggleConnection(this)">${i===1?'Connected':'Connect'}</button>
+                </div>`).join('');
+        }
+        function filterPeople(q) { renderNetworkPeople(q); }
+        function toggleConnection(btn) {
+            const connected = btn.textContent.trim() === 'Connected';
+            btn.textContent = connected ? 'Connect' : 'Connected';
+            btn.classList.toggle('green', !connected);
+            toastWS(connected ? 'Connection removed' : 'Connection request sent');
+        }
+        function mockAnswer(btn, correct) {
+            document.querySelectorAll('.ws-option').forEach(x => x.disabled = true);
+            const feedback = document.getElementById('mockFeedback');
+            feedback.innerHTML = correct
+                ? '<b style="color:#047857;">✓ Strong answer.</b> Mention profiling first, then targeted memoization and state optimization.'
+                : '<b style="color:#b91c1c;">Try again.</b> Focus on profiling renders, state ownership and selective memoization.';
+        }
+        function toastWS(msg) {
+            let t = document.getElementById('wsToast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'wsToast';
+                t.style.cssText = 'position:fixed;right:20px;bottom:20px;background:#0f172a;color:#fff;padding:12px 16px;border-radius:10px;font-size:12px;z-index:3000;';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.style.display = 'block';
+            clearTimeout(window.__wsToastTimer);
+            window.__wsToastTimer = setTimeout(() => t.style.display='none', 2200);
+        }
+
+        /* Add Save Job action to the ORIGINAL SmartApply modal without replacing it. */
+        const originalOpenJobDetail = openJobDetail;
+        openJobDetail = function(job) {
+            originalOpenJobDetail(job);
+            setTimeout(() => {
+                const actions = document.getElementById('jobDetailContent');
+                if (!actions || actions.querySelector('.save-job-additive')) return;
+                const btn = document.createElement('button');
+                btn.className = 'upskill-btn save-job-additive';
+                btn.style.marginTop = '10px';
+                btn.innerHTML = '<i class="far fa-bookmark"></i> Save Job';
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    savedJobIds.add(job.id);
+                    btn.innerHTML = '<i class="fas fa-bookmark"></i> Job Saved';
+                    toastWS('Job saved to Saved Jobs');
+                };
+                actions.querySelector('.smart-apply-section')?.appendChild(btn);
+            }, 0);
+        };
+
+        /* Initialize additive workspace data after original login/render. */
+        const originalHandleLogin = handleLogin;
+        handleLogin = function() {
+            originalHandleLogin();
+            renderSavedWorkspaceJobs();
+            renderNetworkPeople();
+        };
+
+
+        /* ================= AI + AGENTIC CAREER LAYER V4 ================= */
+        const agentState = { actions: 0, jobs: 0, shortlist: 0 };
+
+        function copilotPrompt(text) {
+            const input = document.getElementById('copilotInput');
+            if (input) input.value = text;
+            runCopilot();
+        }
+
+        function runCopilot() {
+            const input = document.getElementById('copilotInput');
+            const box = document.getElementById('copilotResponse');
+            const q = (input?.value || '').trim();
+            if (!box) return;
+            if (!q) {
+                box.style.display = 'block';
+                box.innerHTML = '<b>AI Copilot:</b> Ask me about jobs, skill gaps, applications, interviews or networking.';
+                return;
+            }
+            const lq = q.toLowerCase();
+            let answer;
+            if (lq.includes('skill') || lq.includes('learn')) {
+                answer = '<b>AI Copilot:</b> Your highest-value gaps are <b>SQL, Statistics and Tableau</b>. Start with SQL because it improves your Data Analyst matches quickly, then add dashboard skills.';
+            } else if (lq.includes('interview')) {
+                answer = '<b>AI Copilot:</b> Your next best action is a Senior React Developer mock interview. I would focus on React performance, state management, TypeScript and system-design trade-offs.';
+            } else if (lq.includes('network')) {
+                answer = '<b>AI Copilot:</b> Prioritize people in Data, AI, Cloud and React who are 1–2 connections away. The Networking Agent can draft personalized messages, but you approve every message before sending.';
+            } else if (lq.includes('apply') || lq.includes('job')) {
+                answer = '<b>AI Copilot:</b> Your current strongest visible match is <b>Senior React Developer · 85%</b>. The Application Agent can prepare the tailored CV and note, while the final handoff stays under your control.';
+            } else {
+                answer = '<b>AI Copilot:</b> I would first scan your jobs, identify the highest-value skill gaps, prepare the strongest application and then schedule interview/networking actions around the target role.';
+            }
+            box.innerHTML = answer;
+            box.style.display = 'block';
+        }
+
+        function agentLog(type, msg) {
+            const log = document.getElementById('agentLog');
+            if (!log) return;
+            const row = document.createElement('div');
+            row.className = type || 'info';
+            row.textContent = '[' + (type || 'info') + '] ' + msg;
+            log.appendChild(row);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateAgentMetrics() {
+            const jobs = document.getElementById('agentJobsScanned');
+            const shortlist = document.getElementById('agentShortlist');
+            const actions = document.getElementById('agentActions');
+            if (jobs) jobs.textContent = agentState.jobs;
+            if (shortlist) shortlist.textContent = agentState.shortlist;
+            if (actions) actions.textContent = agentState.actions;
+        }
+
+        function runAgent(kind) {
+            agentState.actions++;
+            if (kind === 'jobScout') {
+                agentLog('info', 'Job Scout started: checking LinkedIn, Upwork, Indeed, GitHub Jobs, Naukri, Freelancer and Glassdoor.');
+                setTimeout(() => {
+                    agentState.jobs = 49;
+                    agentState.shortlist = 7;
+                    updateAgentMetrics();
+                    const el = document.getElementById('jobScoutResult');
+                    if (el) {
+                        el.style.display = 'block';
+                        el.innerHTML = '<b>7 jobs shortlisted.</b> Top match: Senior React Developer · TechCorp · <b>85%</b>. Other strong matches: UI Developer · 78%, Full Stack · 64%.';
+                    }
+                    agentLog('ok', 'Scout complete: 49 jobs evaluated; 7 passed the current relevance threshold.');
+                    agentLog('wait', 'Decision required: review the shortlist before starting SmartApply.');
+                }, 650);
+            }
+
+            if (kind === 'application') {
+                agentLog('info', 'Application Agent selected the strongest visible job match.');
+                setTimeout(() => {
+                    const el = document.getElementById('applicationAgentResult');
+                    if (el) {
+                        el.style.display = 'block';
+                        el.innerHTML = '<b>Application package ready.</b><br>✓ SmartMatch analysis · ✓ AI application note · ✓ Tailored CV · ✓ Missing-skill explanation<br><span style="color:#9a3412;">Human approval required before handoff.</span>';
+                    }
+                    agentLog('ok', 'Prepared tailored application package for Senior React Developer · 85%.');
+                    agentLog('wait', 'Approval gate active: no external submission was performed.');
+                    updateAgentMetrics();
+                }, 650);
+            }
+
+            if (kind === 'skill') {
+                agentLog('info', 'Skill Coach comparing profile gaps against target-role demand.');
+                setTimeout(() => {
+                    const el = document.getElementById('skillAgentResult');
+                    if (el) {
+                        el.style.display = 'block';
+                        el.innerHTML = '<b>Recommended 4-week plan:</b> Week 1–2 SQL → Week 3 Statistics → Week 4 Tableau. Expected benefit: stronger Data Analyst and analytics-oriented matches.';
+                    }
+                    agentLog('ok', 'Learning plan generated from current SmartMatch gaps.');
+                    updateAgentMetrics();
+                }, 550);
+            }
+
+            if (kind === 'network') {
+                agentLog('info', 'Networking Agent ranking people against target roles and skill interests.');
+                setTimeout(() => {
+                    const el = document.getElementById('networkAgentResult');
+                    if (el) {
+                        el.style.display = 'block';
+                        el.innerHTML = '<b>12 relevant people found.</b> Start with Data Analysts, Cloud Engineers and React leaders. Suggested action: request 3 focused connections this week.';
+                    }
+                    agentLog('ok', '12 relevant networking candidates ranked.');
+                    agentLog('wait', 'Messages are drafts only; user approval is required before sending.');
+                    updateAgentMetrics();
+                }, 550);
+            }
+
+            if (kind === 'market') {
+                agentLog('info', 'Market Intelligence Agent analyzing role demand and profile alignment.');
+                setTimeout(() => {
+                    const el = document.getElementById('marketAgentResult');
+                    if (el) {
+                        el.style.display = 'block';
+                        el.innerHTML = '<b>Market signal:</b> AI Engineer, Cloud Engineer and Data Analyst paths show stronger opportunity signals in this prototype. Your best adjacency is Data + AI + Cloud.';
+                    }
+                    agentLog('ok', 'Career direction generated: Data + AI + Cloud, with React as a supporting strength.');
+                    updateAgentMetrics();
+                }, 550);
+            }
+
+            updateAgentMetrics();
+        }
+
+        function clearAgentLog() {
+            const log = document.getElementById('agentLog');
+            if (log) log.innerHTML = '<div class="info">[system] Agent activity log cleared.</div>';
+        }
+
+        /* Add AI message drafting to the existing network directory without changing its original Connect behavior. */
+        const originalRenderNetworkPeopleV4 = window.renderNetworkPeople;
+        if (typeof originalRenderNetworkPeopleV4 === 'function') {
+            window.renderNetworkPeople = function(query='') {
+                originalRenderNetworkPeopleV4(query);
+                const rows = document.querySelectorAll('#networkPeople .ws-connect-row');
+                rows.forEach(row => {
+                    if (row.querySelector('.ai-message-btn')) return;
+                    const btn = document.createElement('button');
+                    btn.className = 'ws-btn secondary ai-message-btn';
+                    btn.textContent = 'AI Draft';
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        const name = row.querySelector('b')?.textContent || 'there';
+                        const role = row.querySelector('small')?.textContent || 'your field';
+                        draftNetworkMessage(name, role);
+                    };
+                    row.appendChild(btn);
+                });
+            };
+        }
+
+        function draftNetworkMessage(name, role) {
+            showWorkspace('networkView');
+            setTimeout(() => {
+                let host = document.getElementById('networkPeople');
+                if (!host) return;
+                let existing = document.getElementById('aiNetworkDraft');
+                if (!existing) {
+                    existing = document.createElement('div');
+                    existing.id = 'aiNetworkDraft';
+                    existing.className = 'ws-card';
+                    existing.style.marginTop = '12px';
+                    host.parentElement.appendChild(existing);
+                }
+                existing.innerHTML = `
+                    <h3><i class="fas fa-wand-magic-sparkles"></i> AI Connection Draft</h3>
+                    <p style="font-size:10px;color:#64748b;margin:6px 0 9px;">Personalized for ${name} · ${role}</p>
+                    <textarea class="network-draft">Hi ${name.split(' ')[0]}, I came across your work in ${role}. I'm exploring opportunities around React, Data and Cloud and would value connecting and exchanging insights. Looking forward to staying in touch.</textarea>
+                    <div class="agent-approval"><i class="fas fa-hand"></i> Human approval required. This prototype does not send the message.</div>
+                    <button class="ws-btn secondary" style="margin-top:9px;" onclick="toastWS('Draft approved locally — ready for your final send action')">Approve Draft</button>
+                `;
+                agentLog('info', 'Networking Agent drafted a personalized connection message for ' + name + '.');
+            }, 0);
+        }
+
+        /* Preserve the V3 handleLogin behavior while refreshing the additive AI UI. */
+        if (typeof window.handleLogin === 'function') {
+            const previousHandleLoginV4 = window.handleLogin;
+            window.handleLogin = function() {
+                previousHandleLoginV4();
+                updateAgentMetrics();
+            };
+        }
+
+        // Enter to login
+        document.getElementById('loginEmail').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+    </script>
+</body>
+</html>

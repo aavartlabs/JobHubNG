@@ -1,0 +1,63 @@
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+.mvn/
+mvnw.cmd
+!mvnw
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.npm
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / local env
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Test artifacts
+coverage/
+.nyc_output/

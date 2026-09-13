@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+MVN_USER_HOME="${MAVEN_USER_HOME:-${HOME}/.m2}"
+WRAPPER_JAR="$MVN_USER_HOME/wrapper/dists/jobhub-maven-wrapper.jar"
+mkdir -p "$(dirname "$WRAPPER_JAR")"
+if [ ! -f "$WRAPPER_JAR" ]; then
+  curl -fsSL "https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper/3.3.4/maven-wrapper-3.3.4.jar" -o "$WRAPPER_JAR"
+fi
+exec java -jar "$WRAPPER_JAR" "$@"

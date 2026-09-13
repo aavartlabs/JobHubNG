@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: jobhub-platform-api
+  datasource:
+    url: ${JOBHUB_DB_URL:jdbc:postgresql://localhost:5432/jobhub}
+    username: ${JOBHUB_DB_USER:jobhub}
+    password: ${JOBHUB_DB_PASSWORD:jobhub}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  task:
+    scheduling:
+      pool:
+        size: 2
+  sql:
+    init:
+      mode: never
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+jobhub:
+  security:
+    jwt-secret: ${JOBHUB_JWT_SECRET:jobhub-dev-secret-change-me-please-32-bytes}
+  cors:
+    allowed-origin: ${JOBHUB_WEB_ORIGIN:http://localhost:3000}
+  outbox:
+    fixed-delay-ms: 2000
