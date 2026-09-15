@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -38,7 +39,7 @@ public class AuthController {
 
     @GetMapping("/admin/dataflow")
     @PreAuthorize("hasAuthority('ADMIN_DATAFLOW_READ')")
-    public Map<String, Object> adminPing() {
+    public Map<String, Object> dataflow() {
         return Map.of(
             "service", "platform-api",
             "phase", "1.0",
