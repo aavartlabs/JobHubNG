@@ -38,6 +38,10 @@ jobhub:
   outbox:
     fixed-delay-ms: 2000
 
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${OLLAMA_MODEL:ministral-3:14b}
+
 logging:
   level:
     com.jobhub: DEBUG

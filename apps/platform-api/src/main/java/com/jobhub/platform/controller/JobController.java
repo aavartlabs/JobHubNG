@@ -1,5 +1,6 @@
 package com.jobhub.platform.controller;
 
+import com.jobhub.platform.service.JobEnrichmentAgent;
 import com.jobhub.platform.service.OutboxService;
 import com.jobhub.platform.domain.JobRaw;
 import com.jobhub.platform.repository.JobRawRepository;
@@ -19,6 +20,7 @@ public class JobController {
 
     private final JobRawRepository jobRawRepository;
     private final OutboxService outboxService;
+    private final JobEnrichmentAgent enrichmentAgent;
 
     @PostMapping("/ingestion/jobs")
     @PreAuthorize("hasRole('ADMIN')")
@@ -42,5 +44,15 @@ public class JobController {
             "correlationId", correlationId,
             "status", "RECEIVED"
         ));
+    }
+
+    @PostMapping("/agent-runs/job-enrichment")
+    @PreAuthorize("hasRole('SYSTEM')")
+    public Map<String, Object> enrichJob(@RequestBody Map<String, Object> request) {
+        Long jobRawId = Long.valueOf(request.get("jobRawId").toString());
+        String correlationId = (String) request.getOrDefault("correlationId", UUID.randomUUID().toString());
+        String jobDescription = (String) request.getOrDefault("description", "No description provided");
+
+        return enrichmentAgent.enrichJob(jobRawId, correlationId, jobDescription);
     }
 }

@@ -27,12 +27,14 @@ services:
       JOBHUB_DB_URL: jdbc:postgresql://postgres:5432/jobhub
       JOBHUB_DB_USER: jobhub
       JOBHUB_DB_PASSWORD: jobhub
-      JOBHUB_JWT_SECRET: jobhub-dev-secret-change-me-please-32-bytes
-      JOBHUB_WEB_ORIGIN: http://localhost:3000
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      JOBHUB_JWT_SECRET: ${JOBHUB_JWT_SECRET:-jobhub-dev-secret-change-me-please-32-bytes}
+      JOBHUB_WEB_ORIGIN: ${JOBHUB_WEB_ORIGIN:-https://jobhubs.aavartlabs.com}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://192.168.2.106:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-ministral-3:14b}
     ports:
       - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   web:
     build: ./apps/web
@@ -40,9 +42,17 @@ services:
     depends_on:
       - platform-api
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
     ports:
       - "3000:3000"
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: jobhub-cloudflare-tunnel
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - web
 
 volumes:
   jobhub_pgdata:
