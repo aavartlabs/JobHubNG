@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg16
     container_name: jobhub-postgres
     environment:
       POSTGRES_DB: jobhub
@@ -29,6 +29,8 @@ services:
       JOBHUB_DB_PASSWORD: jobhub
       JOBHUB_JWT_SECRET: jobhub-dev-secret-change-me-please-32-bytes
       JOBHUB_WEB_ORIGIN: http://localhost:3000
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     ports:
       - "8080:8080"
 
@@ -41,15 +43,6 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
     ports:
       - "3000:3000"
-
-  agent-runtime:
-    build: ./apps/agent-runtime
-    container_name: jobhub-agent-runtime
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-}
-    ports:
-      - "8090:8090"
 
 volumes:
   jobhub_pgdata:

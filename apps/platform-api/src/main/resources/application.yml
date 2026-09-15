@@ -5,16 +5,17 @@ spring:
     url: ${JOBHUB_DB_URL:jdbc:postgresql://localhost:5432/jobhub}
     username: ${JOBHUB_DB_USER:jobhub}
     password: ${JOBHUB_DB_PASSWORD:jobhub}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
   flyway:
     enabled: true
     locations: classpath:db/migration
-  task:
-    scheduling:
-      pool:
-        size: 2
-  sql:
-    init:
-      mode: never
 
 server:
   port: ${SERVER_PORT:8080}
@@ -36,3 +37,8 @@ jobhub:
     allowed-origin: ${JOBHUB_WEB_ORIGIN:http://localhost:3000}
   outbox:
     fixed-delay-ms: 2000
+
+logging:
+  level:
+    com.jobhub: DEBUG
+    org.springframework.security: INFO
