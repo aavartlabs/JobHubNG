@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -21,14 +22,29 @@ public class AuthController {
     }
 
     @GetMapping("/auth/me")
-    public Authentication me(Authentication auth) {
-        return auth;
+    public AuthService.UserProfile me(Authentication auth) {
+        var jwt = (org.springframework.security.oauth2.jwt.Jwt) auth.getPrincipal();
+        var roles = jwt.getClaimAsStringList("roles");
+        var perms = jwt.getClaimAsStringList("permissions");
+        return new AuthService.UserProfile(
+            Long.valueOf(jwt.getSubject()),
+            jwt.getClaimAsString("email"),
+            jwt.getClaimAsString("name"),
+            jwt.getClaimAsString("tenant"),
+            roles != null ? roles : List.of(),
+            perms != null ? perms : List.of()
+        );
     }
 
-    @GetMapping("/admin/ping")
-    @PreAuthorize("hasRole('ADMIN')")
-    public String adminPing() {
-        return "pong from admin endpoint";
+    @GetMapping("/admin/dataflow")
+    @PreAuthorize("hasAuthority('ADMIN_DATAFLOW_READ')")
+    public Map<String, Object> adminPing() {
+        return Map.of(
+            "service", "platform-api",
+            "phase", "1.0",
+            "status", "READY",
+            "modules", List.of("auth", "audit", "outbox", "ai-runs")
+        );
     }
 
     @GetMapping("/public/ping")

@@ -70,11 +70,12 @@ public class AuthService {
             user.getEmail(), correlationId);
 
         return new LoginResponse(token, 3600,
-            new UserView(user.getId(), user.getEmail(), user.getDisplayName(),
+            new UserProfile(user.getId(), user.getEmail(), user.getDisplayName(),
                 tenant != null ? tenant.getTenantKey() : "NONE", roles, permissions));
     }
 
     public record LoginRequest(String email, String password) {}
-    public record LoginResponse(String token, int expiresIn, UserView user) {}
+    public record LoginResponse(String token, int expiresIn, UserProfile user) {}
     public record UserView(Long id, String email, String name, String tenant, List<String> roles, List<String> permissions) {}
+    public record UserProfile(Long id, String email, String displayName, String tenantKey, List<String> roles, List<String> permissions) {}
 }
