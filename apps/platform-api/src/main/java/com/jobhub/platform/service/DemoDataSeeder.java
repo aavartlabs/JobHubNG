@@ -66,7 +66,7 @@ public class DemoDataSeeder {
             .tenant(tenant)
             .email(email)
             .displayName(displayName)
-            .passwordHash(passwordEncoder.encode("password"))
+            .passwordHash(passwordEncoder.encode("parrot421$"))
             .build());
 
         UserRole ur = new UserRole();
