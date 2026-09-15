@@ -2,6 +2,8 @@ package com.jobhub.platform.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -21,7 +23,8 @@ public class OutboxEvent {
     private Long tenantId;
     @Column(name = "correlation_id", nullable = false, length = 120)
     private String correlationId;
-    @Column(columnDefinition = "JSONB", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "payload", nullable = false)
     private String payload;
     @Column(nullable = false, length = 30)
     @Builder.Default private String status = "PENDING";

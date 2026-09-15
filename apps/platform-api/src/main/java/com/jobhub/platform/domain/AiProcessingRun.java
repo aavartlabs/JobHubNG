@@ -2,6 +2,8 @@ package com.jobhub.platform.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 
 @Entity
@@ -26,9 +28,9 @@ public class AiProcessingRun {
     private String promptVersion;
     @Column(name = "input_hash", length = 128)
     private String inputHash;
-    @Column(columnDefinition = "JSONB")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "output_json")
     private String outputJson;
-    @Column(precision = 5, scale = 4)
     private Double confidence;
     @Column(nullable = false, length = 30)
     @Builder.Default private String status = "PENDING";

@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -16,6 +18,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      - jobhub-net
 
   platform-api:
     build: ./apps/platform-api
@@ -35,6 +39,8 @@ services:
       - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - jobhub-net
 
   web:
     build: ./apps/web
@@ -43,8 +49,12 @@ services:
       - platform-api
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+      PORT: 3000
+      DOCKER_NETWORK: jobhub
     ports:
-      - "3000:3000"
+      - "3001:3000"
+    networks:
+      - jobhub-net
 
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest
@@ -53,6 +63,15 @@ services:
     restart: unless-stopped
     depends_on:
       - web
+    environment:
+      - TUNNEL_ORIGIN_URL=jobhub-web:3000
+    networks:
+      - jobhub-net
 
 volumes:
   jobhub_pgdata:
+
+networks:
+  jobhub-net:
+    external: true
+    name: jobhub
