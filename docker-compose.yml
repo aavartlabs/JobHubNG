@@ -35,6 +35,9 @@ services:
       JOBHUB_WEB_ORIGIN: ${JOBHUB_WEB_ORIGIN:-https://jobhubs.aavartlabs.com}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://192.168.2.106:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ministral-3:14b}
+      EVER_JOBS_API_URL: http://192.168.2.174:3003
+      EVER_JOBS_API_KEY: ${EVER_JOBS_API_KEY:-jobhub-ng-dev-key-2026}
+      SERVER_PORT: 8080
     ports:
       - "8080:8080"
     extra_hosts:
@@ -48,9 +51,8 @@ services:
     depends_on:
       - platform-api
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://jobhub-platform-api:8080}
       PORT: 3000
-      DOCKER_NETWORK: jobhub
     ports:
       - "3001:3000"
     networks:

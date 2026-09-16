@@ -42,6 +42,30 @@ ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
   model: ${OLLAMA_MODEL:ministral-3:14b}
 
+ingestion:
+  ever-jobs:
+    api-url: ${EVER_JOBS_API_URL:http://localhost:3001}
+    api-key: ${EVER_JOBS_API_KEY:jobhub-ng-dev-key-2026}
+    max-results: 10
+    timeout-seconds: 30
+    max-requests-per-minute: 30
+  scheduler:
+    enabled: true
+    cron: "0 0 * * * *"
+  keywords:
+    - term: "SRE"
+      locations: ["Dubai", "Remote", "Singapore"]
+      frequency: hourly
+    - term: "DevOps engineer"
+      locations: ["Dubai", "Remote"]
+      frequency: hourly
+    - term: "cloud operations"
+      locations: ["Dubai", "Bangalore"]
+      frequency: daily
+    - term: "platform engineer"
+      locations: ["Remote"]
+      frequency: daily
+
 logging:
   level:
     com.jobhub: DEBUG
