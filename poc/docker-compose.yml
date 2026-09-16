@@ -20,6 +20,17 @@ services:
       - jobhub
     restart: unless-stopped
 
+  whatsapp:
+    build:
+      context: ./whatsapp-sender
+    container_name: jobhub-whatsapp
+    env_file: ./whatsapp-sender/.env
+    volumes:
+      - ./whatsapp-sender/auth_info:/app/auth_info
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
 networks:
   jobhub:
     external: true

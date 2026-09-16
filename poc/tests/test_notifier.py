@@ -1,7 +1,7 @@
 import pytest
 
 from jobhub_poc.alerts.matcher import Match
-from jobhub_poc.alerts.notifier import ConsoleNotifier, get_notifier
+from jobhub_poc.alerts.notifier import ConsoleNotifier, WhatsAppNotifier, get_notifier
 
 
 def _seed_match(conn, phone="+1000", title="Engineer", location="Remote"):
@@ -53,3 +53,45 @@ def test_get_notifier_unknown_backend_raises(conn):
 def test_get_notifier_console_returns_console_notifier(conn):
     notifier = get_notifier("console", conn=conn)
     assert isinstance(notifier, ConsoleNotifier)
+
+
+def test_get_notifier_whatsapp_returns_whatsapp_notifier(conn):
+    notifier = get_notifier("whatsapp", conn=conn)
+    assert isinstance(notifier, WhatsAppNotifier)
+
+
+def test_whatsapp_notifier_sends_via_gateway_and_logs_sent(conn, requests_mock):
+    requests_mock.post("http://gateway.test/send", json={"status": "sent"})
+    match = _seed_match(conn, phone="+15551234567")
+    notifier = WhatsAppNotifier(conn, gateway_url="http://gateway.test", api_key="secret-key")
+    notifier.send(match)
+
+    sent = requests_mock.request_history[0]
+    assert sent.headers["x-api-key"] == "secret-key"
+    assert sent.json() == {
+        "phone": "+15551234567",
+        "message": "New job matching your alert: Engineer (Remote)",
+    }
+    row = conn.execute("SELECT * FROM alerts_sent").fetchone()
+    assert row["notifier_backend"] == "whatsapp"
+    assert row["status"] == "SENT"
+
+
+def test_whatsapp_notifier_gateway_error_marks_failed_not_a_crash(conn, requests_mock):
+    requests_mock.post("http://gateway.test/send", status_code=503, text="not paired yet")
+    match = _seed_match(conn)
+    notifier = WhatsAppNotifier(conn, gateway_url="http://gateway.test")
+    notifier.send(match)  # must not raise
+
+    row = conn.execute("SELECT * FROM alerts_sent").fetchone()
+    assert row["notifier_backend"] == "whatsapp"
+    assert row["status"] == "FAILED"
+
+
+def test_whatsapp_notifier_missing_gateway_url_marks_failed_not_a_crash(conn):
+    match = _seed_match(conn)
+    notifier = WhatsAppNotifier(conn, gateway_url="")
+    notifier.send(match)  # must not raise
+
+    row = conn.execute("SELECT * FROM alerts_sent").fetchone()
+    assert row["status"] == "FAILED"

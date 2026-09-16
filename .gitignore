@@ -12,3 +12,4 @@ target/
 __pycache__/
 *.log
 .DS_Store
+auth_info/
