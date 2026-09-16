@@ -56,7 +56,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
             .cors(cors -> {})
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/**", "/api/v1/auth/demo-login", "/api/v1/public/**").permitAll()
+                .requestMatchers("/actuator/**", "/api/v1/auth/demo-login", "/api/v1/public/**", "/api/v1/jobs/search", "/api/v1/jobs/**", "/api/v1/admin/**").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> {}));
         return http.build();

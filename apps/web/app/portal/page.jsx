@@ -1,8 +1,149 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
-const menus={JOB_SEEKER:['Dashboard','Discover Jobs','Saved Jobs','My Applications','AI Career Assistant','Skills & Learning','Notifications','Profile'],STUDENT:['Dashboard','Find Jobs','Internships','Learning Path','Applications','AI Career Coach','Resume'],PROFESSIONAL:['Dashboard','Job Discovery','Target Roles','Applications','Market Intelligence','AI Career Assistant','Resume & Profile'],RECRUITER:['Dashboard','Candidate Search','Job Requisitions','Shortlists','Applications','Interviews','AI Matching','Reports'],EMPLOYER:['Overview','Jobs','Candidates','Talent Pipeline','Analytics','Company Profile','Team & Roles','Billing'],ADMIN:['Dashboard','Ingestion Monitor','Jobs & Data Quality','Duplicate Review','AI Review Queue','Taxonomy','Users','Notification Ops','Audit Logs','System Settings']};
-export default function Portal(){const router=useRouter();const [user,setUser]=useState(null);const [diag,setDiag]=useState(null);const [tab,setTab]=useState('');useEffect(()=>{const t=localStorage.getItem('jobhub.accessToken');if(!t){router.replace('/login');return;}fetch(`/api/v1/auth/me`,{headers:{Authorization:`Bearer ${t}`}}).then(r=>{if(!r.ok)throw new Error();return r.json()}).then(setUser).catch(()=>{localStorage.clear();router.replace('/login')})},[]);
-useEffect(()=>{if(user?.roles?.includes('ADMIN')){const t=localStorage.getItem('jobhub.accessToken');fetch(`/api/v1/admin/dataflow`,{headers:{Authorization:`Bearer ${t}`}}).then(r=>r.json()).then(setDiag).catch(()=>{})}},[user]);
-if(!user)return <div className="loading">Loading JobHub…</div>;const primary=user.roles?.[0]||'JOB_SEEKER';const items=menus[primary]||menus.JOB_SEEKER;const logout=()=>{localStorage.clear();router.push('/')};
-return <main className="portalPage"><aside className="side"><div className="brand light">Job<span>Hub</span></div><div className="caption">{user.tenantKey}</div>{items.map((x,i)=><button key={x} className={!i?'active':''} onClick={()=>setTab(x)}>{x}</button>)}<div className="sideFoot"><button onClick={logout}>↪ Sign out</button><a href="/reference/jobhub_portal.html">Open full UI reference</a></div></aside><section className="portalMain"><header className="portalTop"><div><b>JobHub</b><span> / {tab||items[0]}</span></div><div className="userPill"><span className="avatar">{user.displayName?.slice(0,2).toUpperCase()}</span><div><b>{user.displayName}</b><small>{primary}</small></div></div></header><div className="portalContent"><div className="heroPanel"><div><span className="eyebrow">{primary}</span><h1>Welcome, {user.displayName}</h1><p>Authenticated workspace with backend-enforced role access.</p></div><div className="token">JWT ✓</div></div><div className="stats"><div className="card"><small>Role</small><b>{primary}</b><span>Granted by backend</span></div><div className="card"><small>Permissions</small><b>{user.permissions?.length||0}</b><span>From role mappings</span></div><div className="card"><small>Tenant</small><b>{user.tenantKey}</b><span>Tenant context</span></div><div className="card"><small>Data Flow</small><b>{diag?'LIVE':'READY'}</b><span>Audit + Outbox</span></div></div><div className="grid2"><div className="card pad"><div className="head"><div><h2>{tab||items[0]}</h2><p>Phase 0 + 1 functional shell.</p></div></div><div className="workflow"><div><span>1</span><b>User signs in</b><small>Spring Security validates JWT</small></div><div><span>2</span><b>Role is resolved</b><small>User → role → permissions</small></div><div><span>3</span><b>Audit event</b><small>Stored transactionally in PostgreSQL</small></div><div><span>4</span><b>Outbox event</b><small>Published by the local publisher loop</small></div></div></div><div className="card pad"><h2>Access diagnostics</h2>{diag?<pre>{JSON.stringify(diag,null,2)}</pre>:<p>Admin-only data-flow diagnostics appear here.</p>}<div className="callout">Phase 2 will attach <b>JOB_RECEIVED</b> to this event backbone and start the Flowable + OpenAI Agents SDK enrichment pipeline.</div></div></div></div></section></main>}
+
+const menus = {
+  JOB_SEEKER: ['Dashboard', 'Job Search', 'Saved Jobs', 'My Applications', 'Profile'],
+  STUDENT: ['Dashboard', 'Job Search', 'Internships', 'Learning Path', 'Resume'],
+  PROFESSIONAL: ['Dashboard', 'Job Search', 'Target Roles', 'Applications', 'Resume & Profile'],
+  RECRUITER: ['Dashboard', 'Candidate Search', 'Job Requisitions', 'Shortlists', 'Reports'],
+  EMPLOYER: ['Overview', 'Jobs', 'Candidates', 'Talent Pipeline', 'Analytics'],
+  ADMIN: ['Dashboard', 'Ingestion Monitor', 'Sweep Status', 'Jobs & Data Quality', 'Users', 'Audit Logs']
+};
+
+export default function Portal() {
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [tab, setTab] = useState('');
+  const [sweep, setSweep] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [jobCount, setJobCount] = useState(0);
+
+  useEffect(() => {
+    const t = localStorage.getItem('jobhub.accessToken');
+    if (!t) { router.replace('/login'); return; }
+    fetch('/api/v1/auth/me', { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(setUser)
+      .catch(() => { localStorage.clear(); router.replace('/login'); });
+  }, []);
+
+  useEffect(() => {
+    if (user?.roles?.includes('ADMIN')) {
+      fetch('/api/v1/admin/sweep/status')
+        .then(r => r.json())
+        .catch(() => ({}))
+        .then(setSweep);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetch('/api/v1/jobs/search?page=0&size=5')
+      .then(r => r.json())
+      .then(data => { setJobs(data.jobs || []); setJobCount(data.total || 0); })
+      .catch(() => {});
+  }, []);
+
+  if (!user) return <div className="loading">Loading JobHub…</div>;
+
+  const primary = user.roles?.[0] || 'JOB_SEEKER';
+  const items = menus[primary] || menus.JOB_SEEKER;
+
+  const renderContent = () => {
+    switch (tab) {
+      case 'Ingestion Monitor':
+        return (
+          <div className="card pad">
+            <h2>Ingestion Monitor</h2>
+            <div className="stats">
+              <div className="card"><small>Total Raw Jobs</small><b>{jobCount.toLocaleString()}</b></div>
+              <div className="card"><small>Sources Active</small><b>{sweep?.sources ? Object.keys(sweep.sources).length : 0}</b></div>
+              <div className="card"><small>Last Sweep</small><b>{sweep?.lastSweep ? new Date(sweep.lastSweep).toLocaleString() : 'Pending'}</b></div>
+            </div>
+            <button className="btn primary" style={{ marginTop: 16 }} onClick={() => {
+              fetch('/api/v1/admin/ingestion/run', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => alert(data.status + ': ' + data.message));
+            }}>Run Ingestion Now</button>
+          </div>
+        );
+      case 'Sweep Status':
+        return (
+          <div className="card pad">
+            <h2>Sweep Status</h2>
+            {sweep?.sources && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {Object.entries(sweep.sources).map(([name, info]) => (
+                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, background: 'var(--soft)', borderRadius: 6 }}>
+                    <span>{name}</span>
+                    <span>{info.jobs} jobs — {info.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'Job Search':
+        router.push('/jobs');
+        return null;
+      default:
+        return (
+          <div className="card pad">
+            <h2>{tab || items[0]}</h2>
+            <p>Authenticated workspace with backend-enforced role access.</p>
+            {primary === 'ADMIN' && sweep?.sources && (
+              <div style={{ marginTop: 16 }}>
+                <h3>Source Status</h3>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {Object.entries(sweep.sources).map(([name, info]) => (
+                    <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, background: 'var(--soft)', borderRadius: 6 }}>
+                      <span>{name}</span>
+                      <span>{info.jobs} jobs — {info.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+    }
+  };
+
+  return (
+    <main className="portalPage">
+      <aside className="side">
+        <div className="brand light">Job<span>Hub</span></div>
+        <div className="caption">{user.tenantKey}</div>
+        {items.map(x => (
+          <button key={x} className={tab === x ? 'active' : ''} onClick={() => setTab(x)}>{x}</button>
+        ))}
+        <div className="sideFoot">
+          <button onClick={() => { localStorage.clear(); router.push('/'); }}>↪ Sign out</button>
+        </div>
+      </aside>
+      <section className="portalMain">
+        <header className="portalTop">
+          <div><b>JobHub</b><span> / {tab || items[0]}</span></div>
+          <div className="userPill">
+            <span className="avatar">{user.displayName?.slice(0, 2).toUpperCase()}</span>
+            <div><b>{user.displayName}</b><small>{primary}</small></div>
+          </div>
+        </header>
+        <div className="portalContent">
+          {renderContent()}
+          {jobs.length > 0 && tab !== 'Ingestion Monitor' && tab !== 'Sweep Status' && (
+            <div className="card pad" style={{ marginTop: 16 }}>
+              <h3>Recent Jobs ({jobCount.toLocaleString()} total)</h3>
+              {jobs.slice(0, 3).map(job => (
+                <div key={job.id} style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
+                  <b>{job.externalJobId}</b>
+                  <small style={{ color: 'var(--muted)', marginLeft: 8 }}>{new Date(job.fetchedAt).toLocaleDateString()}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
