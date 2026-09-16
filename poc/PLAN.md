@@ -285,14 +285,23 @@ As-built: 33 `poc/` tests + 10 `poc/scraper/` tests, all green.
 6. `run_pipeline.sh` runs end-to-end from harita over the existing SSH keys. **Done.**
 7. Everything env-configured per the section above — no hardcoded hosts/ports/keys/paths. **Done.**
 
-**Should-have (not yet done):** Dockerize `jobhub_poc` on pi09 on a new network/port; expose via
-a second Cloudflare Tunnel hostname instead of raw LAN IP; cover more than one EverJobs site.
+**Should-have:** Dockerize `jobhub_poc` on pi09 on a new network/port. **Done** — it now
+runs as the `jobhub-web` container, which also took over serving `jobhubs.aavartlabs.com`
+directly (reusing the existing Cloudflare Tunnel rather than a second hostname, since the
+tunnel's routing target is fixed remotely and can't be changed from here — see
+`poc/README.md`). Covering more than one EverJobs site is still not done (only the
+`google` bucket has been exercised).
 
-**Explicit stretch, not Saturday (not yet done):** cron/systemd auto-scheduling of the pipeline
-(both servers currently run via plain `nohup`, not systemd — a host reboot kills them); a real
-WhatsApp notifier (OpenWA or kortix-ai/whatsapp-gateway — architecturally a one-line
-`NOTIFIER_BACKEND` swap once someone manually QR-pairs a dedicated number, no `matcher.py`
-changes needed); multi-user account management (one seeded demo login is enough for the POC).
+**Explicit stretch, not Saturday:**
+- cron/systemd auto-scheduling of the pipeline. **Done** — see `poc/README.md`'s
+  "Scheduling" note: a systemd user timer on harita runs the pipeline every 6 hours,
+  EverJobs on pi05 is a proper systemd service (`Restart=always`, boot-enabled), and
+  pi09's containers already auto-restart via Docker's `restart: unless-stopped`.
+- a real WhatsApp notifier. **Done** — built `poc/whatsapp-sender/` (hand-rolled `baileys`
+  service, not OpenWA/whatsapp-gateway after all — see that directory's README for why),
+  QR-paired with a real number, and confirmed delivered on real phones for `sre`,
+  "product manager", and "operations" alert subscriptions.
+- multi-user account management. Still not done (one seeded demo login is enough so far).
 
 ## Verification
 

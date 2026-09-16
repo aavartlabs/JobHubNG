@@ -90,13 +90,23 @@ cd poc
   from **harita** (or any host with the `pi05`/`pi09` SSH aliases
   configured), relaying the JSON dump through harita rather than assuming
   pi05<->pi09 trust. It does not touch the web container.
+- **Scheduling**: `run_pipeline.sh` runs automatically every 6 hours via a
+  systemd user timer on harita (`~/.config/systemd/user/jobhub-pipeline.{service,timer}`
+  -- not part of this repo, since it's host config, not application code).
+  Logs go to `poc/pipeline.log`. EverJobs on pi05 runs as a systemd system
+  service (`/etc/systemd/system/jobhub-everjobs.service`, `Restart=always`,
+  enabled on boot) instead of the earlier manual `nohup`. `jobhub-web` and
+  `jobhub-whatsapp` on pi09 already auto-restart via Docker's
+  `restart: unless-stopped`.
 
 ## Known, deliberate simplifications
 
 - An evergreen listing that keeps reappearing every scrape is purged 15 days
   after we *first* saw it, not 15 days after it stops appearing --
-  `first_seen_at` is never updated on re-load, only `last_seen_at` is. Fine
-  for a manually-triggered pipeline; revisit if this runs on a real cron.
+  `first_seen_at` is never updated on re-load, only `last_seen_at` is. Now
+  that the pipeline runs on a real schedule (see above), this is a live
+  consideration, not just a hypothetical: a job that's been open the whole
+  time still drops off 15 days after we first noticed it.
 - "Location" filtering in the web UI is client-side over whatever `location`
   field a scraped job happens to have -- EverJobs itself can't be asked for
   jobs in a specific place.
