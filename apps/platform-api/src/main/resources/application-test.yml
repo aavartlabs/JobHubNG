@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;INIT=CREATE SCHEMA IF NOT EXISTS JOBHUB\;CREATE SCHEMA IF NOT EXISTS JOBHUB_AI
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        default_schema: JOBHUB
+    open-in-view: false
+  flyway:
+    enabled: false
+
+jobhub:
+  security:
+    jwt-secret: test-secret-test-secret-test-secret-test
+
+ingestion:
+  ever-jobs:
+    api-url: http://localhost:3003
+    api-key: test-key
+    max-results: 5
+  scheduler:
+    enabled: false
+  keywords: []
