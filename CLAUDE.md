@@ -4,134 +4,127 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-JobHub is an **Agentic / Multi-Agent Job Intelligence Platform**. It ingests jobs from multiple sources, enriches them through an AI agent pipeline (deduplication, metadata extraction, skill extraction, taxonomy resolution, quality assessment, embedding), gates publication through deterministic workflow, and matches candidates semantically.
+JobHubNG is an agentic job intelligence platform: it scrapes/ingests jobs from an external
+service (EverJobs), enriches raw postings via an LLM call, and serves them through a
+Next.js portal with role-based demo logins. It is deployed at `jobhubs.aavartlabs.com`
+via a Cloudflare Tunnel container alongside the app services.
 
-The current repository is in **pre-implementation / early foundation** state. Most substantive content lives in design artifacts under `artifacts/` and a zip scaffold under `artifacts/_unzipped/jobhub-agentic/`. The working tree itself is mostly empty (no application source at root yet).
+**The implementation has diverged from the original design docs under `artifacts/`.**
+Those documents (LLD v1.0, the E2E PDF, `tasks_all.md`, `tasks_sanjay.md`) describe a
+larger target architecture — Flowable BPMN/DMN gating, a Python agent-runtime service on
+the OpenAI Agents SDK, Kafka/OpenSearch at scale, a full ~22-agent catalog. **None of that
+exists in the current codebase.** Treat `artifacts/` as aspirational/historical context,
+not a description of what's running. The sections below describe what is actually
+implemented; when in doubt, trust the code over `artifacts/`, `AGENTS.md`, or `README.md`,
+which still describe the older target design in places.
 
-## Three Phase Systems — Do Not Confuse These
+## Actual Architecture (as implemented)
 
-| Label | Meaning | Scope |
-|---|---|---|
-| **WhatsApp "Phase 0+1"** (delivery plan) | 2-week MVP slice | Foundation → first E2E: Login → Ingest → Enrich → Review → Search → Match |
-| **LLD Phases 0–13** (`artifacts/JobHub_Agentic_MultiAgent_Low_Level_Design_v1.0.md` Table 23) | Full engineering roadmap | 0 Foundation … 13 Scale |
-| **Product Phase 1 / Phase 2** (E2E deck PDF) | MVP vs Scale-Up | P1 = local/containers, JWT, pgvector, Flowable in-process; P2 = Kafka, OpenSearch, Keycloak, K8s, WhatsApp |
+```
+Next.js 16 web portal  →  Spring Boot 3.3 platform-api  →  PostgreSQL 16 + pgvector
+                                    ↓
+                          Ollama (self-hosted LLM, called directly over HTTP)
+                                    ↑
+                          EverJobs (external NestJS scraper service, not in this repo)
+```
 
-The 2-week delivery target is the **WhatsApp slice**, not the full LLD.
-
-## Current Implementation State
-
-The scaffold at `artifacts/_unzipped/jobhub-agentic/` implements **LLD Phase 0 + Phase 1 only**:
-- Monorepo structure (`apps/web`, `apps/platform-api`, `apps/agent-runtime`)
-- PostgreSQL foundation via Flyway (V1 foundation, V2 seed RBAC)
-- Tenant/user/role/permission model
-- Demo JWT auth for all 6 personas
-- Method-level RBAC with `@PreAuthorize`
-- Audit events + PostgreSQL Outbox in same transaction
-- Spring Boot 4.1.1 + Actuator health/metrics
-- Flowable 8.0 BPMN/DMN starter (process/dmn folders reserved, no processes yet)
-- Next.js 16.3 web shell (login + persona-aware portal)
-- Python agent runtime stub (health endpoint + NOT_IMPLEMENTED enrichment endpoint)
-- GitHub Actions CI (web build + api tests)
-
-The agent runtime, job ingestion, enrichment pipeline, search, and matching are **NOT yet implemented**.
-
-## Technology Stack
-
-| Layer | Technology | Version |
-|---|---|---|
-| Backend API | Java + Spring Boot | Java 21, Spring Boot 4.1.1 |
-| Workflow | Flowable BPMN/DMN | 8.0.0 |
-| Agent Runtime | Python + OpenAI Agents SDK | Python 3.12+, openai-agents 0.22.1 |
-| Frontend | Next.js (React) | Next.js 16.3.4, React 19.2 |
-| Database | PostgreSQL + pgvector | pgvector/pgvector:pg17 |
-| Migrations | Flyway | via Spring Boot starter |
-| Build (Java) | Maven | 3.9+ (wrapper `mvnw` included) |
-| Build (web) | npm | Node 22 LTS |
-| Containers | Docker Compose | — |
-
-**Stack authority**: LLD + zip scaffold win (Java Spring + Python OpenAI Agents SDK + Next.js). The E2E Platform PDF mentions Spring AI / ReactJS / Kong / Keycloak — that is product vision language, not the current implementation contract.
-
-## Architecture Rules (from AGENTS.md)
-
-1. Spring Boot owns business logic, APIs, authorization, persistence, and audit.
-2. Flowable owns business process state, human tasks, retries, and deterministic gates.
-3. Agents reason and recommend; they do **not** directly access PostgreSQL.
-4. Agent tools/MCP are the only agent capability boundary.
-5. PostgreSQL is the system of record. Agent sessions/traces are operational state only.
-6. Raw ingestion JSON is immutable.
-7. All writes are authorized and audited.
-8. Use Flyway for schema changes — never ad-hoc DDL.
-9. Use idempotency for asynchronous operations (key = `JOB_ENRICHMENT:{jobRawId}:{payloadHash}`).
-10. Prefer structured JSON contracts between services (Pydantic in Python, DTOs in Java).
-11. Do **not** add Kafka, OpenSearch, or Kubernetes before the relevant phase acceptance criteria pass.
-12. Never commit secrets. `.env` is gitignored; use `.env.example` as template.
-13. Never bypass RBAC for convenience.
-
-## Key Domain Concepts
-
-- **jobs_raw**: Immutable source records with `payload_hash` for idempotency. Never updated after insert.
-- **jobs**: Canonical, enriched, user-visible jobs. Created only after enrichment gate passes.
-- **ai_processing_runs**: Audit trail of every agent run (agent name, version, model, prompt version, input hash, output JSON, confidence, trace_id).
-- **Outbox pattern**: Business events written atomically in the same transaction as state changes; a scheduled publisher marks them delivered. This is the reliable event mechanism before Kafka.
-- **DMN confidence gate**: After enrichment, a DMN decision table routes to PUBLISH (confidence ≥ 0.90), REVIEW (lower confidence), or DUPLICATE. Thresholds live in DMN/config, not in agent prompts.
-- **Matching formula**: `0.30*keyword + 0.25*semantic + 0.15*skill + 0.10*experience + 0.10*location + 0.05*freshness + 0.05*preference`. Version stored with match records.
-- **Tenant isolation**: Shared schema + `tenant_id` column + app-level filters (Product P1 level). No RLS or schema-per-tenant yet.
-- **MCP servers** (planned): job, candidate, resume, search, taxonomy, workflow, analytics, learning, notification. Agents consume these, never raw DB.
+- **No agent-runtime service.** There is no Python service, no OpenAI Agents SDK, no MCP
+  servers. `apps/agent-runtime` does not exist even though `Makefile`'s `run-agent` target
+  and parts of the sibling docs still reference it as if it does.
+- **No Flowable.** `workflow/dmn` and `workflow/processes` (under `apps/platform-api/src/main/resources`)
+  contain only placeholder `README.txt` files, and Flowable is not a Maven dependency.
+  Enrichment is a plain synchronous service call, not a BPMN process. There is no
+  confidence-gate DMN table; `JobEnrichmentAgent` just records a `confidence` field in the
+  JSON it gets back from the model.
+- **Enrichment = one Java service calling Ollama's `/api/generate` over REST.**
+  See `apps/platform-api/.../service/JobEnrichmentAgent.java`. It prompts for a JSON blob,
+  strips markdown fences, parses it, and records an `AiProcessingRun` row either way
+  (`SUCCESS` or `FAILED`). There is no retry/guardrail layer.
+- **Ingestion pulls from EverJobs**, an external NestJS scraper reached over HTTP
+  (`EverJobsClient` → `EVER_JOBS_API_URL`, header `x-api-key`). It is **not part of this
+  repo** — `ever-jobs-docker/` here is only a deploy `Dockerfile`/`package.json` for
+  pushing a prebuilt `dist/` of that other project; there's no EverJobs source checked in.
+  `IngestionScheduler` runs it hourly via `@Scheduled(cron=...)`, driven by the
+  `ingestion.keywords` list in `application.yml`. `JobIngestionService.ingestKeyword`
+  currently hardcodes `sourceId = 1L`.
+- **Flyway migrations exist but are inert.** `application.yml` sets
+  `spring.flyway.enabled: false` and `jpa.hibernate.ddl-auto: update`. The Postgres schemas
+  (`jobhub`, `jobhub_ai`) are created once by `database/init/01-extensions.sql` on first
+  container start (Docker Postgres init-script mechanism, not Flyway), and all table DDL
+  after that is Hibernate auto-DDL driven by the `@Entity` classes. `V1__foundation.sql`
+  and `V2__seed_rbac.sql` under `db/migration/` are **not executed** and are stale relative
+  to the real schema — don't treat them as ground truth, and don't assume a new `V3__*.sql`
+  file will do anything unless you first re-enable Flyway. RBAC seed data instead comes
+  from `DemoDataSeeder` (Java, `@EventListener(ApplicationReadyEvent.class)`), which is
+  idempotent by checking `tenantRepository.count() > 0`.
+- **Auth**: Spring Security + a self-issued HS256 JWT (Nimbus `JwtEncoder`/`JwtDecoder`
+  over an `HmacSHA256` key derived from `jobhub.security.jwt-secret`), not an external IdP.
+  Login is `/api/v1/auth/demo-login` (email/password against demo accounts, BCrypt).
+  `SecurityConfig` `permitAll()`s `/actuator/**`, `/api/v1/auth/demo-login`,
+  `/api/v1/public/**`, and — notably — `/api/v1/jobs/**` and `/api/v1/admin/**` at the
+  gateway; anything gated under those paths (e.g. `/api/v1/admin/dataflow`) relies solely
+  on method-level `@PreAuthorize`, not on the security filter chain. Know this before
+  assuming a path prefix implies auth.
+- **Tenant isolation**: shared schema + `tenant_id` column, app-level filtering only. No RLS.
 
 ## Build & Run Commands
 
 ### Full stack via Docker
 ```bash
+cp .env.example .env   # set OLLAMA_BASE_URL / EVER_JOBS_API_URL for your environment
 docker compose up --build
 ```
-- Web: http://localhost:3000
+- Web: http://localhost:3001 (container maps host 3001 → container 3000)
 - API: http://localhost:8080
-- Agent runtime: http://localhost:8090/health
+- Postgres: localhost:5432 (`pgvector/pgvector:pg16`, db/user/pass all `jobhub`)
 
-### Run services from host (development)
+There is also a `cloudflare-tunnel` service in `docker-compose.yml` for exposing `web` at
+`jobhubs.aavartlabs.com`; it needs `CLOUDFLARE_TUNNEL_TOKEN` and only matters for the real
+deployment, not local dev.
 
+### Run services individually (development)
 ```bash
-# 1. Infrastructure
+# Postgres only
 docker compose up -d postgres
 
-# 2. API (from apps/platform-api)
-./mvnw spring-boot:run
-# Health: http://localhost:8080/actuator/health
+# API (from apps/platform-api) — http://localhost:8080/actuator/health
+cd apps/platform-api && ./mvnw spring-boot:run
 
-# 3. Web (from apps/web)
-npm install && npm run dev
-
-# 4. Agent runtime (from apps/agent-runtime)
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn jobhub_agents.main:app --reload --port 8090
+# Web (from apps/web) — Next.js dev server on :3000
+cd apps/web && npm install && npm run dev
 ```
 
-### Shortcuts via Makefile (from repo root)
+### Makefile shortcuts (repo root)
 ```bash
 make up          # docker compose up -d --build
 make run-api     # start platform-api
 make run-web     # start web
-make run-agent   # start agent runtime
 make smoke       # run scripts/smoke-test.sh
 make down        # docker compose down
 ```
+`make run-agent` exists in the `Makefile` but targets `apps/agent-runtime`, which does not
+exist in this repo — it will fail if invoked.
 
-### Run API tests
+### Tests
 ```bash
 cd apps/platform-api
-mvn test
+mvn test                              # full suite, runs against in-memory H2 (application-test.yml), not Postgres
+mvn test -Dtest=AuthControllerTest    # single class
+mvn test -Dtest=JobIngestionServiceTest
 ```
+There is no web/JS test suite — CI only runs `npm run build` for `apps/web` (see
+`.github/workflows/ci.yml`), no `npm test`.
 
-### Run a single test class
-```bash
-cd apps/platform-api
-mvn test -Dtest=AuthControllerTest
-```
+### Smoke test
+`scripts/smoke-test.sh` (bash+curl+python3) hits a running API: admin `demo-login` → JWT →
+`/auth/me` → `/admin/dataflow` returns 200 for admin, then confirms the same endpoint
+returns 403 for a seeker token. Requires the API to already be running
+(`JOBHUB_API_URL`, default `http://localhost:8080`).
 
 ## Demo Accounts
 
-All passwords are `password`, created on first API startup by `DemoDataSeeder`.
+All passwords are `password`, seeded on first API startup by `DemoDataSeeder` (skipped if
+any tenant row already exists — delete the Postgres volume to reseed).
 
 | Persona | Email |
 |---|---|
@@ -142,72 +135,48 @@ All passwords are `password`, created on first API startup by `DemoDataSeeder`.
 | Employer | employer@jobhub.local |
 | Admin | admin@jobhub.local |
 
-## Smoke Test
+## Java Package Structure (`apps/platform-api`)
 
-`scripts/smoke-test.sh` exercises the data-flow path: admin login → JWT issued → `/me` returns identity → admin-only endpoint returns 200 → seeker hitting same endpoint returns 403.
+Flat by layer, not by domain: `com.jobhub.platform.{config, controller, domain, repository,
+service}`. There is no per-feature package split (no `ingestion/`, `jobs/`, `taxonomy/`
+sub-packages) despite what older docs describe — everything of a given layer lives in one
+package regardless of feature area. Controllers are thin; most logic sits directly in
+`service/*Service.java` / `*Agent.java` classes calling repositories.
 
-## Key Environment Variables
+Notable controllers and their path prefixes:
+- `AuthController` — `/api/v1/auth/*`, `/api/v1/admin/dataflow`, `/api/v1/public/ping`
+- `JobSearchController` — `/api/v1/jobs/*` (public-facing search/detail)
+- `IngestionController` — `/api/v1/admin/ingestion/*` (manual trigger + health)
+- `SweepController` — `/api/v1/admin/sweep/*`
+- `JobController` — `/internal/v1/*`, used for system-to-system calls
+  (`ingestion/jobs` requires `ROLE_ADMIN`, `agent-runs/job-enrichment` requires
+  `ROLE_SYSTEM`)
+- `PlatformController` — `/api/v1/ops/health`
 
-Defined in `.env.example` and consumed via `application.yml`:
-- `JOBHUB_DB_URL`, `JOBHUB_DB_USER`, `JOBHUB_DB_PASSWORD` — PostgreSQL connection
-- `JOBHUB_JWT_SECRET` — dev JWT signing secret (change in any non-local env)
-- `JOBHUB_WEB_ORIGIN` — CORS allowed origin
-- `OPENAI_API_KEY`, `OPENAI_MODEL` — agent runtime
+## Key Environment Variables (`.env.example`)
 
-## Database Schema Notes
-
-- `artifacts/JobHub_Complete_PostgreSQL_Schema_v1.0.sql` (1188 lines) is the **target** schema reference. Do not dump it wholesale into early migrations — add tables incrementally via Flyway as features need them.
-- Database init script `database/init/01-extensions.sql` enables pgvector.
-- Migration files: `apps/platform-api/src/main/resources/db/migration/V1__foundation.sql`, `V2__seed_rbac.sql`.
-- Schemas: `jobhub` (canonical), `jobhub_taxonomy`, `jobhub_ai`, `jobhub_user`, `jobhub_notification`, `jobhub_analytics`, `flowable`.
-
-## 2-Week Delivery Scope (WhatsApp)
-
-**In scope:** Login → Ingest → Enrich → Review → Search → Match, demonstrable via `docker compose up` with Madhu driving.
-
-**Explicitly OUT:** full agent catalog (~22 agents), Kafka/OpenSearch/Kubernetes, production multi-tenant hardening, recruiter/employer copilots, deep UI polish, EverJobs 160-source connector farm.
-
-## Repository Structure (target, after scaffold import)
-
-```
-jobhub/
-  apps/
-    web/                    # Next.js 16 portal
-    platform-api/           # Java 21 + Spring Boot (Maven)
-    agent-runtime/          # Python + OpenAI Agents SDK (FastAPI/uvicorn)
-  mcp/                      # Domain MCP servers (planned)
-  workflow/
-    bpmn/                   # Flowable process definitions
-    dmn/                    # Decision tables
-  database/
-    migrations/             # Flyway scripts
-    init/                   # Postgres init (extensions)
-  infra/
-    docker/
-    observability/
-  docs/
-    architecture/
-    runbooks/
-  artifacts/                # Design docs, prototypes, task boards
-  CLAUDE.md
-  AGENTS.md
-  README.md
-  docker-compose.yml
-  Makefile
-```
-
-## Java Package Structure (inside platform-api)
-
-`com.jobhub.platform` with sub-packages: `auth`, `common` (audit, outbox, exception handling), and per-domain packages to be added (ingestion, jobs, taxonomy, candidates, resumes, matching, workflow, etc.). Layering: Controller → Application Service → Domain Service → Repository/Client. Spring Security + `@PreAuthorize` for authorization.
-
-## Python Agent Runtime Structure (planned expansion)
-
-`jobhub_agents/` with `agents/` (orchestrator + specialists), `tools/`, `schemas/` (Pydantic), `guardrails/`, `prompts/`, `sessions/`, `evaluations/`, `tracing/`, and `main.py` (FastAPI entry). Currently only `main.py` with a stub enrichment endpoint exists.
+- `JOBHUB_DB_URL` / `JOBHUB_DB_USER` / `JOBHUB_DB_PASSWORD` — Postgres connection
+- `JOBHUB_JWT_SECRET` — HS256 signing key; change outside local dev
+- `JOBHUB_WEB_ORIGIN` — CORS allowed origin (defaults to the production domain, not localhost)
+- `OLLAMA_BASE_URL` / `OLLAMA_MODEL` — self-hosted LLM used for enrichment (currently
+  points at a LAN host, e.g. `192.168.2.106:11434`, model `ministral-3:14b`); **not**
+  `OPENAI_API_KEY` despite what some `artifacts/` docs assume
+- `EVER_JOBS_API_URL` / `EVER_JOBS_API_KEY` — external scraper service; the host in
+  `.env.example` and the default in `docker-compose.yml` currently disagree (a GCP VM vs.
+  a `192.168.2.x` LAN host) — confirm which is live before relying on ingestion working
+- `NEXT_PUBLIC_API_BASE_URL` — what the browser uses to reach the API
+- `CLOUDFLARE_TUNNEL_TOKEN` — only needed for the `cloudflare-tunnel` compose service
 
 ## Important Boundaries
 
-- The `artifacts/` directory contains design authority documents and prototypes. The LLD v1.0 MD is the implementation contract.
-- `tasks_all.md` and `tasks_sanjay.md` are task boards — not specification, but contain scope decisions and open questions.
+- `artifacts/` holds design authority docs and an earlier zip scaffold
+  (`artifacts/_unzipped/jobhub-agentic/`) — useful for understanding long-term intent, but
+  do not assume anything there is wired up; verify against the actual `apps/` tree first.
+- `AGENTS.md` and `README.md` at the repo root also describe the target/earlier design
+  (Flowable, Spring AI, OpenAI) rather than the current implementation — prefer this file
+  and the code when they conflict.
+- `tasks_all.md` / `tasks_sanjay.md` are task boards, not specifications, but do capture
+  scope decisions and open questions worth checking before assuming something is unscoped.
 - `memory/` holds session memory files for continuity across Claude sessions.
-- The agent runtime must never receive DB credentials. All data access flows through tools/MCP.
-- Frontend menu hiding is UX convenience only; Spring Security is the authorization authority.
+- `docs/data-flow.md`, `docs/rbac.md`, `docs/runbook.md` describe specific subsystems in
+  more depth than this file.
