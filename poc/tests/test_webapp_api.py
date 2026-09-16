@@ -13,13 +13,15 @@ def _seed_user(conn):
     conn.commit()
 
 
-def _seed_job(conn, dedupe_key, title, location, first_seen_at, company_name="Acme", apply_url=None):
+def _seed_job(conn, dedupe_key, title, location, first_seen_at, company_name="Acme",
+               apply_url=None, description=None):
     conn.execute(
         """
-        INSERT INTO jobs (dedupe_key, source_site, title, company_name, location, apply_url, first_seen_at, last_seen_at, raw_json)
-        VALUES (?, 'acme', ?, ?, ?, ?, ?, ?, '{}')
+        INSERT INTO jobs (dedupe_key, source_site, title, company_name, location, apply_url,
+                           description, first_seen_at, last_seen_at, raw_json)
+        VALUES (?, 'acme', ?, ?, ?, ?, ?, ?, ?, '{}')
         """,
-        (dedupe_key, title, company_name, location, apply_url, first_seen_at, first_seen_at),
+        (dedupe_key, title, company_name, location, apply_url, description, first_seen_at, first_seen_at),
     )
     conn.commit()
 
@@ -43,19 +45,30 @@ def test_api_jobs_requires_login(conn):
 
 def test_api_jobs_returns_json_shape(conn):
     _seed_job(conn, "1", "Software Engineer", "Remote", "2026-09-16T10:00:00+00:00",
-              apply_url="https://example.com/1")
+              apply_url="https://example.com/1", description="Build great things.")
     client = _logged_in_client(conn)
     resp = client.get("/api/jobs")
     assert resp.status_code == 200
     assert resp.content_type.startswith("application/json")
     data = json.loads(resp.data)
-    assert data["count"] == 1
+    assert data["total"] == 1
+    assert data["page"] == 1
+    assert data["total_pages"] == 1
     job = data["jobs"][0]
     assert job["title"] == "Software Engineer"
     assert job["company_name"] == "Acme"
     assert job["location"] == "Remote"
     assert job["apply_url"] == "https://example.com/1"
+    assert job["description"] == "Build great things."
     assert "first_seen_at" in job
+
+
+def test_api_jobs_description_is_null_when_missing(conn):
+    _seed_job(conn, "1", "Software Engineer", "Remote", "2026-09-16T10:00:00+00:00")
+    client = _logged_in_client(conn)
+    resp = client.get("/api/jobs")
+    data = json.loads(resp.data)
+    assert data["jobs"][0]["description"] is None
 
 
 def test_api_jobs_title_filter(conn):
@@ -96,3 +109,67 @@ def test_api_jobs_sort_title_ascending(conn):
     data = json.loads(resp.data)
     titles = [j["title"] for j in data["jobs"]]
     assert titles == ["Alpha Role", "Zebra Role"]
+
+
+def _seed_n_jobs(conn, n):
+    for i in range(n):
+        _seed_job(conn, str(i), f"Role {i:03d}", "Remote", f"2026-09-16T{10 + (i % 10):02d}:00:00+00:00")
+
+
+def test_api_jobs_pagination_respects_page_size(conn):
+    _seed_n_jobs(conn, 25)
+    client = _logged_in_client(conn)
+    resp = client.get("/api/jobs?page_size=10")
+    data = json.loads(resp.data)
+    assert len(data["jobs"]) == 10
+    assert data["total"] == 25
+    assert data["page"] == 1
+    assert data["page_size"] == 10
+    assert data["total_pages"] == 3
+
+
+def test_api_jobs_pagination_second_page_has_different_rows(conn):
+    _seed_n_jobs(conn, 25)
+    client = _logged_in_client(conn)
+    page1 = json.loads(client.get("/api/jobs?page_size=10&page=1&sort=title").data)
+    page2 = json.loads(client.get("/api/jobs?page_size=10&page=2&sort=title").data)
+    ids_page1 = {j["id"] for j in page1["jobs"]}
+    ids_page2 = {j["id"] for j in page2["jobs"]}
+    assert ids_page1.isdisjoint(ids_page2)
+    assert len(page2["jobs"]) == 10
+
+
+def test_api_jobs_pagination_last_page_partial(conn):
+    _seed_n_jobs(conn, 25)
+    client = _logged_in_client(conn)
+    resp = client.get("/api/jobs?page_size=10&page=3")
+    data = json.loads(resp.data)
+    assert len(data["jobs"]) == 5
+
+
+def test_api_jobs_total_reflects_filter_not_just_current_page(conn):
+    _seed_job(conn, "1", "Engineer One", "Remote", "2026-09-16T10:00:00+00:00")
+    _seed_job(conn, "2", "Engineer Two", "Remote", "2026-09-16T09:00:00+00:00")
+    _seed_job(conn, "3", "Sales Associate", "Remote", "2026-09-16T08:00:00+00:00")
+    client = _logged_in_client(conn)
+    resp = client.get("/api/jobs?title=engineer&page_size=1")
+    data = json.loads(resp.data)
+    assert data["total"] == 2
+    assert data["total_pages"] == 2
+    assert len(data["jobs"]) == 1
+
+
+def test_api_jobs_page_size_is_capped(conn):
+    _seed_n_jobs(conn, 5)
+    client = _logged_in_client(conn)
+    resp = client.get("/api/jobs?page_size=99999")
+    data = json.loads(resp.data)
+    assert data["page_size"] <= 100
+
+
+def test_api_jobs_invalid_page_defaults_to_one(conn):
+    _seed_n_jobs(conn, 5)
+    client = _logged_in_client(conn)
+    resp = client.get("/api/jobs?page=not-a-number")
+    data = json.loads(resp.data)
+    assert data["page"] == 1

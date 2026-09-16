@@ -10,7 +10,10 @@ EVER_JOBS_SITE_NAMES = os.environ.get("EVER_JOBS_SITE_NAMES", "google")
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "240"))
 
 SEARCH_TERMS = [t.strip() for t in os.environ.get(
-    "SEARCH_TERMS", "software engineer,data analyst,product manager"
+    "SEARCH_TERMS",
+    "engineer,product manager,data analyst,data scientist,designer,marketing,sales,"
+    "customer success,operations,finance,human resources,devops,quality assurance,"
+    "content,recruiter",
 ).split(",") if t.strip()]
-RESULTS_PER_TERM = int(os.environ.get("RESULTS_PER_TERM", "10"))
+RESULTS_PER_TERM = int(os.environ.get("RESULTS_PER_TERM", "50"))
 DUMP_DIR = os.environ.get("DUMP_DIR", "./dumps")
