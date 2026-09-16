@@ -1,6 +1,6 @@
 'use client';
-import {useEffect, useState} from 'react';
-import {useRouter} from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 const menus = {
   JOB_SEEKER: ['Dashboard', 'Job Search', 'Saved Jobs', 'My Applications', 'Profile'],
@@ -18,6 +18,8 @@ export default function Portal() {
   const [sweep, setSweep] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [jobCount, setJobCount] = useState(0);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const t = localStorage.getItem('jobhub.accessToken');
@@ -30,35 +32,105 @@ export default function Portal() {
 
   useEffect(() => {
     if (user?.roles?.includes('ADMIN')) {
-      fetch('/api/v1/admin/sweep/status')
-        .then(r => r.json())
-        .catch(() => ({}))
-        .then(setSweep);
+      fetch('/api/v1/admin/sweep/status').then(r => r.json()).then(setSweep).catch(() => {});
     }
   }, [user]);
 
   useEffect(() => {
+    if (tab === 'Job Search') return;
     fetch('/api/v1/jobs/search?page=0&size=5')
       .then(r => r.json())
       .then(data => { setJobs(data.jobs || []); setJobCount(data.total || 0); })
       .catch(() => {});
-  }, []);
+  }, [tab]);
 
   if (!user) return <div className="loading">Loading JobHub…</div>;
 
   const primary = user.roles?.[0] || 'JOB_SEEKER';
   const items = menus[primary] || menus.JOB_SEEKER;
 
+  const handleSearch = async (query, page = 0) => {
+    const params = new URLSearchParams({ q: query, page: page.toString(), size: '20' });
+    const res = await fetch(`/api/v1/jobs/search?${params}`);
+    return res.json();
+  };
+
+  const JobSearchContent = () => (
+    <div className="jobSearchContainer">
+      <div className="searchHeader">
+        <input
+          className="searchInput"
+          placeholder="Job title, skills, keywords..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          onKeyDown={async e => {
+            if (e.key === 'Enter') {
+              const data = await handleSearch(searchQuery);
+              setJobs(data.jobs || []);
+              setJobCount(data.total || 0);
+            }
+          }}
+        />
+        <button className="btn primary" onClick={async () => {
+          const data = await handleSearch(searchQuery);
+          setJobs(data.jobs || []);
+          setJobCount(data.total || 0);
+        }}>Search</button>
+      </div>
+      <p style={{ color: 'var(--muted)', margin: '12px 0' }}>{jobCount.toLocaleString()} jobs available</p>
+      <div className="jobList">
+        {jobs.map(job => (
+          <div key={job.id} className="jobCard" onClick={() => setSelectedJob(job)}>
+            <div className="jobCardHeader">
+              <h3>{job.externalJobId || 'Job Listing'}</h3>
+              <span className="jobDate">{new Date(job.fetchedAt).toLocaleDateString()}</span>
+            </div>
+            <div className="jobMeta">
+              <span>Source: {job.sourceId}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const JobDetailModal = ({ job, onClose }) => (
+    <div className="modalOverlay" onClick={onClose}>
+      <div className="modalContent" onClick={e => e.stopPropagation()}>
+        <div className="modalHeader">
+          <h2>{job.externalJobId || 'Job Details'}</h2>
+          <button className="closeBtn" onClick={onClose}>×</button>
+        </div>
+        <div className="modalBody">
+          <div className="detailRow"><label>ID:</label><span>{job.id}</span></div>
+          <div className="detailRow"><label>External ID:</label><span>{job.externalJobId}</span></div>
+          <div className="detailRow"><label>Source:</label><span>{job.sourceId}</span></div>
+          <div className="detailRow"><label>Fetched:</label><span>{new Date(job.fetchedAt).toLocaleString()}</span></div>
+          <div className="detailSection">
+            <h3>Raw Payload</h3>
+            <pre className="payloadView">{job.payload || 'No payload'}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
+    if (selectedJob) {
+      return <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />;
+    }
+
     switch (tab) {
+      case 'Job Search':
+        return <JobSearchContent />;
       case 'Ingestion Monitor':
         return (
           <div className="card pad">
             <h2>Ingestion Monitor</h2>
-            <div className="stats">
-              <div className="card"><small>Total Raw Jobs</small><b>{jobCount.toLocaleString()}</b></div>
-              <div className="card"><small>Sources Active</small><b>{sweep?.sources ? Object.keys(sweep.sources).length : 0}</b></div>
-              <div className="card"><small>Last Sweep</small><b>{sweep?.lastSweep ? new Date(sweep.lastSweep).toLocaleString() : 'Pending'}</b></div>
+            <div className="statsGrid">
+              <div className="statCard"><small>Total Raw Jobs</small><b>{jobCount.toLocaleString()}</b></div>
+              <div className="statCard"><small>Sources Active</small><b>{sweep?.sources ? Object.keys(sweep.sources).length : 0}</b></div>
+              <div className="statCard"><small>Last Sweep</small><b>{sweep?.lastSweep ? new Date(sweep.lastSweep).toLocaleString() : 'Pending'}</b></div>
             </div>
             <button className="btn primary" style={{ marginTop: 16 }} onClick={() => {
               fetch('/api/v1/admin/ingestion/run', { method: 'POST' })
@@ -72,20 +144,17 @@ export default function Portal() {
           <div className="card pad">
             <h2>Sweep Status</h2>
             {sweep?.sources && (
-              <div style={{ display: 'grid', gap: 8 }}>
+              <div className="sourceGrid">
                 {Object.entries(sweep.sources).map(([name, info]) => (
-                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, background: 'var(--soft)', borderRadius: 6 }}>
-                    <span>{name}</span>
-                    <span>{info.jobs} jobs — {info.status}</span>
+                  <div key={name} className="sourceCard">
+                    <span className="sourceName">{name}</span>
+                    <span className="sourceInfo">{info.jobs} jobs — {info.status}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
         );
-      case 'Job Search':
-        router.push('/jobs');
-        return null;
       default:
         return (
           <div className="card pad">
@@ -94,11 +163,11 @@ export default function Portal() {
             {primary === 'ADMIN' && sweep?.sources && (
               <div style={{ marginTop: 16 }}>
                 <h3>Source Status</h3>
-                <div style={{ display: 'grid', gap: 8 }}>
+                <div className="sourceGrid">
                   {Object.entries(sweep.sources).map(([name, info]) => (
-                    <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: 8, background: 'var(--soft)', borderRadius: 6 }}>
-                      <span>{name}</span>
-                      <span>{info.jobs} jobs — {info.status}</span>
+                    <div key={name} className="sourceCard">
+                      <span className="sourceName">{name}</span>
+                      <span className="sourceInfo">{info.jobs} jobs — {info.status}</span>
                     </div>
                   ))}
                 </div>
@@ -110,32 +179,34 @@ export default function Portal() {
   };
 
   return (
-    <main className="portalPage">
-      <aside className="side">
+    <div className="dashboardLayout">
+      <aside className="sidebar">
         <div className="brand light">Job<span>Hub</span></div>
-        <div className="caption">{user.tenantKey}</div>
-        {items.map(x => (
-          <button key={x} className={tab === x ? 'active' : ''} onClick={() => setTab(x)}>{x}</button>
-        ))}
-        <div className="sideFoot">
-          <button onClick={() => { localStorage.clear(); router.push('/'); }}>↪ Sign out</button>
+        <div className="tenantLabel">{user.tenantKey}</div>
+        <nav className="sidebarNav">
+          {items.map(x => (
+            <button key={x} className={`navItem ${tab === x ? 'active' : ''}`} onClick={() => setTab(x)}>{x}</button>
+          ))}
+        </nav>
+        <div className="sidebarFooter">
+          <button className="signOutBtn" onClick={() => { localStorage.clear(); router.push('/'); }}>↪ Sign out</button>
         </div>
       </aside>
-      <section className="portalMain">
-        <header className="portalTop">
+      <main className="dashboardMain">
+        <header className="dashboardHeader">
           <div><b>JobHub</b><span> / {tab || items[0]}</span></div>
-          <div className="userPill">
+          <div className="userBadge">
             <span className="avatar">{user.displayName?.slice(0, 2).toUpperCase()}</span>
             <div><b>{user.displayName}</b><small>{primary}</small></div>
           </div>
         </header>
-        <div className="portalContent">
+        <div className="dashboardContent">
           {renderContent()}
-          {jobs.length > 0 && tab !== 'Ingestion Monitor' && tab !== 'Sweep Status' && (
+          {tab !== 'Job Search' && tab !== 'Ingestion Monitor' && tab !== 'Sweep Status' && jobs.length > 0 && (
             <div className="card pad" style={{ marginTop: 16 }}>
               <h3>Recent Jobs ({jobCount.toLocaleString()} total)</h3>
               {jobs.slice(0, 3).map(job => (
-                <div key={job.id} style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
+                <div key={job.id} className="jobCard" onClick={() => setSelectedJob(job)}>
                   <b>{job.externalJobId}</b>
                   <small style={{ color: 'var(--muted)', marginLeft: 8 }}>{new Date(job.fetchedAt).toLocaleDateString()}</small>
                 </div>
@@ -143,7 +214,7 @@ export default function Portal() {
             </div>
           )}
         </div>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
