@@ -17,6 +17,10 @@ from jobhub_poc import config
 from jobhub_poc.alerts.matcher import Match
 
 
+def _build_message(match: Match) -> str:
+    return f"*JobHubNG Alert*\nNew job matching your alert: {match.job_title} ({match.job_location})"
+
+
 class Notifier(ABC):
     backend_name: str
 
@@ -39,7 +43,7 @@ class Notifier(ABC):
             message = self._deliver(match)
             status = "SENT"
         except Exception:
-            message = f"New job matching your alert: {match.job_title} ({match.job_location})"
+            message = _build_message(match)
             status = "FAILED"
 
         try:
@@ -60,7 +64,7 @@ class ConsoleNotifier(Notifier):
     backend_name = "console"
 
     def _deliver(self, match: Match) -> str:
-        message = f"New job matching your alert: {match.job_title} ({match.job_location})"
+        message = _build_message(match)
         print(f"[ConsoleNotifier] -> {match.phone_number}: {message}")
         return message
 
@@ -79,7 +83,7 @@ class WhatsAppNotifier(Notifier):
         if not self.gateway_url:
             raise RuntimeError("WHATSAPP_GATEWAY_URL is not configured")
 
-        message = f"New job matching your alert: {match.job_title} ({match.job_location})"
+        message = _build_message(match)
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["x-api-key"] = self.api_key

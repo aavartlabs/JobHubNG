@@ -36,6 +36,15 @@ def test_console_notifier_prints_and_logs_sent(conn, capsys):
     assert row["status"] == "SENT"
 
 
+def test_alert_message_is_branded_with_jobhubng_header(conn):
+    match = _seed_match(conn)
+    notifier = ConsoleNotifier(conn)
+    notifier.send(match)
+    row = conn.execute("SELECT message FROM alerts_sent").fetchone()
+    assert row["message"].startswith("*JobHubNG Alert*")
+    assert "Engineer" in row["message"]
+
+
 def test_double_send_same_subscription_and_job_is_idempotent_not_a_crash(conn):
     match = _seed_match(conn)
     notifier = ConsoleNotifier(conn)
@@ -70,7 +79,7 @@ def test_whatsapp_notifier_sends_via_gateway_and_logs_sent(conn, requests_mock):
     assert sent.headers["x-api-key"] == "secret-key"
     assert sent.json() == {
         "phone": "+15551234567",
-        "message": "New job matching your alert: Engineer (Remote)",
+        "message": "*JobHubNG Alert*\nNew job matching your alert: Engineer (Remote)",
     }
     row = conn.execute("SELECT * FROM alerts_sent").fetchone()
     assert row["notifier_backend"] == "whatsapp"
