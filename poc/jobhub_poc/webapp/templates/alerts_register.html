@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Register a job alert</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post">
+  <label>Phone number <input type="text" name="phone_number" placeholder="+15551234567" required></label>
+  <label>Title contains <input type="text" name="title_keyword" placeholder="(optional)"></label>
+  <label>Location contains <input type="text" name="location_keyword" placeholder="(optional)"></label>
+  <button type="submit">Register</button>
+</form>
+{% endblock %}

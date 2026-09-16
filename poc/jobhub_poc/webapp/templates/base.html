@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JobHub POC</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <strong>JobHub POC</strong>
+    <nav>
+      {% if session.get('user_id') %}
+        <a href="{{ url_for('jobs.list_jobs') }}">Jobs</a>
+        <a href="{{ url_for('alerts.register') }}">Alerts</a>
+        <a href="{{ url_for('auth.logout') }}">Logout</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

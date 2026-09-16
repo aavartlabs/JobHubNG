@@ -1,0 +1,35 @@
+{
+  "jobs": [
+    {
+      "id": "ext-1001",
+      "site": "acmecorp",
+      "title": "Software Engineer",
+      "companyName": "Acme Corp",
+      "location": {"city": "Bengaluru", "state": "KA", "country": "in"},
+      "description": "Build and ship backend services.",
+      "employmentType": "FULL_TIME",
+      "isRemote": false,
+      "applyUrl": "https://example.com/jobs/ext-1001",
+      "datePosted": "2026-09-14"
+    },
+    {
+      "id": "ext-1002",
+      "site": "betaindustries",
+      "title": "Data Analyst",
+      "companyName": "Beta Industries",
+      "location": {"country": "United States"},
+      "description": "Analyze product data and build dashboards.",
+      "employmentType": "CONTRACT",
+      "isRemote": true,
+      "jobUrl": "https://example.com/jobs/ext-1002",
+      "datePosted": "2026-09-15"
+    },
+    {
+      "id": "ext-1003",
+      "site": "gammalabs",
+      "title": "Product Manager",
+      "companyName": "Gamma Labs",
+      "location": {"city": "Mumbai", "state": "MH", "country": "in"}
+    }
+  ]
+}

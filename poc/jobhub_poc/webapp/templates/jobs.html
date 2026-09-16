@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Jobs ({{ jobs|length }})</h1>
+<form method="get" class="filters">
+  <input type="text" name="title" placeholder="Title contains..." value="{{ title }}">
+  <input type="text" name="location" placeholder="Location contains..." value="{{ location }}">
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <tr><th>Title</th><th>Company</th><th>Location</th><th>First seen</th><th></th></tr>
+  {% for job in jobs %}
+  <tr>
+    <td>{{ job.title }}</td>
+    <td>{{ job.company_name or "" }}</td>
+    <td>{{ job.location or "" }}</td>
+    <td>{{ job.first_seen_at }}</td>
+    <td>{% if job.apply_url %}<a href="{{ job.apply_url }}" target="_blank" rel="noopener">Apply</a>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

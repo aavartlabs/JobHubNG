@@ -1,0 +1,12 @@
+/* Deliberately minimal -- this is a foothold for a UI/UX pass, not final UI. */
+body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #fafafa; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.5rem; background: #1a1a1a; color: #fff; }
+header a { color: #fff; margin-left: 1rem; text-decoration: none; }
+main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
+form.filters { display: flex; gap: 0.5rem; margin-top: 1rem; }
+label { display: block; margin-bottom: 0.75rem; }
+input { display: block; margin-top: 0.25rem; padding: 0.4rem; width: 100%; max-width: 320px; }
+button { padding: 0.5rem 1rem; }
+.error { color: #b00020; }

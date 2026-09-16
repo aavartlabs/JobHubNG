@@ -1,0 +1,6 @@
+requests>=2.31,<3
+python-dotenv>=1.0,<2
+
+# dev / test
+pytest>=8.0,<9
+requests-mock>=1.12,<2
