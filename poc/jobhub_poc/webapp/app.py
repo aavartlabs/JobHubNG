@@ -1,7 +1,7 @@
 from flask import Flask, g, redirect, url_for
 
 from jobhub_poc import config, db
-from jobhub_poc.webapp import auth, routes_alerts, routes_jobs
+from jobhub_poc.webapp import auth, routes_alerts, routes_api, routes_jobs
 
 
 def create_app(test_conn=None):
@@ -28,6 +28,7 @@ def create_app(test_conn=None):
     app.register_blueprint(auth.bp)
     app.register_blueprint(routes_jobs.bp)
     app.register_blueprint(routes_alerts.bp)
+    app.register_blueprint(routes_api.bp)
 
     @app.route("/")
     def index():

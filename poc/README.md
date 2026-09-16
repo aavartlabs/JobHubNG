@@ -10,11 +10,13 @@ stretch/not done before the Saturday demo.
 ## Architecture
 
 ```
-pi05: scraper/            pi09: jobhub_poc/
+pi05: scraper/            pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (Node,           loader/    JSON dump -> SQLite (dedup, purge)
-   prebuilt dist)           webapp/    Flask, login-gated job list/filter
+   prebuilt dist)           webapp/    Flask JSON API + TS frontend, login-gated
   dump_jobs.py -----json--> alerts/    registration + matcher + notifier
                 (via harita)           (console notifier for now)
+
+https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
 ```
 
 - **Scraper (pi05)**: `scraper/` runs independently, its own venv. EverJobs'
@@ -22,10 +24,29 @@ pi05: scraper/            pi09: jobhub_poc/
   `google`) returns every job it has for ~1500+ registered companies
   regardless of query, in 2-3 minutes. `dump_jobs.py` therefore fetches once
   and filters/caps client-side per `SEARCH_TERMS`.
-- **Loader/web/alerts (pi09)**: `jobhub_poc/`, one venv. Freshness/purge is
-  keyed solely on `first_seen_at` (our own discovery timestamp) -- real
-  EverJobs data has posted-dates ranging from same-day to multiple years
-  stale, so the source's own date can't drive purging.
+- **Loader/web/alerts (pi09)**: `jobhub_poc/`, one venv (loader/alerts CLIs
+  run directly on the host) + one Docker container (`jobhub-web`, the Flask
+  app). Freshness/purge is keyed solely on `first_seen_at` (our own
+  discovery timestamp) -- real EverJobs data has posted-dates ranging from
+  same-day to multiple years stale, so the source's own date can't drive
+  purging.
+- **Web frontend**: `webapp/routes_api.py` exposes `GET /api/jobs`
+  (title/location filter, freshness/title sort) as JSON. `webapp/frontend/`
+  is a small TypeScript client (no framework, built with esbuild) that
+  fetches from it and renders the table -- `webapp/templates/jobs.html` is
+  just a shell (filter form + empty `<tbody>`) that loads the compiled
+  `static/app.js`. Both the JSON API and the page shell are behind the same
+  login gate (`app_users`/session) as the rest of the app.
+- **Production**: `jobhubs.aavartlabs.com` (Cloudflare Tunnel, already
+  running on pi09) has a **fixed** target of `http://jobhub-web:3000` on the
+  `jobhub` Docker network -- set remotely in Cloudflare's dashboard, not
+  editable from here. The `web` service in `docker-compose.yml` is built and
+  run as a container literally named `jobhub-web` on that network for
+  exactly that reason; swapping images/rebuilding is how you deploy, not by
+  touching the tunnel. This replaced the old Next.js `jobhub-web` container
+  (and the `postgres`/`platform-api`/`agent-runtime` containers, all
+  retired) in place, with no tunnel downtime -- Docker's embedded DNS
+  re-resolves `jobhub-web` to whatever container currently holds that name.
 - **Alerts**: real registration + matching logic ships now; only a
   `ConsoleNotifier` (stdout + `alerts_sent` table) backs it for the POC. A
   real WhatsApp notifier is a one-line `NOTIFIER_BACKEND` swap once someone
@@ -59,11 +80,16 @@ cd poc
 
 - pi05 runs `scraper/` only (Node, for the prebuilt EverJobs server, plus a
   Python venv for `dump_jobs.py`). Never runs the web app or SQLite.
-- pi09 runs `jobhub_poc/` (Python venv, SQLite file, Flask). Never runs
-  EverJobs.
-- `scripts/run_pipeline.sh` orchestrates both from **harita** (or any host
-  with the `pi05`/`pi09` SSH aliases configured), relaying the JSON dump
-  through harita rather than assuming pi05<->pi09 trust.
+- pi09 runs the loader/purge/alerts CLIs directly (Python venv) against
+  `~/jobhub-poc/data/jobhub.db`, and the web app as a Docker container
+  (`docker compose up -d --build` from `~/jobhub-poc/`, using this repo's
+  `Dockerfile`/`docker-compose.yml` -- multi-stage build, Node only at build
+  time for the TS bundle, Python-only at runtime). The container bind-mounts
+  the same `data/` directory the CLIs write to. Never runs EverJobs.
+- `scripts/run_pipeline.sh` orchestrates the scrape/load/purge/alert steps
+  from **harita** (or any host with the `pi05`/`pi09` SSH aliases
+  configured), relaying the JSON dump through harita rather than assuming
+  pi05<->pi09 trust. It does not touch the web container.
 
 ## Known, deliberate simplifications
 

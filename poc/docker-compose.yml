@@ -1,0 +1,26 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobhub-web
+    env_file: .env
+    environment:
+      JOBHUB_SQLITE_PATH: /app/data/jobhub.db
+      # Overrides the shared .env's WEB_PORT (8100, left over from the old plain-venv
+      # deployment) -- the container MUST listen on 3000 internally to match what the
+      # Cloudflare Tunnel is fixed to target (http://jobhub-web:3000). Host access is
+      # still on 8100 via the port mapping below.
+      WEB_PORT: "3000"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8100:3000"
+    networks:
+      - jobhub
+    restart: unless-stopped
+
+networks:
+  jobhub:
+    external: true
+    name: jobhub
