@@ -14,7 +14,7 @@ pi05: scraper/            pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (Node,           loader/    JSON dump -> SQLite (dedup, purge)
    prebuilt dist)           webapp/    Flask JSON API + TS frontend, login-gated
   dump_jobs.py -----json--> alerts/    registration + matcher + notifier
-                (via harita)           (console notifier for now)
+     (pi09 pulls directly, no relay host)
 
 https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
 ```
@@ -87,17 +87,22 @@ cd poc
   time for the TS bundle, Python-only at runtime). The container bind-mounts
   the same `data/` directory the CLIs write to. Never runs EverJobs.
 - `scripts/run_pipeline.sh` orchestrates the scrape/load/purge/alert steps
-  from **harita** (or any host with the `pi05`/`pi09` SSH aliases
-  configured), relaying the JSON dump through harita rather than assuming
-  pi05<->pi09 trust. It does not touch the web container.
+  **on pi09 itself** (as of 2026-09-22) -- `ssh pi05` to scrape, a direct
+  `scp` back (pi05<->pi09 SSH trust now exists, pi09's own key is in pi05's
+  `authorized_keys`), then load/purge/alert locally, no further SSH hop.
+  No relay host is involved anymore. It does not touch the web container.
 - **Scheduling**: `run_pipeline.sh` runs automatically every 6 hours via a
-  systemd user timer on harita (`~/.config/systemd/user/jobhub-pipeline.{service,timer}`
-  -- not part of this repo, since it's host config, not application code).
-  Logs go to `poc/pipeline.log`. EverJobs on pi05 runs as a systemd system
-  service (`/etc/systemd/system/jobhub-everjobs.service`, `Restart=always`,
-  enabled on boot) instead of the earlier manual `nohup`. `jobhub-web` and
-  `jobhub-whatsapp` on pi09 already auto-restart via Docker's
-  `restart: unless-stopped`.
+  systemd user timer **on pi09** (`~/.config/systemd/user/jobhub-pipeline.{service,timer}`
+  -- not part of this repo, since it's host config, not application code;
+  `Linger=yes` so it runs unattended). Logs go to `~/jobhub-poc/pipeline.log`
+  on pi09. EverJobs on pi05 runs as a systemd system service
+  (`/etc/systemd/system/jobhub-everjobs.service`, `Restart=always`, enabled
+  on boot). `jobhub-web` and `jobhub-whatsapp` on pi09 already auto-restart
+  via Docker's `restart: unless-stopped`. **The whole pipeline now runs
+  entirely on always-on Raspberry Pi hardware** -- a third host (harita, a
+  laptop/desktop that isn't reliably up 24/7) was originally in the loop
+  only because pi05<->pi09 trust was unconfirmed at design time; harita's
+  old timer is disabled (not deleted) there as a rollback path.
 
 ## Known, deliberate simplifications
 

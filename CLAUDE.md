@@ -30,8 +30,10 @@ steps live in `poc/PLAN.md`; day-to-day architecture and quick start live in `po
 ```
 pi05: scraper/                          pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (prebuilt Node dist)            loader/   JSON dump -> SQLite (dedupe, purge)
-  dump_jobs.py --json dump--\              webapp/   Flask JSON API + TS frontend, login-gated
-                              \(via harita) alerts/   registration + matcher + notifier
+  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, login-gated
+                                             alerts/   registration + matcher + notifier
+                                             (pi09 pulls the dump and runs the rest itself,
+                                              scheduled locally -- no relay host)
 
 https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
                                                                     |
@@ -124,15 +126,20 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
   `~/jobhub-poc/data/jobhub.db`, plus two Docker containers: `jobhub-web` (the Flask app,
   `restart: unless-stopped`) and `jobhub-whatsapp` (the gateway, same restart policy). Never
-  runs EverJobs.
-- **harita**: the orchestration host. `poc/scripts/run_pipeline.sh` runs from here (not from
-  pi05 or pi09), using existing passwordless SSH aliases `pi05`/`pi09`, and relays the JSON
-  dump pi05 → harita → pi09 rather than assuming direct pi05↔pi09 trust. Scheduled
-  automatically every 6 hours via a systemd **user** timer on harita
-  (`~/.config/systemd/user/jobhub-pipeline.{service,timer}` — host config, not checked into
-  this repo). Logs append to `poc/pipeline.log`.
-- To change the pipeline cadence: edit `OnCalendar=` in that timer file on harita, then
-  `systemctl --user daemon-reload && systemctl --user restart jobhub-pipeline.timer`.
+  runs EverJobs. **Also the orchestration host**, as of 2026-09-22 — `poc/scripts/run_pipeline.sh`
+  runs locally on pi09 (`ssh pi05 ...` to scrape, direct `scp` back, then load/purge/alert
+  with no further SSH hop) and is scheduled every 6 hours via a systemd **user** timer on
+  pi09 itself (`~/.config/systemd/user/jobhub-pipeline.{service,timer}` — host config, not
+  checked into this repo; `Linger=yes` so it runs unattended). Logs append to
+  `~/jobhub-poc/pipeline.log` on pi09.
+- **harita is no longer part of the runtime path.** It was originally the orchestration host
+  because pi05↔pi09 SSH trust was unconfirmed; that trust now exists (pi09's own key is in
+  pi05's `authorized_keys`), so the whole pipeline runs on always-on Pi hardware only —
+  harita being a laptop/desktop that isn't reliably up 24/7 was exactly the risk this removed
+  (see `tasks_all.md`'s T3/T7 entries). harita's old unit files are disabled, not deleted, on
+  harita, as a rollback path.
+- To change the pipeline cadence: edit `OnCalendar=` in that timer file on **pi09**, then
+  `ssh pi09 "systemctl --user daemon-reload && systemctl --user restart jobhub-pipeline.timer"`.
 
 ## Key Environment Variables (`poc/.env.example`, separate from the root `.env.example`)
 

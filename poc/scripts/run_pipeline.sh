@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Orchestration entrypoint. Run FROM harita (or any host with passwordless SSH
-# aliases `pi05` and `pi09` already configured, per ~/.ssh/config).
+# Orchestration entrypoint. Run ON the app host itself (pi09) -- pulls the
+# scrape dump directly from pi05 over SSH/scp. No relay host involved; a
+# third always-on host was never actually required, only pi05<->pi09 SSH
+# trust, which now exists.
 #
-# 1. scrape on pi05          -> writes a timestamped JSON dump
-# 2. relay that dump         -> pi05 -> harita -> pi09 (no assumed pi05<->pi09 trust)
-# 3. load + purge + alert    -> on pi09, against the SQLite DB
+# 1. scrape on pi05          -> writes a timestamped JSON dump there
+# 2. pull that dump          -> pi05 -> this host, direct scp
+# 3. load + purge + alert    -> locally, against the SQLite DB
 set -euo pipefail
 
-# NOTE: bash tilde-expands defaults like ${VAR:-~/x} using the LOCAL host's
-# $HOME at assignment time (this runs on harita), not the remote host's --
-# so these must be literal absolute paths, not ~-prefixed.
 PI05_SCRAPER_DIR=${PI05_SCRAPER_DIR:-/home/rudra/jobhub-poc/scraper}
-PI09_APP_DIR=${PI09_APP_DIR:-/home/sanjayu/jobhub-poc}
+# Defaults to the poc/ checkout this script lives under, so it works
+# unmodified wherever the app host's role ends up (this host today, a
+# different one later -- see tasks_all.md's "moving off Raspberry Pi
+# hardware" note).
+APP_DIR=${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 
 echo "== 1/3: scraping on pi05 =="
 ssh pi05 "cd ${PI05_SCRAPER_DIR} && .venv/bin/python dump_jobs.py"
@@ -20,16 +23,14 @@ LATEST_DUMP=$(ssh pi05 "ls -t ${PI05_SCRAPER_DIR}/dumps/*.json | head -1")
 DUMP_NAME=$(basename "${LATEST_DUMP}")
 echo "latest dump: ${DUMP_NAME}"
 
-echo "== 2/3: relaying dump pi05 -> harita -> pi09 =="
-STAGE=$(mktemp -d)
-trap 'rm -rf "${STAGE}"' EXIT
-scp -q "pi05:${LATEST_DUMP}" "${STAGE}/${DUMP_NAME}"
-ssh pi09 "mkdir -p ${PI09_APP_DIR}/dumps"
-scp -q "${STAGE}/${DUMP_NAME}" "pi09:${PI09_APP_DIR}/dumps/${DUMP_NAME}"
+echo "== 2/3: pulling dump from pi05 =="
+mkdir -p "${APP_DIR}/dumps"
+scp -q "pi05:${LATEST_DUMP}" "${APP_DIR}/dumps/${DUMP_NAME}"
 
-echo "== 3/3: load + purge + alerts on pi09 =="
-ssh pi09 "cd ${PI09_APP_DIR} && .venv/bin/python -m jobhub_poc.loader.load_dump dumps/${DUMP_NAME} --new-ids-out /tmp/jobhub_poc_new_ids.json"
-ssh pi09 "cd ${PI09_APP_DIR} && .venv/bin/python -m jobhub_poc.loader.purge"
-ssh pi09 "cd ${PI09_APP_DIR} && .venv/bin/python -m jobhub_poc.alerts.run_alerts --new-ids /tmp/jobhub_poc_new_ids.json"
+echo "== 3/3: load + purge + alerts (local) =="
+cd "${APP_DIR}"
+.venv/bin/python -m jobhub_poc.loader.load_dump "dumps/${DUMP_NAME}" --new-ids-out /tmp/jobhub_poc_new_ids.json
+.venv/bin/python -m jobhub_poc.loader.purge
+.venv/bin/python -m jobhub_poc.alerts.run_alerts --new-ids /tmp/jobhub_poc_new_ids.json
 
 echo "== pipeline complete =="

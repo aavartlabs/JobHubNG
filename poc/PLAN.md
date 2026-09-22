@@ -349,3 +349,13 @@ All of the above has been run against the real hosts, not just described.
   stabilizes, not part of this build.
 - Any real WhatsApp send integration (see stretch section).
 - Automated scheduling.
+
+> **Update 2026-09-22 (harita removed from the pipeline):** the "Orchestration" section
+> above routed the scrape dump pi05 → harita → pi09 specifically because pi05↔pi09 SSH trust
+> was unconfirmed at design time. That trust now exists (pi09's own SSH key is in pi05's
+> `authorized_keys`), so `scripts/run_pipeline.sh` runs on pi09 itself — `ssh pi05` to
+> scrape, a direct `scp` back, then load/purge/alert locally. The systemd user timer moved
+> from harita to pi09 (`Linger=yes` there too); harita's old unit files are disabled, not
+> deleted, as a rollback path. This matters beyond tidiness: harita is a laptop/desktop, not
+> reliably up 24/7, unlike pi05/pi09 — the whole pipeline now runs on hardware that actually
+> is. See `poc/README.md` and `CLAUDE.md` for the current state.

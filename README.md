@@ -38,8 +38,9 @@ One shared demo login, seeded by `seed_demo_user.py` from `WEB_ADMIN_USERNAME`/
 ```
 pi05: scraper/                          pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (prebuilt Node dist)            loader/   JSON dump -> SQLite (dedupe, purge)
-  dump_jobs.py --json dump--\              webapp/   Flask JSON API + TS frontend, login-gated
-                              \(via harita) alerts/   registration + matcher + notifier
+  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, login-gated
+                                             alerts/   registration + matcher + notifier
+                                             (pi09 pulls directly, no relay host)
 
 https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
 ```
@@ -47,8 +48,9 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
 **Stack:** Python (Flask + a small esbuild-bundled TypeScript frontend, no framework) +
 SQLite, no ORM. EverJobs (external, prebuilt Node scraper, not in this repo) runs only on
 pi05; the web app, loader, and alert logic run only on pi09; `poc/scripts/run_pipeline.sh`
-orchestrates scrape → load → purge → alert from a third host, harita, on a systemd timer
-every 6 hours. Alerts send via WhatsApp through a hand-rolled `poc/whatsapp-sender/` gateway
+runs on pi09 itself, orchestrating scrape → load → purge → alert on a systemd timer every 6
+hours — the whole pipeline runs entirely on always-on Raspberry Pi hardware, no third host
+involved. Alerts send via WhatsApp through a hand-rolled `poc/whatsapp-sender/` gateway
 (`baileys`), idempotent on `(subscription_id, job_id)`. There is no LLM/agent enrichment
 step and no RBAC — one shared demo login. Full detail: `poc/README.md` and `poc/PLAN.md`.
 

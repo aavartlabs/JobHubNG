@@ -33,11 +33,12 @@ Delete `poc/data/jobhub.db` to reset all state. No Docker or Postgres involvemen
 local-only run — the `docker-compose.yml`/`Dockerfile` in `poc/` are for the pi09 deployment
 only.
 
-## Real deployment (pi05 / pi09 / harita)
+## Real deployment (pi05 / pi09)
 
 Not reproducible locally. See `poc/README.md`'s "Deployment" section and `CLAUDE.md` for the
-host topology, systemd scheduling (pipeline every 6 hours from harita, EverJobs as a systemd
-service on pi05), and why the Cloudflare Tunnel's routing target can't be changed from here.
+host topology, systemd scheduling (pipeline every 6 hours, on pi09 itself as of 2026-09-22;
+EverJobs as a systemd service on pi05), and why the Cloudflare Tunnel's routing target can't
+be changed from here.
 
 ## Retired: Phase 0/1 runbook (`apps/`, Spring Boot + Next.js + Postgres, not live)
 

@@ -14,7 +14,7 @@ pi05: EverJobs (Node) <--HTTP-- scraper/dump_jobs.py
                                     v
                           scraper/dumps/*.json   {"jobs": [...]}
                                     |
-                  scp: pi05 -> harita -> pi09   (scripts/run_pipeline.sh, step 2 of 3)
+                  scp: pi05 -> pi09, direct    (scripts/run_pipeline.sh, step 2 of 3)
                                     |
                                     v
 pi09: jobhub_poc.loader.load_dump  --upsert on dedupe_key-->  SQLite `jobs` table
@@ -46,9 +46,11 @@ Browser --GET /jobs (redirects to /login if unauthenticated)--> Flask webapp
                                                         title sort) --> SQLite `jobs`
 ```
 
-Orchestration entrypoint: `poc/scripts/run_pipeline.sh`, run from harita (not pi05 or
-pi09), scheduled automatically every 6 hours via a systemd **user** timer there. It does
-not touch the web container — the web app just reads whatever's currently in SQLite.
+Orchestration entrypoint: `poc/scripts/run_pipeline.sh`, run **on pi09 itself** (as of
+2026-09-22 — previously relayed through a third host, harita; pi05<->pi09 SSH trust now
+exists, so that hop is gone), scheduled automatically every 6 hours via a systemd **user**
+timer on pi09. It does not touch the web container — the web app just reads whatever's
+currently in SQLite.
 
 ## Why this flow is shaped this way
 

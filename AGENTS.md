@@ -35,7 +35,8 @@ all — further from reality than `apps/` itself, historical/aspirational only.
    per-user accounts, roles, or RBAC in `poc/`. Don't assume any exist.
 9. Everything is env-configured (hosts, ports, keys, paths) per `poc/.env.example` and
    `poc/scraper/.env` — no hardcoded hosts/ports/keys, since a future move off the current
-   pi05/pi09/harita hosts is expected.
+   pi05/pi09 hosts is expected. The pipeline runs entirely on those two (pi09 orchestrates
+   itself, pulling directly from pi05) as of 2026-09-22 — no third host is involved.
 10. Never commit secrets. `poc/.env`, `poc/whatsapp-sender/.env`, and
     `poc/whatsapp-sender/auth_info/` (the live WhatsApp session) are gitignored — keep them
     that way.
