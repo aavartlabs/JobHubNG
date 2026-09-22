@@ -12,8 +12,8 @@ stretch/not done before the Saturday demo.
 ```
 pi05: scraper/            pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (Node,           loader/    JSON dump -> SQLite (dedup, purge)
-   prebuilt dist)           webapp/    Flask JSON API + TS frontend, login-gated
-  dump_jobs.py -----json--> alerts/    registration + matcher + notifier
+   prebuilt dist)           webapp/    Flask JSON API + TS frontend, public
+  dump_jobs.py -----json--> alerts/    registration + matcher + notifier, account-owned
      (pi09 pulls directly, no relay host)
 
 https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09

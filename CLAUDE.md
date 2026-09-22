@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 JobHubNG is a job intelligence pipeline: it scrapes jobs from an external service
-(EverJobs), stores them in SQLite, serves them through a small login-gated web app, and
+(EverJobs), stores them in SQLite, serves them through a small public web app, and
 sends WhatsApp alerts when new jobs match a saved subscription. It is deployed at
 `jobhubs.aavartlabs.com` via a Cloudflare Tunnel.
 
@@ -30,8 +30,8 @@ steps live in `poc/PLAN.md`; day-to-day architecture and quick start live in `po
 ```
 pi05: scraper/                          pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (prebuilt Node dist)            loader/   JSON dump -> SQLite (dedupe, purge)
-  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, login-gated
-                                             alerts/   registration + matcher + notifier
+  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, public
+                                             alerts/   registration + matcher + notifier, account-owned
                                              (pi09 pulls the dump and runs the rest itself,
                                               scheduled locally -- no relay host)
 
@@ -92,7 +92,7 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
 cd poc
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env                       # edit as needed
-.venv/bin/pytest -v                        # or: make test  (33 tests as of last count)
+.venv/bin/pytest -v                        # or: make test  (75 tests as of last count)
 
 cd scraper
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt

@@ -27,9 +27,10 @@ export const auth = betterAuth({
   advanced: {
     // Confirmed (see README): the resulting session cookie is named
     // "jobhub-auth.session_token" over plain http/dev, or
-    // "__Secure-jobhub-auth.session_token" once baseURL is https / the
-    // service runs with NODE_ENV=production (Better Auth's own secure-cookie
-    // prefixing, not something this file controls directly).
+    // "__Secure-jobhub-auth.session_token" once BETTER_AUTH_URL is https
+    // (Better Auth's own secure-cookie prefixing follows the configured
+    // baseURL's scheme, NOT NODE_ENV -- confirmed directly in
+    // node_modules/better-auth/dist/cookies/index.mjs).
     cookiePrefix: "jobhub-auth",
   },
   emailAndPassword: {

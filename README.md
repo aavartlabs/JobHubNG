@@ -1,7 +1,7 @@
 # JobHubNG
 
 Job intelligence pipeline: scrapes jobs from EverJobs, stores them in SQLite, serves them
-through a small login-gated web app, and sends WhatsApp alerts on matches. Live at
+through a small public web app, and sends WhatsApp alerts on matches. Live at
 https://jobhubs.aavartlabs.com.
 
 **This repo contains two generations of the project — only `poc/` is live.** The original
@@ -15,7 +15,7 @@ on 2026-09-16; its source is kept in git history but nothing under `apps/` is de
 cd poc
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env       # edit as needed
-.venv/bin/pytest -v        # 33 tests
+.venv/bin/pytest -v        # 75 tests
 
 cd scraper
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -38,8 +38,8 @@ proxies `/auth/*` to; they gate `/alerts/*` only. See `docs/rbac.md`.
 ```
 pi05: scraper/                          pi09: jobhub_poc/  (Docker container "jobhub-web")
   EverJobs (prebuilt Node dist)            loader/   JSON dump -> SQLite (dedupe, purge)
-  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, login-gated
-                                             alerts/   registration + matcher + notifier
+  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, public
+                                             alerts/   registration + matcher + notifier, account-owned
                                              (pi09 pulls directly, no relay host)
 
 https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09

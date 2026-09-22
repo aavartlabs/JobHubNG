@@ -31,8 +31,12 @@ all — further from reality than `apps/` itself, historical/aspirational only.
    Any new send path must respect that constraint, not bypass or duplicate it.
 7. `NOTIFIER_BACKEND` (`console` | `whatsapp`) is the only supported way to switch alert
    delivery, via `get_notifier()` — don't hardcode a backend choice in calling code.
-8. One shared demo login (`app_users`, seeded by `scripts/seed_demo_user.py`) — there are no
-   per-user accounts, roles, or RBAC in `poc/`. Don't assume any exist.
+8. As of 2026-09-22, real self-service accounts exist (`poc/auth-service/`, Better Auth --
+   email+password+mobile, both OTP-verified before use) and `app_users`/
+   `scripts/seed_demo_user.py` are gone. Every account has identical capabilities (no
+   roles/RBAC) but alert subscriptions are owned per-account
+   (`alert_subscriptions.owner_auth_user_id`). See `docs/rbac.md` and
+   `docs/superpowers/specs/2026-09-22-user-accounts-auth-design.md`.
 9. Everything is env-configured (hosts, ports, keys, paths) per `poc/.env.example` and
    `poc/scraper/.env` — no hardcoded hosts/ports/keys, since a future move off the current
    pi05/pi09 hosts is expected. The pipeline runs entirely on those two (pi09 orchestrates
