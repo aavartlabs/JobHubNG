@@ -1,4 +1,4 @@
-.PHONY: test test-scraper venv seed web dump load purge alerts pipeline
+.PHONY: test test-scraper venv web dump load purge alerts pipeline
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
@@ -8,9 +8,6 @@ test:
 
 test-scraper:
 	cd scraper && .venv/bin/pytest -v
-
-seed:
-	.venv/bin/python scripts/seed_demo_user.py
 
 seed-demo-data:
 	.venv/bin/python scripts/seed_demo_data.py

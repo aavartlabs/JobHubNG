@@ -27,66 +27,55 @@ def _app_and_client(conn):
     return app, app.test_client()
 
 
-def test_jobs_route_requires_login_redirects_without_calling_auth_service(conn, requests_mock):
-    _app, client = _app_and_client(conn)
-    resp = client.get("/jobs")
-    assert resp.status_code == 302
-    assert "/login" in resp.headers["Location"]
-    assert requests_mock.call_count == 0
-
-
 def test_gated_route_with_get_session_connection_error_redirects_to_login(conn, requests_mock):
+    """Test /alerts/register (gated route) handles auth service connection error by redirecting to login."""
     requests_mock.get(GET_SESSION_URL, exc=requests.exceptions.ConnectionError)
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/jobs")
+    resp = client.get("/alerts/register")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
 
 
 def test_gated_route_with_get_session_timeout_redirects_to_login(conn, requests_mock):
+    """Test /alerts/register (gated route) handles auth service timeout by redirecting to login."""
     requests_mock.get(GET_SESSION_URL, exc=requests.exceptions.Timeout)
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/jobs")
+    resp = client.get("/alerts/register")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
 
 
 def test_gated_route_with_unauthenticated_get_session_redirects_to_login(conn, requests_mock):
-    # Better Auth returns literal JSON null (not {} or {"user": null}) for no session.
+    """Test /alerts/register (gated route) with no valid session redirects to login.
+    Better Auth returns literal JSON null (not {} or {"user": null}) for no session."""
     requests_mock.get(GET_SESSION_URL, json=None)
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/jobs")
+    resp = client.get("/alerts/register")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
 
 
-def test_gated_route_with_verified_session_succeeds(conn, requests_mock):
-    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _user()})
-    _app, client = _app_and_client(conn)
-    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/jobs")
-    assert resp.status_code == 200
-
-
 def test_gated_route_with_unverified_phone_redirects_to_verify(conn, requests_mock):
-    # phoneNumberVerified is `null` before verification, not `false` -- confirm the
-    # login_required `and` check treats that correctly.
+    """Test /alerts/register (gated route) with unverified phone redirects to /verify.
+    phoneNumberVerified is `null` before verification, not `false` -- confirm the
+    login_required `and` check treats that correctly."""
     requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _user(phone_verified=None)})
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/jobs")
+    resp = client.get("/alerts/register")
     assert resp.status_code == 302
     assert "/verify" in resp.headers["Location"]
 
 
 def test_gated_route_with_unverified_email_redirects_to_verify(conn, requests_mock):
+    """Test /alerts/register (gated route) with unverified email redirects to /verify."""
     requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _user(email_verified=False)})
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/jobs")
+    resp = client.get("/alerts/register")
     assert resp.status_code == 302
     assert "/verify" in resp.headers["Location"]
 

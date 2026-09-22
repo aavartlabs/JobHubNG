@@ -1,7 +1,5 @@
 from flask import Blueprint, current_app, jsonify, request
 
-from jobhub_poc.webapp.auth import login_required
-
 bp = Blueprint("api", __name__)
 
 _SORTS = {
@@ -23,7 +21,6 @@ def _positive_int(raw: str | None, default: int, maximum: int | None = None) -> 
 
 
 @bp.route("/api/jobs")
-@login_required
 def list_jobs_json():
     conn = current_app.get_db()
     title = request.args.get("title", "").strip()
