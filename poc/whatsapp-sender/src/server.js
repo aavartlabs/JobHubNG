@@ -11,10 +11,13 @@ import { createSentMessageCache } from "./sent-message-cache.js";
 const PORT = Number(process.env.PORT || 3100);
 const API_KEY = process.env.WHATSAPP_GATEWAY_API_KEY || "";
 const AUTH_DIR = process.env.AUTH_DIR || "./auth_info";
-// Kept below the Python WhatsAppNotifier's HTTP timeout (20s) so a real
+// Kept below the Python WhatsAppNotifier's HTTP timeout (55s) so a real
 // timeout here always reaches the caller as a clean error, not a dropped
-// connection.
-const ACK_TIMEOUT_MS = Number(process.env.ACK_TIMEOUT_MS || 12000);
+// connection. Default raised from 12s to 45s on 2026-09-22 -- see
+// .env.example for why (multi-device recipients can need real time for
+// session renegotiation, though this alone didn't fix the one stuck case
+// found that day).
+const ACK_TIMEOUT_MS = Number(process.env.ACK_TIMEOUT_MS || 45000);
 
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
 
