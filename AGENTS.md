@@ -1,11 +1,46 @@
 # JobHub Codex Rules
 
-The original Low-Level Design under `artifacts/` describes a larger target architecture
-(Flowable, a Python agent-runtime, MCP tool boundaries). The current implementation has
-diverged from it — see `CLAUDE.md` for the full picture. The rules below describe the
-system as it actually exists today; don't assume the LLD's version of a rule still holds.
+**This repo contains two generations of the project; only `poc/` is live.** The original
+Spring Boot/Next.js/Postgres stack under `apps/` (rules further below) was scrapped as the
+active runtime surface on 2026-09-16 for a minimal Python pipeline under `poc/` (scraper →
+SQLite → Flask+TS web app → WhatsApp alerts) — see `CLAUDE.md` for the full picture and
+`poc/PLAN.md`/`poc/README.md` for pivot rationale and architecture. `apps/` source is left
+untouched in git history but is not deployed and should not be extended without being asked.
+The original Low-Level Design under `artifacts/` describes an even larger target
+architecture (Flowable, a Python agent-runtime, MCP tool boundaries) that was never built at
+all — further from reality than `apps/` itself, historical/aspirational only.
 
-## Architecture rules
+## Architecture rules (`poc/` — the live system)
+
+1. Flask (`poc/jobhub_poc/webapp/`) owns the web app; routes stay thin blueprints
+   (`auth`, `routes_jobs`, `routes_alerts`, `routes_api`) — business logic (loading,
+   purging, alert matching) lives in `loader/` and `alerts/`, not scattered into handlers.
+2. SQLite (`poc/jobhub_poc/schema.sql`) is the system of record — plain `sqlite3` +
+   parameterized SQL throughout, no ORM. Keep it that way; don't introduce one for a POC.
+3. There is no LLM/agent enrichment layer in `poc/`. Jobs are stored as scraped
+   (`raw_json` verbatim); there is no confidence-scoring or agentic pass equivalent to
+   `apps/`'s `JobEnrichmentAgent`. Don't assume one exists.
+4. Freshness/purge is keyed **solely on `first_seen_at`**, set once at insert and never
+   touched on update. Never key purge or "new job" detection off the source's own
+   `datePosted` (unreliable — ranges 2021–2026 in real data) or off `last_seen_at`.
+5. EverJobs' `query`/`results` request params are **not honored server-side** — a scrape
+   call returns everything for a site bucket regardless of search term. Filtering/capping by
+   `SEARCH_TERMS`/`RESULTS_PER_TERM` must happen client-side in `dump_jobs.py`, not by
+   trusting the request params to do it.
+6. Alert sends must stay idempotent — `alerts_sent` has `UNIQUE(subscription_id, job_id)`.
+   Any new send path must respect that constraint, not bypass or duplicate it.
+7. `NOTIFIER_BACKEND` (`console` | `whatsapp`) is the only supported way to switch alert
+   delivery, via `get_notifier()` — don't hardcode a backend choice in calling code.
+8. One shared demo login (`app_users`, seeded by `scripts/seed_demo_user.py`) — there are no
+   per-user accounts, roles, or RBAC in `poc/`. Don't assume any exist.
+9. Everything is env-configured (hosts, ports, keys, paths) per `poc/.env.example` and
+   `poc/scraper/.env` — no hardcoded hosts/ports/keys, since a future move off the current
+   pi05/pi09/harita hosts is expected.
+10. Never commit secrets. `poc/.env`, `poc/whatsapp-sender/.env`, and
+    `poc/whatsapp-sender/auth_info/` (the live WhatsApp session) are gitignored — keep them
+    that way.
+
+## Architecture rules (`apps/` — retired stack, not deployed)
 
 1. Spring Boot owns business logic, APIs, authorization, persistence and audit.
 2. There is no Flowable and no BPMN/DMN engine. `workflow/dmn` and `workflow/processes`
