@@ -13,8 +13,9 @@ services:
       # still on 8100 via the port mapping below.
       WEB_PORT: "3000"
       # Reached only over the jobhub Docker network's embedded DNS -- auth-service below
-      # publishes no host port.
-      AUTH_SERVICE_URL: http://auth-service:4000
+      # publishes no host port. Port 3200 matches auth-service's own PORT default
+      # (src/server.js / .env.example), not an arbitrary choice.
+      AUTH_SERVICE_URL: http://auth-service:3200
     volumes:
       - ./data:/app/data
     ports:
@@ -27,6 +28,12 @@ services:
     build: ./auth-service
     container_name: jobhub-auth
     env_file: ./auth-service/.env
+    environment:
+      # Overrides whatever AUTH_DB_PATH is in .env (its own .env.example default,
+      # ./auth.db, resolves to /app/auth.db -- outside the volume below, so it wouldn't
+      # survive a container recreate). Must stay under /app/data to actually land on the
+      # mounted volume.
+      AUTH_DB_PATH: /app/data/auth.db
     volumes:
       - ./auth-service/data:/app/data
     networks:

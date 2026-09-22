@@ -24,8 +24,10 @@ WHATSAPP_GATEWAY_API_KEY = os.environ.get("WHATSAPP_GATEWAY_API_KEY", "")
 
 # poc/auth-service/ -- the standalone Better Auth companion service. Reached only
 # server-side (auth_proxy.py's passthrough, and auth.py's get-session/sign-out calls),
-# never exposed to the host in docker-compose.yml.
-AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:4000")
+# never exposed to the host in docker-compose.yml. Port 3200 matches auth-service's own
+# PORT default (src/server.js / auth-service/.env.example), not an arbitrary choice --
+# don't drift this from that service's actual default without changing both.
+AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:3200")
 # The origin this Flask app is itself publicly reachable at. auth.py's /logout route
 # makes a server-to-server POST {AUTH_SERVICE_URL}/auth/sign-out call that carries the
 # session cookie; Better Auth's CSRF check requires such calls to send an Origin header
