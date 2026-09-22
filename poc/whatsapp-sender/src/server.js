@@ -6,6 +6,7 @@ import pino from "pino";
 import { toJid } from "./jid.js";
 import { validateSendPayload } from "./validate.js";
 import { createAckTracker } from "./ack-tracker.js";
+import { createSentMessageCache } from "./sent-message-cache.js";
 
 const PORT = Number(process.env.PORT || 3100);
 const API_KEY = process.env.WHATSAPP_GATEWAY_API_KEY || "";
@@ -23,10 +24,15 @@ let isReady = false;
 // Survives across reconnects (connectWhatsApp() re-runs on every drop) --
 // declared outside it so in-flight sends aren't orphaned by a socket swap.
 const ackTracker = createAckTracker();
+const sentMessageCache = createSentMessageCache();
 
 async function connectWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  sock = makeWASocket({ auth: state, logger });
+  // Without a real getMessage, baileys can't answer WhatsApp's retry-receipt
+  // protocol when a recipient's device fails to decrypt a message on the
+  // first try -- the message is then stuck showing "Waiting for this
+  // message" on their end, forever, since the retry can never be satisfied.
+  sock = makeWASocket({ auth: state, logger, getMessage: sentMessageCache.getMessage });
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -123,7 +129,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    const sent = await sock.sendMessage(toJid(validated.phone), { text: validated.message });
+    const content = { text: validated.message };
+    const sent = await sock.sendMessage(toJid(validated.phone), content);
     const msgId = sent?.key?.id;
     if (!msgId) {
       // No message id to track (shouldn't normally happen) -- report sent
@@ -132,6 +139,9 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { status: "sent", confirmed: false });
       return;
     }
+    // Must be cached before we can possibly need it for a retry -- do this
+    // before awaiting the ack, not after.
+    sentMessageCache.remember(msgId, content);
     await ackTracker.waitForAck(msgId, ACK_TIMEOUT_MS);
     sendJson(res, 200, { status: "sent", confirmed: true });
   } catch (err) {
