@@ -73,7 +73,10 @@ class WhatsAppNotifier(Notifier):
     backend_name = "whatsapp"
 
     def __init__(self, conn: sqlite3.Connection, gateway_url: str | None = None,
-                 api_key: str | None = None, timeout_seconds: int = 15):
+                 api_key: str | None = None, timeout_seconds: int = 20):
+        # Kept above the gateway's own ACK_TIMEOUT_MS (default 12s) so its
+        # timeout response always reaches us as a clean HTTP error rather
+        # than us giving up on the connection first.
         super().__init__(conn)
         self.gateway_url = gateway_url if gateway_url is not None else config.WHATSAPP_GATEWAY_URL
         self.api_key = api_key if api_key is not None else config.WHATSAPP_GATEWAY_API_KEY

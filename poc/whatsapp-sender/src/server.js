@@ -5,21 +5,38 @@ import pino from "pino";
 
 import { toJid } from "./jid.js";
 import { validateSendPayload } from "./validate.js";
+import { createAckTracker } from "./ack-tracker.js";
 
 const PORT = Number(process.env.PORT || 3100);
 const API_KEY = process.env.WHATSAPP_GATEWAY_API_KEY || "";
 const AUTH_DIR = process.env.AUTH_DIR || "./auth_info";
+// Kept below the Python WhatsAppNotifier's HTTP timeout (20s) so a real
+// timeout here always reaches the caller as a clean error, not a dropped
+// connection.
+const ACK_TIMEOUT_MS = Number(process.env.ACK_TIMEOUT_MS || 12000);
 
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
 
 let sock = null;
 let isReady = false;
 
+// Survives across reconnects (connectWhatsApp() re-runs on every drop) --
+// declared outside it so in-flight sends aren't orphaned by a socket swap.
+const ackTracker = createAckTracker();
+
 async function connectWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   sock = makeWASocket({ auth: state, logger });
 
   sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("messages.update", (updates) => {
+    for (const { key, update } of updates) {
+      if (typeof update.status === "number" && key?.id) {
+        ackTracker.settle(key.id, update.status);
+      }
+    }
+  });
 
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -106,9 +123,21 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    await sock.sendMessage(toJid(validated.phone), { text: validated.message });
-    sendJson(res, 200, { status: "sent" });
+    const sent = await sock.sendMessage(toJid(validated.phone), { text: validated.message });
+    const msgId = sent?.key?.id;
+    if (!msgId) {
+      // No message id to track (shouldn't normally happen) -- report sent
+      // but flag that delivery wasn't confirmed, rather than silently
+      // claiming a guarantee we can't back up.
+      sendJson(res, 200, { status: "sent", confirmed: false });
+      return;
+    }
+    await ackTracker.waitForAck(msgId, ACK_TIMEOUT_MS);
+    sendJson(res, 200, { status: "sent", confirmed: true });
   } catch (err) {
+    // Covers both sock.sendMessage() throwing and the ack tracker timing
+    // out/erroring -- either way WhatsApp never confirmed this message, so
+    // callers must not treat it as delivered.
     sendJson(res, 502, { error: String(err?.message || err) });
   }
 });
