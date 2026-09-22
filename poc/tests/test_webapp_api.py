@@ -1,16 +1,21 @@
 import json
 
-from werkzeug.security import generate_password_hash
-
+from jobhub_poc import config
 from jobhub_poc.webapp.app import create_app
 
+SESSION_COOKIE_NAME = "jobhub-auth.session_token"
+GET_SESSION_URL = f"{config.AUTH_SERVICE_URL}/auth/get-session"
 
-def _seed_user(conn):
-    conn.execute(
-        "INSERT INTO app_users (username, password_hash, created_at) VALUES ('admin', ?, '2026-09-16T00:00:00+00:00')",
-        (generate_password_hash("secret"),),
-    )
-    conn.commit()
+
+def _verified_user():
+    return {
+        "id": "auth-user-1",
+        "email": "seeker@example.com",
+        "name": "Job Seeker",
+        "emailVerified": True,
+        "phoneNumberVerified": True,
+        "phoneNumber": "+15551234567",
+    }
 
 
 def _seed_job(conn, dedupe_key, title, location, first_seen_at, company_name="Acme",
@@ -26,12 +31,12 @@ def _seed_job(conn, dedupe_key, title, location, first_seen_at, company_name="Ac
     conn.commit()
 
 
-def _logged_in_client(conn):
-    _seed_user(conn)
+def _logged_in_client(conn, requests_mock):
+    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _verified_user()})
     app = create_app(test_conn=conn)
     app.config["TESTING"] = True
     client = app.test_client()
-    client.post("/login", data={"username": "admin", "password": "secret"})
+    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
     return client
 
 
@@ -43,10 +48,10 @@ def test_api_jobs_requires_login(conn):
     assert "/login" in resp.headers["Location"]
 
 
-def test_api_jobs_returns_json_shape(conn):
+def test_api_jobs_returns_json_shape(conn, requests_mock):
     _seed_job(conn, "1", "Software Engineer", "Remote", "2026-09-16T10:00:00+00:00",
               apply_url="https://example.com/1", description="Build great things.")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs")
     assert resp.status_code == 200
     assert resp.content_type.startswith("application/json")
@@ -63,48 +68,48 @@ def test_api_jobs_returns_json_shape(conn):
     assert "first_seen_at" in job
 
 
-def test_api_jobs_description_is_null_when_missing(conn):
+def test_api_jobs_description_is_null_when_missing(conn, requests_mock):
     _seed_job(conn, "1", "Software Engineer", "Remote", "2026-09-16T10:00:00+00:00")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs")
     data = json.loads(resp.data)
     assert data["jobs"][0]["description"] is None
 
 
-def test_api_jobs_title_filter(conn):
+def test_api_jobs_title_filter(conn, requests_mock):
     _seed_job(conn, "1", "Senior Data Engineer", "Remote", "2026-09-16T10:00:00+00:00")
     _seed_job(conn, "2", "Sales Associate", "Remote", "2026-09-16T09:00:00+00:00")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?title=engineer")
     data = json.loads(resp.data)
     titles = [j["title"] for j in data["jobs"]]
     assert titles == ["Senior Data Engineer"]
 
 
-def test_api_jobs_location_filter(conn):
+def test_api_jobs_location_filter(conn, requests_mock):
     _seed_job(conn, "1", "Engineer", "Bengaluru, India", "2026-09-16T10:00:00+00:00")
     _seed_job(conn, "2", "Engineer", "Remote", "2026-09-16T09:00:00+00:00")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?location=bengaluru")
     data = json.loads(resp.data)
     assert len(data["jobs"]) == 1
     assert "Bengaluru" in data["jobs"][0]["location"]
 
 
-def test_api_jobs_default_sort_is_freshness_descending(conn):
+def test_api_jobs_default_sort_is_freshness_descending(conn, requests_mock):
     _seed_job(conn, "1", "Older Job", "Remote", "2026-09-14T10:00:00+00:00")
     _seed_job(conn, "2", "Newer Job", "Remote", "2026-09-16T10:00:00+00:00")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs")
     data = json.loads(resp.data)
     titles = [j["title"] for j in data["jobs"]]
     assert titles == ["Newer Job", "Older Job"]
 
 
-def test_api_jobs_sort_title_ascending(conn):
+def test_api_jobs_sort_title_ascending(conn, requests_mock):
     _seed_job(conn, "1", "Zebra Role", "Remote", "2026-09-16T10:00:00+00:00")
     _seed_job(conn, "2", "Alpha Role", "Remote", "2026-09-16T09:00:00+00:00")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?sort=title")
     data = json.loads(resp.data)
     titles = [j["title"] for j in data["jobs"]]
@@ -116,9 +121,9 @@ def _seed_n_jobs(conn, n):
         _seed_job(conn, str(i), f"Role {i:03d}", "Remote", f"2026-09-16T{10 + (i % 10):02d}:00:00+00:00")
 
 
-def test_api_jobs_pagination_respects_page_size(conn):
+def test_api_jobs_pagination_respects_page_size(conn, requests_mock):
     _seed_n_jobs(conn, 25)
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?page_size=10")
     data = json.loads(resp.data)
     assert len(data["jobs"]) == 10
@@ -128,9 +133,9 @@ def test_api_jobs_pagination_respects_page_size(conn):
     assert data["total_pages"] == 3
 
 
-def test_api_jobs_pagination_second_page_has_different_rows(conn):
+def test_api_jobs_pagination_second_page_has_different_rows(conn, requests_mock):
     _seed_n_jobs(conn, 25)
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     page1 = json.loads(client.get("/api/jobs?page_size=10&page=1&sort=title").data)
     page2 = json.loads(client.get("/api/jobs?page_size=10&page=2&sort=title").data)
     ids_page1 = {j["id"] for j in page1["jobs"]}
@@ -139,19 +144,19 @@ def test_api_jobs_pagination_second_page_has_different_rows(conn):
     assert len(page2["jobs"]) == 10
 
 
-def test_api_jobs_pagination_last_page_partial(conn):
+def test_api_jobs_pagination_last_page_partial(conn, requests_mock):
     _seed_n_jobs(conn, 25)
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?page_size=10&page=3")
     data = json.loads(resp.data)
     assert len(data["jobs"]) == 5
 
 
-def test_api_jobs_total_reflects_filter_not_just_current_page(conn):
+def test_api_jobs_total_reflects_filter_not_just_current_page(conn, requests_mock):
     _seed_job(conn, "1", "Engineer One", "Remote", "2026-09-16T10:00:00+00:00")
     _seed_job(conn, "2", "Engineer Two", "Remote", "2026-09-16T09:00:00+00:00")
     _seed_job(conn, "3", "Sales Associate", "Remote", "2026-09-16T08:00:00+00:00")
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?title=engineer&page_size=1")
     data = json.loads(resp.data)
     assert data["total"] == 2
@@ -159,17 +164,17 @@ def test_api_jobs_total_reflects_filter_not_just_current_page(conn):
     assert len(data["jobs"]) == 1
 
 
-def test_api_jobs_page_size_is_capped(conn):
+def test_api_jobs_page_size_is_capped(conn, requests_mock):
     _seed_n_jobs(conn, 5)
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?page_size=99999")
     data = json.loads(resp.data)
     assert data["page_size"] <= 100
 
 
-def test_api_jobs_invalid_page_defaults_to_one(conn):
+def test_api_jobs_invalid_page_defaults_to_one(conn, requests_mock):
     _seed_n_jobs(conn, 5)
-    client = _logged_in_client(conn)
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/api/jobs?page=not-a-number")
     data = json.loads(resp.data)
     assert data["page"] == 1

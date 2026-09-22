@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Verify your account</h1>
+<p id="verify-status">Checking your verification status...</p>
+
+<section id="email-section" hidden>
+  <h2>Email code</h2>
+  <p>We've sent a code to your email -- enter it below. (Delivery isn't guaranteed to be
+     instant; if nothing arrives, a resend option appears below after a short wait.)</p>
+  <p id="email-error" class="error" hidden></p>
+  <p id="email-verified-msg" hidden>Email verified.</p>
+  <form id="email-otp-form">
+    <label>Code <input type="text" id="email-otp-code" inputmode="numeric" autocomplete="one-time-code" required></label>
+    <button type="submit">Verify email</button>
+  </form>
+  <button type="button" id="resend-email-otp" hidden>Resend email code</button>
+</section>
+
+<section id="phone-section" hidden>
+  <h2>Phone code</h2>
+  <p>We've sent a code to your phone via WhatsApp.</p>
+  <p id="phone-error" class="error" hidden></p>
+  <p id="phone-verified-msg" hidden>Phone verified.</p>
+  <form id="phone-otp-form">
+    <label>Code <input type="text" id="phone-otp-code" inputmode="numeric" autocomplete="one-time-code" required></label>
+    <button type="submit">Verify phone</button>
+  </form>
+  <button type="button" id="resend-phone-otp" hidden>Resend phone code</button>
+</section>
+
+<p id="verify-continue" hidden><a href="{{ url_for('jobs.list_jobs') }}">Continue to jobs &rarr;</a></p>
+<script src="{{ url_for('static', filename='auth.js') }}"></script>
+{% endblock %}

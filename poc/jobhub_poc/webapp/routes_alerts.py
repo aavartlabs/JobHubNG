@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, g, redirect, render_template, request, url_for
 
 from jobhub_poc.webapp.auth import login_required
 
@@ -24,16 +24,43 @@ def register():
     conn.execute(
         """
         INSERT INTO alert_subscriptions
-            (phone_number, title_keyword, location_keyword, created_by_user_id, is_active, created_at)
+            (phone_number, title_keyword, location_keyword, owner_auth_user_id, is_active, created_at)
         VALUES (?, ?, ?, ?, 1, ?)
         """,
         (
             phone,
             request.form.get("title_keyword") or None,
             request.form.get("location_keyword") or None,
-            session.get("user_id"),
+            g.current_user["id"],
             datetime.now(timezone.utc).isoformat(),
         ),
     )
     conn.commit()
-    return redirect(url_for("jobs.list_jobs"))
+    return redirect(url_for("alerts.list_alerts"))
+
+
+@bp.route("/alerts")
+@login_required
+def list_alerts():
+    """Lists only the current user's own subscriptions -- scoped by owner_auth_user_id,
+    never all subscriptions, so one user can never see another's alerts."""
+    conn = current_app.get_db()
+    subscriptions = conn.execute(
+        "SELECT * FROM alert_subscriptions WHERE owner_auth_user_id = ? ORDER BY created_at DESC",
+        (g.current_user["id"],),
+    ).fetchall()
+    return render_template("alerts_list.html", subscriptions=subscriptions)
+
+
+@bp.route("/alerts/<int:sub_id>/deactivate", methods=["POST"])
+@login_required
+def deactivate(sub_id):
+    """Scoped to (id AND owner_auth_user_id) so a user can never deactivate another
+    user's subscription, even by guessing/incrementing an id."""
+    conn = current_app.get_db()
+    conn.execute(
+        "UPDATE alert_subscriptions SET is_active = 0 WHERE id = ? AND owner_auth_user_id = ?",
+        (sub_id, g.current_user["id"]),
+    )
+    conn.commit()
+    return redirect(url_for("alerts.list_alerts"))

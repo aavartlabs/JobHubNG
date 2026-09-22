@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && esbuild src/app.ts --bundle --minify --outfile=../static/app.js"
+    "build": "npm run typecheck && esbuild src/app.ts --bundle --minify --outfile=../static/app.js && esbuild src/auth.ts --bundle --minify --outfile=../static/auth.js"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

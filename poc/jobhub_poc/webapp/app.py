@@ -1,7 +1,7 @@
 from flask import Flask, g, redirect, url_for
 
 from jobhub_poc import config, db
-from jobhub_poc.webapp import auth, routes_alerts, routes_api, routes_jobs
+from jobhub_poc.webapp import auth, auth_proxy, routes_alerts, routes_api, routes_jobs
 
 
 def create_app(test_conn=None):
@@ -25,7 +25,10 @@ def create_app(test_conn=None):
             if conn is not None:
                 conn.close()
 
+    app.before_request(auth.load_current_user)
+
     app.register_blueprint(auth.bp)
+    app.register_blueprint(auth_proxy.bp)
     app.register_blueprint(routes_jobs.bp)
     app.register_blueprint(routes_alerts.bp)
     app.register_blueprint(routes_api.bp)

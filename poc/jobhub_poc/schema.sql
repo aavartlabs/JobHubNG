@@ -23,23 +23,20 @@ CREATE INDEX IF NOT EXISTS idx_jobs_title         ON jobs(title);
 CREATE INDEX IF NOT EXISTS idx_jobs_location      ON jobs(location);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen_at ON jobs(first_seen_at);
 
-CREATE TABLE IF NOT EXISTS app_users (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    username       TEXT NOT NULL UNIQUE,
-    password_hash  TEXT NOT NULL,
-    created_at     TEXT NOT NULL
-);
-
+-- owner_auth_user_id is an opaque id from poc/auth-service/'s own Better Auth user table
+-- (a different SQLite file/service entirely) -- deliberately TEXT with no REFERENCES,
+-- not a foreign key into anything in this database.
 CREATE TABLE IF NOT EXISTS alert_subscriptions (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     phone_number        TEXT NOT NULL,
     title_keyword       TEXT,
     location_keyword    TEXT,
-    created_by_user_id  INTEGER REFERENCES app_users(id),
+    owner_auth_user_id  TEXT,
     is_active           INTEGER NOT NULL DEFAULT 1,
     created_at          TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_active ON alert_subscriptions(is_active);
+CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_owner ON alert_subscriptions(owner_auth_user_id);
 
 CREATE TABLE IF NOT EXISTS alerts_sent (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,

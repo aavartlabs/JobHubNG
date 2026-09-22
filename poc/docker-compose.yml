@@ -12,6 +12,9 @@ services:
       # Cloudflare Tunnel is fixed to target (http://jobhub-web:3000). Host access is
       # still on 8100 via the port mapping below.
       WEB_PORT: "3000"
+      # Reached only over the jobhub Docker network's embedded DNS -- auth-service below
+      # publishes no host port.
+      AUTH_SERVICE_URL: http://auth-service:4000
     volumes:
       - ./data:/app/data
     ports:
@@ -19,6 +22,18 @@ services:
     networks:
       - jobhub
     restart: unless-stopped
+
+  auth-service:
+    build: ./auth-service
+    container_name: jobhub-auth
+    env_file: ./auth-service/.env
+    volumes:
+      - ./auth-service/data:/app/data
+    networks:
+      - jobhub
+    restart: unless-stopped
+    # No ports: -- only ever reached via web's /auth/* proxy (auth_proxy.py) over
+    # container DNS, never published to the host.
 
   whatsapp:
     build:
@@ -29,6 +44,8 @@ services:
       - ./whatsapp-sender/auth_info:/app/auth_info
     ports:
       - "3100:3100"
+    networks:
+      - jobhub
     restart: unless-stopped
 
 networks:

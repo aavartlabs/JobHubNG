@@ -1,22 +1,27 @@
-from werkzeug.security import generate_password_hash
-
+from jobhub_poc import config
 from jobhub_poc.webapp.app import create_app
 
-
-def _seed_user(conn):
-    conn.execute(
-        "INSERT INTO app_users (username, password_hash, created_at) VALUES ('admin', ?, '2026-09-16T00:00:00+00:00')",
-        (generate_password_hash("secret"),),
-    )
-    conn.commit()
+SESSION_COOKIE_NAME = "jobhub-auth.session_token"
+GET_SESSION_URL = f"{config.AUTH_SERVICE_URL}/auth/get-session"
 
 
-def _logged_in_client(conn):
-    _seed_user(conn)
+def _verified_user():
+    return {
+        "id": "auth-user-1",
+        "email": "seeker@example.com",
+        "name": "Job Seeker",
+        "emailVerified": True,
+        "phoneNumberVerified": True,
+        "phoneNumber": "+15551234567",
+    }
+
+
+def _logged_in_client(conn, requests_mock):
+    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _verified_user()})
     app = create_app(test_conn=conn)
     app.config["TESTING"] = True
     client = app.test_client()
-    client.post("/login", data={"username": "admin", "password": "secret"})
+    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
     return client
 
 
@@ -33,8 +38,8 @@ def test_jobs_page_requires_login(conn):
     assert "/login" in resp.headers["Location"]
 
 
-def test_jobs_page_serves_shell_with_expected_elements(conn):
-    client = _logged_in_client(conn)
+def test_jobs_page_serves_shell_with_expected_elements(conn, requests_mock):
+    client = _logged_in_client(conn, requests_mock)
     resp = client.get("/jobs")
     assert resp.status_code == 200
     body = resp.data.decode()

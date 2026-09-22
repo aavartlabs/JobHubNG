@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Create an account</h1>
+<p id="register-error" class="error" hidden></p>
+<form id="register-form">
+  <label>Name <input type="text" id="register-name" name="name" required></label>
+  <label>Email <input type="email" id="register-email" name="email" required></label>
+  <label>Password <input type="password" id="register-password" name="password" required minlength="8"></label>
+  <label>Mobile number <input type="text" id="register-phone" name="phone_number" placeholder="+15551234567" required></label>
+  <button type="submit">Create account</button>
+</form>
+<p>Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+<script src="{{ url_for('static', filename='auth.js') }}"></script>
+{% endblock %}

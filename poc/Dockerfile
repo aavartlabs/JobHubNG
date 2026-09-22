@@ -16,6 +16,7 @@ COPY jobhub_poc ./jobhub_poc
 COPY scripts ./scripts
 COPY fixtures ./fixtures
 COPY --from=frontend-build /src/jobhub_poc/webapp/static/app.js ./jobhub_poc/webapp/static/app.js
+COPY --from=frontend-build /src/jobhub_poc/webapp/static/auth.js ./jobhub_poc/webapp/static/auth.js
 ENV WEB_PORT=3000
 EXPOSE 3000
 CMD ["python", "-m", "jobhub_poc.webapp.app"]

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Your job alerts</h1>
+<p><a href="{{ url_for('alerts.register') }}">Register a new alert</a></p>
+{% if subscriptions %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Phone</th><th>Title contains</th><th>Location contains</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for sub in subscriptions %}
+      <tr>
+        <td>{{ sub['phone_number'] }}</td>
+        <td>{{ sub['title_keyword'] or '' }}</td>
+        <td>{{ sub['location_keyword'] or '' }}</td>
+        <td>{{ 'Active' if sub['is_active'] else 'Inactive' }}</td>
+        <td class="actions">
+          {% if sub['is_active'] %}
+          <form method="post" action="{{ url_for('alerts.deactivate', sub_id=sub['id']) }}">
+            <button type="submit">Deactivate</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p>You have no job alerts yet.</p>
+{% endif %}
+{% endblock %}
