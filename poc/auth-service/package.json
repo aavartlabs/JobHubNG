@@ -1,0 +1,15 @@
+{
+  "name": "jobhub-auth-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "better-auth": "^1.7.5",
+    "better-sqlite3": "^13.0.3",
+    "resend": "^6.28.1"
+  }
+}
