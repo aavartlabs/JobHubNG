@@ -3,6 +3,13 @@
    /auth/* proxy (see auth_proxy.py) on this same origin, which byte-for-byte relays to
    poc/auth-service/'s own Better Auth router (see that service's README.md). */
 
+import {
+  type PendingPhoneStorage,
+  clearPendingPhone,
+  resolvePhoneNumber,
+  savePendingPhone,
+} from "./pending_phone";
+
 interface AuthUser {
   id: string;
   email: string;
@@ -24,6 +31,15 @@ interface GetSessionResponse {
 // way to detect a silent failure from the HTTP response, so this is a fixed timeout, not
 // a response check.
 const EMAIL_RESEND_DELAY_MS = 45_000;
+
+/** sessionStorage, or null where the browser refuses to hand it over at all. */
+function pendingPhoneStorage(): PendingPhoneStorage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 async function postJson(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: any }> {
   let resp: Response;
@@ -120,7 +136,15 @@ function initRegister(): void {
       return;
     }
 
-    // 2 & 3. Trigger both OTP sends as separate steps, then move on to /verify
+    // 2. Stash the typed number BEFORE navigating away. /phone-number/send-otp does not
+    // write it to the user row (only /phone-number/verify with updatePhoneNumber:true
+    // does), so without this stash /verify has no number to verify against and every
+    // attempt 400s with OTP_NOT_FOUND. See src/pending_phone.ts for the full reasoning.
+    // /verify also renders an editable field prefilled from this, for the cases this
+    // can't cover (a different tab/device, storage unavailable).
+    savePendingPhone(pendingPhoneStorage(), phoneNumber);
+
+    // 3 & 4. Trigger both OTP sends as separate steps, then move on to /verify
     // regardless of their outcome -- that page re-derives status from get-session and
     // offers its own resend affordances, so this is best-effort here.
     await postJson("/auth/phone-number/send-otp", { phoneNumber });
@@ -146,11 +170,21 @@ function initVerify(): void {
   const phoneError = document.getElementById("phone-error");
   const phoneVerifiedMsg = document.getElementById("phone-verified-msg");
   const resendPhoneBtn = document.getElementById("resend-phone-otp") as HTMLButtonElement | null;
+  // Visible and editable on purpose: the number may not be recoverable here at all (a
+  // different tab or device, cleared storage, or a signed-back-in unverified user), in
+  // which case typing it in is the only way to finish verification.
+  const phoneInput = document.getElementById("phone-number-input") as HTMLInputElement | null;
+
+  const storage = pendingPhoneStorage();
 
   let email = "";
-  let phoneNumber = "";
   let emailDone = false;
   let phoneDone = false;
+
+  /** The number to verify against: whatever is in the editable field right now. */
+  function currentPhoneNumber(): string {
+    return phoneInput?.value.trim() ?? "";
+  }
 
   function maybeShowContinue(): void {
     if (emailDone && phoneDone && continueEl) continueEl.hidden = false;
@@ -169,6 +203,9 @@ function initVerify(): void {
     if (phoneForm) phoneForm.hidden = true;
     if (phoneVerifiedMsg) phoneVerifiedMsg.hidden = false;
     if (resendPhoneBtn) resendPhoneBtn.hidden = true;
+    // The number now lives on the account (verify + updatePhoneNumber wrote it there),
+    // so the stash has done its job and shouldn't linger into a later registration.
+    clearPendingPhone(storage);
     maybeShowContinue();
   }
 
@@ -184,7 +221,9 @@ function initVerify(): void {
     }
 
     email = sessionData.user.email;
-    phoneNumber = sessionData.user.phoneNumber ?? "";
+    // user.phoneNumber is still null until /phone-number/verify writes it, so the
+    // registration-time stash is the normal source here -- see src/pending_phone.ts.
+    if (phoneInput) phoneInput.value = resolvePhoneNumber(sessionData.user.phoneNumber, storage);
     statusEl.textContent = "Enter the codes sent to your email and phone to finish setting up your account.";
     emailSection.hidden = false;
     phoneSection.hidden = false;
@@ -230,6 +269,11 @@ function initVerify(): void {
   phoneForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (phoneError) phoneError.hidden = true;
+    const phoneNumber = currentPhoneNumber();
+    if (!phoneNumber) {
+      showError(phoneError, "Enter the mobile number you registered with, e.g. +15551234567.");
+      return;
+    }
     const code = (document.getElementById("phone-otp-code") as HTMLInputElement | null)?.value.trim() ?? "";
 
     const { ok, data } = await postJson("/auth/phone-number/verify", {
@@ -245,9 +289,21 @@ function initVerify(): void {
   });
 
   resendPhoneBtn?.addEventListener("click", async () => {
+    if (phoneError) phoneError.hidden = true;
+    const phoneNumber = currentPhoneNumber();
+    if (!phoneNumber) {
+      showError(phoneError, "Enter the mobile number you registered with, e.g. +15551234567.");
+      return;
+    }
+    // Keep the stash in step with whatever the user actually typed, so a reload of
+    // /verify prefills the number they just asked a code for, not a stale one.
+    savePendingPhone(storage, phoneNumber);
     resendPhoneBtn.disabled = true;
-    await postJson("/auth/phone-number/send-otp", { phoneNumber });
+    const { ok, data } = await postJson("/auth/phone-number/send-otp", { phoneNumber });
     resendPhoneBtn.disabled = false;
+    if (!ok) {
+      showError(phoneError, errorMessage(data, "Couldn't send a code to that number. Check it and try again."));
+    }
   });
 }
 

@@ -25,13 +25,13 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 Run against the bundled real fixture without a live scraper:
 ```bash
 cd poc
-.venv/bin/python scripts/seed_demo_user.py     # creates the demo login
 .venv/bin/python scripts/seed_demo_data.py     # loads fixtures/sample_everjobs_response_real.json
 .venv/bin/python -m jobhub_poc.webapp.app      # http://localhost:8100/jobs
 ```
 
-One shared demo login, seeded by `seed_demo_user.py` from `WEB_ADMIN_USERNAME`/
-`WEB_ADMIN_PASSWORD` in `poc/.env` — not per-user accounts.
+Job browsing is public. Real self-service accounts (email + password + mobile, both
+verified by OTP) live in `poc/auth-service/`, a companion Better Auth service that Flask
+proxies `/auth/*` to; they gate `/alerts/*` only. See `docs/rbac.md`.
 
 ## Architecture
 

@@ -44,6 +44,22 @@ header nav a {
   opacity: 0.85;
 }
 header nav a:hover { opacity: 1; text-decoration: underline; }
+/* Logout is a POST form, not a link (a GET logout can be fired by any third-party
+   page's <img>/<script> tag) -- these rules only make its button read as one more nav
+   item instead of the filled orange button the bare `button` rule below would give. */
+header nav form { display: inline; }
+header nav form button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 1.25rem;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  opacity: 0.85;
+  cursor: pointer;
+}
+header nav form button:hover { background: none; opacity: 1; text-decoration: underline; }
 
 main {
   max-width: 1000px;

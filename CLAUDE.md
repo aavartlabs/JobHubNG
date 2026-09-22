@@ -100,17 +100,22 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 cd ../whatsapp-sender
 npm install && npm test                    # pure-logic tests only, no live WhatsApp needed
+
+cd ../auth-service
+npm install && npm test                    # mocked Resend + a local stub for whatsapp-sender
+
+cd ../jobhub_poc/webapp/frontend
+npm install && npm test                    # pure-logic TS helpers only (node --test, no DOM)
 ```
 
 Run against the bundled real fixture without a live scraper:
 ```bash
 cd poc
-.venv/bin/python scripts/seed_demo_user.py     # creates WEB_ADMIN_USERNAME/PASSWORD login
 .venv/bin/python scripts/seed_demo_data.py     # loads fixtures/sample_everjobs_response_real.json
-.venv/bin/python -m jobhub_poc.webapp.app      # http://localhost:8100/jobs
+.venv/bin/python -m jobhub_poc.webapp.app      # http://localhost:8100/jobs   (public, no login)
 ```
 
-`poc/Makefile` shortcuts: `make venv`, `make test`, `make test-scraper`, `make seed`,
+`poc/Makefile` shortcuts: `make venv`, `make test`, `make test-scraper`,
 `make seed-demo-data`, `make web`, `make dump`, `make load DUMP=<path>`, `make purge`,
 `make alerts`, `make pipeline`.
 
@@ -147,18 +152,31 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - `SEARCH_TERMS` (comma-separated) / `RESULTS_PER_TERM` — client-side filter/cap applied
   after the single EverJobs fetch, since server-side query params aren't honored
 - `JOBHUB_SQLITE_PATH` / `PURGE_WINDOW_DAYS` — storage + freshness window
-- `WEB_PORT` / `WEB_SECRET_KEY` / `WEB_ADMIN_USERNAME` / `WEB_ADMIN_PASSWORD` — web app;
-  note the Docker Compose deployment force-overrides `WEB_PORT` to `3000` regardless of
-  what's in `.env` (see Cloudflare Tunnel note above) — don't trust `.env`'s `WEB_PORT` as
-  what the container binds to internally
+- `WEB_PORT` / `WEB_SECRET_KEY` — web app; note the Docker Compose deployment
+  force-overrides `WEB_PORT` to `3000` regardless of what's in `.env` (see Cloudflare
+  Tunnel note above) — don't trust `.env`'s `WEB_PORT` as what the container binds to
+  internally
+- `AUTH_SERVICE_URL` — where Flask reaches `poc/auth-service/` (compose overrides it to
+  `http://auth-service:3200`)
+- `WEB_ORIGIN` — this deployment's **public** origin. Compose passes it straight through to
+  `auth-service` as both `BETTER_AUTH_URL` and `TRUSTED_ORIGINS` and refuses to start if
+  it's unset, so it is the single place the public origin is configured. `poc/auth-service/.env`
+  has its own set (`BETTER_AUTH_SECRET`, `RESEND_*`, `WHATSAPP_GATEWAY_*`) — read that
+  file's comments, several of its defaults are correct only for non-Docker local dev
 - `NOTIFIER_BACKEND` (`console` | `whatsapp`) / `WHATSAPP_GATEWAY_URL` /
   `WHATSAPP_GATEWAY_API_KEY` — alert delivery backend
 
-## Demo Login (`poc` web app)
+## Accounts (`poc` web app)
 
-One shared login, seeded by `scripts/seed_demo_user.py` from `WEB_ADMIN_USERNAME`/
-`WEB_ADMIN_PASSWORD` in `poc/.env` — not per-user accounts. Credentials are host-specific
-env config, not in this file.
+Real self-service accounts, as of 2026-09-22 — the old single shared login (`app_users`,
+`WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD`, `scripts/seed_demo_user.py`) is gone, along with
+all three of those things. Identity lives in `poc/auth-service/`, a second container
+(`jobhub-auth`) running Better Auth over its own `auth.db`; Flask reverse-proxies `/auth/*`
+to it and issues no session cookie of its own. Signup is email + password + mobile, with
+both the email (Resend) and the mobile (the existing `whatsapp-sender` gateway) verified by
+OTP before the account can do anything. `/jobs` and `/api/jobs` are public; `/alerts/*`
+requires a fully verified account and is scoped to `alert_subscriptions.owner_auth_user_id`.
+See `docs/rbac.md` and `poc/auth-service/README.md`.
 
 ## Retired stack (`apps/`)
 

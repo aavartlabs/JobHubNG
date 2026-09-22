@@ -13,6 +13,7 @@ import requests
 from flask import Blueprint, Response, jsonify, request
 
 from jobhub_poc import config
+from jobhub_poc.webapp.auth import client_ip
 
 bp = Blueprint("auth_proxy", __name__)
 
@@ -35,14 +36,34 @@ _HOP_BY_HOP_HEADERS = {
 }
 _PROXY_TIMEOUT_SECONDS = 10
 
+# Forwarding headers a caller can set themselves. The auth-service rate-limits by client
+# IP (see poc/auth-service/src/auth.js) and reads that IP from X-Forwarded-For, so
+# relaying an inbound one verbatim would let any caller mint a fresh rate-limit bucket
+# per request -- on endpoints (/phone-number/send-otp, /email-otp/send-verification-otp)
+# that need no authentication and trigger a real WhatsApp or email send to an
+# attacker-chosen recipient. Dropped here and replaced with one value this app derives
+# itself; see auth.client_ip() for where that value comes from.
+_CLIENT_CONTROLLED_FORWARDING_HEADERS = {
+    "x-forwarded-for",
+    "x-real-ip",
+    "forwarded",
+}
+
 
 @bp.route("/auth/<path:subpath>", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 def proxy(subpath):
     outbound_headers = {
         key: value
         for key, value in request.headers.items()
-        if key.lower() not in _HOP_BY_HOP_HEADERS and key.lower() != "host"
+        if key.lower() not in _HOP_BY_HOP_HEADERS
+        and key.lower() not in _CLIENT_CONTROLLED_FORWARDING_HEADERS
+        and key.lower() != "host"
     }
+    # Exactly one value, never appended to an inbound chain: Better Auth only trusts a
+    # single-valued X-Forwarded-For (a comma-separated chain makes it fall back to one
+    # shared bucket for everyone) -- confirmed in
+    # node_modules/@better-auth/core/dist/utils/ip.mjs's getIPFromHeader.
+    outbound_headers["X-Forwarded-For"] = client_ip()
 
     try:
         upstream = requests.request(

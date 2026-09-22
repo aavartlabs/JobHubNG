@@ -8,13 +8,37 @@ Phase 0/1 Spring Boot runbook (`apps/`) is kept further down for context only.
 
 1. `cd poc && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 2. `cp .env.example .env` — defaults are fine for a local-only run
-3. `.venv/bin/python scripts/seed_demo_user.py` — creates the shared login
-   (`WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD` from `.env`)
-4. `.venv/bin/python scripts/seed_demo_data.py` — loads
+3. `.venv/bin/python scripts/seed_demo_data.py` — loads
    `fixtures/sample_everjobs_response_real.json` so there's data to browse without a live
    scraper
-5. `.venv/bin/python -m jobhub_poc.webapp.app` — http://localhost:8100/jobs
-6. Sign in with the credentials from step 3
+4. `.venv/bin/python -m jobhub_poc.webapp.app` — http://localhost:8100/jobs
+
+Browsing (`/jobs`, `/api/jobs`) is public and needs nothing else. There is no shared demo
+login any more — `scripts/seed_demo_user.py` and the `app_users` table are gone, replaced
+by real self-service accounts (see `docs/superpowers/specs/2026-09-22-user-accounts-auth-design.md`).
+
+### Accounts, locally
+
+Everything under `/alerts/*` requires a verified account, which lives in a second service:
+`poc/auth-service/` (Node + Better Auth, own `auth.db`). Flask reverse-proxies `/auth/*` to
+it, so it has to be running for `/login`, `/register`, `/verify` or `/alerts/*` to do
+anything:
+
+```bash
+cd poc/auth-service
+cp .env.example .env            # read the comments -- several defaults are dev-only
+npm install
+npx --yes @better-auth/cli@1.4.21 migrate --yes   # once, per fresh AUTH_DB_PATH
+npm start                        # :3200; Flask's AUTH_SERVICE_URL default points here
+```
+
+**You cannot fully register an account locally without real credentials.** Signup requires
+both an email OTP (sent via Resend — needs a real `RESEND_API_KEY` and a verified sending
+domain) and a mobile OTP (sent via the `whatsapp-sender` gateway — needs a QR-paired
+WhatsApp number). Without those, `/register` creates the account but neither code is ever
+delivered, so it can never become usable. What you *can* exercise locally without them:
+the public job browsing, the unit test suites, and the redirect behaviour of the gated
+routes. Full registration is verified against the real pi09 deployment, not locally.
 
 To exercise the real pipeline locally instead of the bundled fixture (requires a reachable
 EverJobs instance, `EVER_JOBS_API_URL` in `.env`), from `poc/`:
@@ -29,7 +53,8 @@ make alerts
 
 ### Cleanup
 
-Delete `poc/data/jobhub.db` to reset all state. No Docker or Postgres involvement for a
+Delete `poc/data/jobhub.db` to reset job/alert state, and `poc/auth-service/`'s `auth.db`
+(wherever `AUTH_DB_PATH` points) to reset accounts. No Docker or Postgres involvement for a
 local-only run — the `docker-compose.yml`/`Dockerfile` in `poc/` are for the pi09 deployment
 only.
 

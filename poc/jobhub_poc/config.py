@@ -15,8 +15,6 @@ PURGE_WINDOW_DAYS = int(os.environ.get("PURGE_WINDOW_DAYS", "15"))
 
 WEB_PORT = int(os.environ.get("WEB_PORT", "8100"))
 WEB_SECRET_KEY = os.environ.get("WEB_SECRET_KEY", "dev-only-change-me")
-WEB_ADMIN_USERNAME = os.environ.get("WEB_ADMIN_USERNAME", "admin")
-WEB_ADMIN_PASSWORD = os.environ.get("WEB_ADMIN_PASSWORD", "change-me")
 
 NOTIFIER_BACKEND = os.environ.get("NOTIFIER_BACKEND", "console")
 WHATSAPP_GATEWAY_URL = os.environ.get("WHATSAPP_GATEWAY_URL", "")

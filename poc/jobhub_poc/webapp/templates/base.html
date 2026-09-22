@@ -12,7 +12,8 @@
       <a href="{{ url_for('jobs.list_jobs') }}">Jobs</a>
       {% if g.current_user %}
         <a href="{{ url_for('alerts.list_alerts') }}">Alerts</a>
-        <a href="{{ url_for('auth.logout') }}">Logout</a>
+        {# POST, not a link -- see auth.py's logout(). #}
+        <form method="post" action="{{ url_for('auth.logout') }}"><button type="submit">Logout</button></form>
       {% else %}
         <a href="{{ url_for('auth.login') }}">Login</a>
         <a href="{{ url_for('auth.register') }}">Register</a>

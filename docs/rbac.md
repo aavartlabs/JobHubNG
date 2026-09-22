@@ -4,25 +4,41 @@
 for the full picture. The retired Phase 1 Spring Boot RBAC design (`apps/`) is kept further
 down for context only — it does not describe the live system.
 
-## Live system (`poc/`): one shared login, no RBAC
+## Live system (`poc/`): real accounts, ownership instead of roles
 
-There are no roles, permissions, or per-user accounts in `poc/`. `poc/jobhub_poc/webapp/auth.py`
-gates the entire app behind a single shared demo login: one row in the `app_users` table,
-seeded by `scripts/seed_demo_user.py` from `WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD`, checked
-via a Flask session and a `login_required` decorator applied uniformly to every blueprint
-(`jobs`, `alerts`, `api`). Anyone with the shared credentials has full access to everything —
-there is no admin/seeker/recruiter distinction, and no endpoint is more privileged than any
-other once logged in.
+There are still no roles or permissions in `poc/` — every account can do exactly the same
+things. What exists instead is **per-account ownership**: real self-service accounts, and
+alert subscriptions scoped to the account that created them. (The single shared demo login
+this section used to describe — `app_users`, `WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD`,
+`scripts/seed_demo_user.py` — was removed along with all three of those things; see
+`docs/superpowers/specs/2026-09-22-user-accounts-auth-design.md`.)
 
-| Endpoint | Requires login | Notes |
+Identity lives in a separate service, `poc/auth-service/` (Node + Better Auth, own
+`auth.db`), reached only through Flask's `/auth/*` reverse proxy. Flask issues no session
+cookie of its own: `poc/jobhub_poc/webapp/auth.py`'s `load_current_user` resolves the
+browser's Better Auth cookie against that service on each request (and makes **no** outbound
+call at all when the cookie is absent, so anonymous browsing doesn't depend on it being up).
+
+Two things must both be true for `login_required` to let a request through — a session
+exists, **and** its user has `emailVerified` and `phoneNumberVerified` both set. A session
+missing either is redirected to `/verify`, not to `/login`. This check in Flask is the only
+verification gate; the auth-service deliberately lets an unverified user sign in, so that
+someone who loses their session mid-verification can get back in to finish it.
+
+| Endpoint | Requires account | Notes |
 |---|---:|---|
-| `GET /jobs` | Yes | redirects to `/login` if unauthenticated |
-| `GET /api/jobs` | Yes | JSON, same login gate as the page |
-| `GET`/`POST /alerts/register` | Yes | any logged-in session can register any phone number |
-| `GET`/`POST /login`, `GET /logout` | No | the auth boundary itself |
+| `GET /jobs` | No | public |
+| `GET /api/jobs` | No | public JSON |
+| `GET`/`POST /alerts/register` | Yes | stamps `owner_auth_user_id` with the caller's id |
+| `GET /alerts` | Yes | lists only the caller's own subscriptions |
+| `POST /alerts/<id>/deactivate` | Yes | scoped to `id AND owner_auth_user_id`, so another user's row can't be touched by guessing an id |
+| `GET /login`, `/register`, `/verify` | No | the auth boundary itself |
+| `POST /logout` | No | POST-only, so a third-party page can't clear a session with an `<img>` tag |
+| `/auth/*` | No | byte-level passthrough to the auth-service, which does its own checks |
 
-Real multi-user account management does not exist and would need to be built from scratch —
-see `poc/PLAN.md`'s stretch section ("multi-user account management. Still not done").
+Ownership is enforced in SQL, not just in the UI — every alert query carries
+`owner_auth_user_id = ?`. There is still no admin/seeker/recruiter distinction and no
+endpoint more privileged than another.
 
 ## Retired: Phase 1 RBAC (`apps/`, Spring Boot, not live)
 

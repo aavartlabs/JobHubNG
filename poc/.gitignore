@@ -2,4 +2,14 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/*.db
+# SQLite state, at any depth under poc/. The `**/` matters: the plain `data/*.db` this
+# replaces was anchored to this file's own directory, so it covered poc/data/jobhub.db
+# but NOT poc/auth-service/data/auth.db -- which holds password hashes and live session
+# tokens. `-wal`/`-shm` sidecars are covered too; a WAL can contain unflushed rows.
+**/data/*.db
+**/data/*.db-wal
+**/data/*.db-shm
+# And the auth-service's data directory wholesale, so nothing that lands in it can be
+# committed by accident regardless of what it ends up being named. No tracked file has
+# ever lived under any poc/ data/ directory (verified), so nothing is un-tracked by this.
+auth-service/data/

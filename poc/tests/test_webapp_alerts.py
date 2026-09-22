@@ -66,21 +66,24 @@ def test_register_alert_malformed_phone_returns_400(conn, requests_mock):
     assert count == 0
 
 
-def test_register_alert_requires_login(conn):
+def test_register_alert_requires_login(conn, requests_mock):
     app = create_app(test_conn=conn)
     app.config["TESTING"] = True
     client = app.test_client()
     resp = client.post("/alerts/register", data={"phone_number": "+15551234567"})
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+    # No session cookie -> load_current_user must short-circuit without calling out.
+    assert requests_mock.call_count == 0
 
 
-def test_alerts_list_requires_login(conn):
+def test_alerts_list_requires_login(conn, requests_mock):
     app = create_app(test_conn=conn)
     app.config["TESTING"] = True
     resp = app.test_client().get("/alerts")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+    assert requests_mock.call_count == 0
 
 
 def test_alerts_list_only_shows_current_users_own_subscriptions(conn, requests_mock):
@@ -107,13 +110,14 @@ def test_deactivate_own_subscription_succeeds(conn, requests_mock):
     assert row["is_active"] == 0
 
 
-def test_deactivate_requires_login(conn):
+def test_deactivate_requires_login(conn, requests_mock):
     sub_id = _seed_subscription(conn, "auth-user-1")
     app = create_app(test_conn=conn)
     app.config["TESTING"] = True
     resp = app.test_client().post(f"/alerts/{sub_id}/deactivate")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+    assert requests_mock.call_count == 0
     row = conn.execute("SELECT is_active FROM alert_subscriptions WHERE id = ?", (sub_id,)).fetchone()
     assert row["is_active"] == 1
 

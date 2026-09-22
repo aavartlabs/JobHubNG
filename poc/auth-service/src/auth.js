@@ -2,10 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
-import { createAuthMiddleware } from "better-auth/api";
 import { emailOTP, phoneNumber } from "better-auth/plugins";
 
-import { requireVerifiedForSignIn } from "./hooks.js";
 import { sendEmailOTP } from "./email.js";
 import { sendPhoneOTP } from "./phone.js";
 
@@ -42,11 +40,49 @@ export const auth = betterAuth({
     // true) has a session to attach the verified phone number to.
     autoSignIn: true,
   },
-  hooks: {
-    // Gate *re*-authentication on both verification flags -- see
-    // src/hooks.js for why this can't (and doesn't try to) block the
-    // initial post-signup session.
-    before: createAuthMiddleware(requireVerifiedForSignIn),
+  // There is deliberately NO sign-in-time verification gate here. An earlier
+  // version blocked /sign-in/email for users whose emailVerified /
+  // phoneNumberVerified weren't both true; that permanently bricked any
+  // account whose owner lost the post-signup session mid-verification (close
+  // the tab, log out, let it expire) -- they could neither sign back in to
+  // finish verifying nor re-register (USER_ALREADY_EXISTS). The Flask app's
+  // login_required (poc/jobhub_poc/webapp/auth.py) already checks BOTH flags
+  // on every gated request and redirects to /verify when either is false,
+  // regardless of session state, and Flask is the only consumer of these
+  // sessions (the Cloudflare Tunnel's ingress is fixed to jobhub-web, so
+  // nothing else can reach this service). An unverified user signing in
+  // therefore gets a session that can do nothing but finish verification.
+  // If some future consumer ever reads these sessions directly, it needs its
+  // own equivalent check.
+  rateLimit: {
+    // Explicitly on, rather than relying on Better Auth's default of
+    // `enabled: isProduction` -- these endpoints trigger real WhatsApp and
+    // email sends to arbitrary, caller-supplied recipients without
+    // authentication, so "off unless NODE_ENV happens to be production" is
+    // not a safe default to depend on.
+    enabled: true,
+    // Global fallback for any path without a more specific rule below or a
+    // plugin rule of its own. Deliberately generous: /get-session is hit once
+    // per gated Flask request, so a tight global limit would throttle normal
+    // logged-in browsing, not abuse.
+    window: 60,
+    max: 120,
+    // Applied last, overriding both Better Auth's built-in special rules and
+    // the plugins' own (phone-number: 10/60s across /phone-number/*;
+    // email-otp: 3/60s on send-verification-otp). Paths here are relative to
+    // basePath, i.e. "/auth" is already stripped.
+    customRules: {
+      // Each call sends a real WhatsApp message to a caller-supplied number.
+      "/phone-number/send-otp": { window: 60, max: 5 },
+      // Verification attempts -- enough for a few fat-fingered codes, not
+      // enough to brute-force a 6-digit OTP.
+      "/phone-number/verify": { window: 60, max: 10 },
+      // Each call sends a real email to a caller-supplied address.
+      "/email-otp/send-verification-otp": { window: 60, max: 5 },
+      "/email-otp/verify-email": { window: 60, max: 10 },
+      "/sign-up/email": { window: 60, max: 5 },
+      "/sign-in/email": { window: 60, max: 10 },
+    },
   },
   plugins: [
     emailOTP({

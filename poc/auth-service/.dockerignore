@@ -1,5 +1,8 @@
 node_modules
 test
+# The compose deployment's AUTH_DB_PATH lives here (bind-mounted at runtime) -- it must
+# never be baked into the image.
+data
 auth.db
 auth.db-wal
 auth.db-shm

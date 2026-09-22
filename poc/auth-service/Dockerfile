@@ -23,6 +23,15 @@ RUN npm install --omit=dev --ignore-scripts
 # better-auth is ever bumped.
 RUN npm install --no-save --ignore-scripts @better-auth/cli@1.4.21
 COPY src ./src
+# Better Auth reads NODE_ENV in several places; the one that matters here is
+# that it refuses to start with an unset BETTER_AUTH_SECRET in production
+# (a guard worth having) and stops leaking framework error pages. Rate
+# limiting does NOT depend on this -- src/auth.js enables it explicitly --
+# but leaving NODE_ENV unset in a deployed container is wrong regardless.
+# Safe for cookie naming: with BETTER_AUTH_URL set (required, see
+# .env.example), the __Secure- prefix follows that URL's scheme, not
+# NODE_ENV.
+ENV NODE_ENV=production
 ENV PORT=3200
 EXPOSE 3200
 CMD ["sh", "-c", "node_modules/.bin/better-auth migrate --yes && node src/server.js"]

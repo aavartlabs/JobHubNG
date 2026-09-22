@@ -107,7 +107,7 @@ def test_logout_calls_sign_out_with_cookie_and_matching_origin_header(conn, requ
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
 
-    resp = client.get("/logout")
+    resp = client.post("/logout")
 
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
@@ -117,13 +117,29 @@ def test_logout_calls_sign_out_with_cookie_and_matching_origin_header(conn, requ
     assert SESSION_COOKIE_NAME in sent.headers.get("Cookie", "")
 
 
+def test_logout_rejects_get(conn, requests_mock):
+    """A GET logout can be fired by any third-party page's <img>/<script> tag, clearing a
+    visitor's session without their involvement. It must not be reachable that way."""
+    requests_mock.get(GET_SESSION_URL, json=None)
+    sign_out = requests_mock.post(SIGN_OUT_URL, json={"success": True})
+    _app, client = _app_and_client(conn)
+    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
+
+    resp = client.get("/logout")
+
+    assert resp.status_code == 405
+    # before_request still resolves a session on any request; what must not happen is
+    # the sign-out itself.
+    assert sign_out.call_count == 0
+
+
 def test_logout_deletes_both_possible_cookie_names(conn, requests_mock):
     requests_mock.get(GET_SESSION_URL, json=None)
     requests_mock.post(SIGN_OUT_URL, json={"success": True})
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
 
-    resp = client.get("/logout")
+    resp = client.post("/logout")
 
     set_cookie_headers = resp.headers.getlist("Set-Cookie")
     plain = next(h for h in set_cookie_headers if h.startswith("jobhub-auth.session_token="))
@@ -134,13 +150,34 @@ def test_logout_deletes_both_possible_cookie_names(conn, requests_mock):
     assert plain  # no such requirement for the unprefixed name
 
 
-def test_logout_survives_auth_service_being_unreachable(conn, requests_mock):
+def test_logout_survives_auth_service_being_unreachable(conn, requests_mock, caplog):
     requests_mock.get(GET_SESSION_URL, json=None)
     requests_mock.post(SIGN_OUT_URL, exc=requests.exceptions.ConnectionError)
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
 
-    resp = client.get("/logout")
+    resp = client.post("/logout")
 
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+    assert any(r.levelname == "WARNING" and "sign-out" in r.getMessage() for r in caplog.records)
+
+
+def test_logout_warns_but_still_logs_out_client_side_on_non_2xx_sign_out(conn, requests_mock, caplog):
+    """A non-2xx sign-out leaves the server-side session alive. The user must still end
+    up looking logged out (cookies cleared, redirected) -- failing the other way would
+    strand them logged in -- but the discrepancy must not pass silently."""
+    requests_mock.get(GET_SESSION_URL, json=None)
+    requests_mock.post(SIGN_OUT_URL, status_code=403, json={"code": "INVALID_ORIGIN"})
+    _app, client = _app_and_client(conn)
+    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
+
+    resp = client.post("/logout")
+
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+    set_cookie_headers = resp.headers.getlist("Set-Cookie")
+    assert any(h.startswith("jobhub-auth.session_token=") for h in set_cookie_headers)
+    assert any(h.startswith("__Secure-jobhub-auth.session_token=") for h in set_cookie_headers)
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert any("403" in r.getMessage() for r in warnings), caplog.text

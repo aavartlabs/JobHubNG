@@ -18,10 +18,13 @@
 
 <section id="phone-section" hidden>
   <h2>Phone code</h2>
-  <p>We've sent a code to your phone via WhatsApp.</p>
+  <p>We've sent a code to your phone via WhatsApp. Check the number below is the one you
+     registered with -- correct it and use "Resend phone code" if it isn't, or if you're
+     finishing this on a different device.</p>
   <p id="phone-error" class="error" hidden></p>
   <p id="phone-verified-msg" hidden>Phone verified.</p>
   <form id="phone-otp-form">
+    <label>Mobile number <input type="text" id="phone-number-input" inputmode="tel" autocomplete="tel" placeholder="+15551234567"></label>
     <label>Code <input type="text" id="phone-otp-code" inputmode="numeric" autocomplete="one-time-code" required></label>
     <button type="submit">Verify phone</button>
   </form>

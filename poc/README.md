@@ -35,8 +35,8 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
   is a small TypeScript client (no framework, built with esbuild) that
   fetches from it and renders the table -- `webapp/templates/jobs.html` is
   just a shell (filter form + empty `<tbody>`) that loads the compiled
-  `static/app.js`. Both the JSON API and the page shell are behind the same
-  login gate (`app_users`/session) as the rest of the app.
+  `static/app.js`. Both the JSON API and the page shell are **public** --
+  browsing jobs needs no account. Only `/alerts/*` is gated.
 - **Production**: `jobhubs.aavartlabs.com` (Cloudflare Tunnel, already
   running on pi09) has a **fixed** target of `http://jobhub-web:3000` on the
   `jobhub` Docker network -- set remotely in Cloudflare's dashboard, not
@@ -47,6 +47,16 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
   (and the `postgres`/`platform-api`/`agent-runtime` containers, all
   retired) in place, with no tunnel downtime -- Docker's embedded DNS
   re-resolves `jobhub-web` to whatever container currently holds that name.
+- **Accounts (pi09)**: `auth-service/`, a second small Node container
+  (`jobhub-auth`) running Better Auth with its own SQLite file (`auth.db`,
+  separate from `jobhub.db`). Flask reverse-proxies `/auth/*` to it over the
+  internal `jobhub` network -- it publishes no host port, since the
+  Cloudflare Tunnel's ingress is fixed to `jobhub-web` and Flask is the only
+  public entrypoint. Self-service signup: email + password + mobile, with the
+  email verified by a Resend OTP and the mobile by an OTP through the same
+  `whatsapp-sender` gateway the alerts use. Alert subscriptions are owned per
+  account (`alert_subscriptions.owner_auth_user_id`). See
+  `auth-service/README.md`.
 - **Alerts**: real registration + matching logic ships now; only a
   `ConsoleNotifier` (stdout + `alerts_sent` table) backs it for the POC. A
   real WhatsApp notifier is a one-line `NOTIFIER_BACKEND` swap once someone
@@ -71,10 +81,15 @@ live scraper:
 
 ```bash
 cd poc
-.venv/bin/python scripts/seed_demo_user.py     # creates WEB_ADMIN_USERNAME/PASSWORD login
 .venv/bin/python scripts/seed_demo_data.py     # loads fixtures/sample_everjobs_response_real.json
 .venv/bin/python -m jobhub_poc.webapp.app      # http://localhost:8100/jobs
 ```
+
+`/jobs` and `/api/jobs` are public, so that's all you need to browse. `/alerts/*`
+needs a verified account, which needs `auth-service/` running alongside -- and a
+full registration needs real Resend + WhatsApp credentials, so it can't be
+completed on a bare local checkout. See `docs/runbook.md` for what is and isn't
+possible locally.
 
 ## Deployment
 
@@ -115,5 +130,8 @@ cd poc
 - "Location" filtering in the web UI is client-side over whatever `location`
   field a scraped job happens to have -- EverJobs itself can't be asked for
   jobs in a specific place.
-- One shared demo login (`WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD`), not
-  per-user accounts.
+- Accounts are usable only once *both* the email and mobile OTP are
+  verified, and there is no password-reset or "claim my existing alert" flow
+  yet. The 4 alert subscriptions that predate accounts keep running unowned
+  (`owner_auth_user_id IS NULL`) -- they still fire, but nobody can see or
+  manage them through the UI.

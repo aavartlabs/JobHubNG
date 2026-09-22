@@ -34,6 +34,21 @@ services:
       # survive a container recreate). Must stay under /app/data to actually land on the
       # mounted volume.
       AUTH_DB_PATH: /app/data/auth.db
+      # Same reason: auth-service/.env.example's localhost:3100 default is correct for
+      # plain local dev but resolves to the auth-service container itself in here. The
+      # whatsapp service below is reached by its compose service name over the jobhub
+      # network. Set here rather than left to whoever fills in the real .env, because
+      # getting it wrong fails only at the first real OTP send.
+      WHATSAPP_GATEWAY_URL: http://whatsapp:3100
+      # Both of these must be the PUBLIC origin the browser (and Flask) talk to -- not
+      # this service's internal address, which is what auth-service/.env.example's
+      # standalone-dev defaults use. WEB_ORIGIN comes from poc/.env (the same value
+      # Flask's own /logout sends as its Origin header), so there is exactly one place
+      # to set the public origin for the whole deployment. `:?` on purpose: a silently
+      # wrong origin here means https session cookies issued without Secure and 403s on
+      # sign-out, which is worse than compose refusing to start.
+      BETTER_AUTH_URL: ${WEB_ORIGIN:?set WEB_ORIGIN in poc/.env to this deployment's public origin, e.g. https://jobhubs.aavartlabs.com}
+      TRUSTED_ORIGINS: ${WEB_ORIGIN:?set WEB_ORIGIN in poc/.env to this deployment's public origin, e.g. https://jobhubs.aavartlabs.com}
     volumes:
       - ./auth-service/data:/app/data
     networks:

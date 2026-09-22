@@ -13,19 +13,48 @@ Own user table with `phoneNumber`/`phoneNumberVerified` columns (added by
 Better Auth's `phoneNumber` plugin); the Flask app's own user/session
 concepts are untouched by this service.
 
-## Why both email *and* phone must be verified
+## Where "both email *and* phone must be verified" is enforced
 
-Sign-in (`POST /auth/sign-in/email`) is blocked by `src/hooks.js` unless the
-target user's `emailVerified` **and** `phoneNumberVerified` are both `true`.
-This is belt-and-suspenders, not the only gate: Better Auth's
-`emailAndPassword.autoSignIn` (on by default) means a brand-new user already
-holds a session immediately after `POST /auth/sign-up/email`, before either
-flag is set -- that session is what lets `phoneNumber.verify` attach a
-verified phone number to it. The hook can't (and doesn't try to) block that
-initial post-signup session; it only blocks *re*-authentication once that
-session expires or the user logs out. The Flask app's own `login_required`
-(a separate task) is what closes the remaining gap by checking both flags on
-every gated request, not just at sign-in.
+**Not here.** This service will happily issue a session to a user who has
+verified neither. The single enforcement point is the Flask app's
+`login_required` (`poc/jobhub_poc/webapp/auth.py`), which checks
+`emailVerified` **and** `phoneNumberVerified` on the `get-session` response
+of every gated request and redirects to `/verify` if either is false --
+regardless of session state, so there is no window it misses.
+
+An earlier version of this service also gated `POST /auth/sign-in/email` on
+both flags, as belt-and-suspenders. That was removed: it permanently bricked
+any account whose owner lost the post-signup session before finishing
+verification (closed the tab, logged out, let it expire). Such a user could
+not sign back in to resume -- the gate refused them -- and could not
+re-register either, because the email already existed
+(`USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL`). The gate covered no attack
+surface Flask's own check misses, since Flask is the only consumer of these
+sessions (the Cloudflare Tunnel's ingress is fixed to `jobhub-web`, so
+nothing else can reach this service at all), and it cost real accounts.
+
+Note the corollary: an unverified user's session is real but useless -- the
+only thing it can do is complete verification. If some future consumer ever
+reads these sessions directly instead of going through Flask, it needs its
+own equivalent check.
+
+## Rate limiting
+
+`src/auth.js` sets `rateLimit.enabled: true` explicitly rather than relying
+on Better Auth's default (`enabled: isProduction`), because these endpoints
+send real WhatsApp messages and real emails to unauthenticated,
+caller-supplied recipients -- "on unless NODE_ENV says otherwise" is not a
+safe default to inherit. Limits are per (client IP, path) over a rolling
+window: 5/60s on each of the two OTP-*send* endpoints, 10/60s on the verify
+endpoints and sign-in, 5/60s on sign-up, and a deliberately generous 120/60s
+global fallback (`/get-session` is hit once per gated Flask request, so a
+tight global limit would throttle ordinary logged-in browsing rather than
+abuse).
+
+The client IP comes from `X-Forwarded-For`. Flask **strips** any inbound
+`X-Forwarded-For`/`X-Real-IP`/`Forwarded` and sets a single value it derives
+itself (`auth_proxy.py`, `auth.client_ip()`) -- otherwise a caller could
+hand themselves a fresh bucket per request just by varying the header.
 
 ## API surface
 
@@ -39,8 +68,8 @@ Auth's.
   session cookie set and `{token, user}` in the body. **Don't pass
   `phoneNumber` here** -- see the "phone verification" note below.
 - `POST /auth/sign-in/email` `{email, password}` -> `200` with a session
-  cookie once both verification flags are `true`; `403
-  EMAIL_AND_PHONE_VERIFICATION_REQUIRED` otherwise (see `src/hooks.js`).
+  cookie, whether or not the user is verified (see above -- Flask, not this
+  service, is the verification gate).
 - `POST /auth/sign-out` -> `200 {"success": true}`, clears the session
   cookie. Requires a matching `Origin` header -- see below.
 - `GET /auth/get-session` -> `{"session": {...}, "user": {...}}` when the
@@ -51,7 +80,13 @@ Auth's.
 - `POST /auth/email-otp/verify-email` `{email, otp}` -> `200` with the
   updated user (`emailVerified: true`) on success.
 - `POST /auth/phone-number/send-otp` `{phoneNumber}` -> `200 {"message":
-  "code sent"}`. Triggers `src/phone.js`'s `sendPhoneOTP`.
+  "code sent"}`. Triggers `src/phone.js`'s `sendPhoneOTP`. **This does not
+  write `phoneNumber` to the user's row** -- it only stores a verification
+  record keyed by the number itself. So `get-session` still reports
+  `phoneNumber: null` afterwards, and the caller must remember the number it
+  sent a code to in order to verify it (the web app does this in
+  `sessionStorage` plus an editable field on `/verify`; see
+  `poc/jobhub_poc/webapp/frontend/src/pending_phone.ts`).
 - `POST /auth/phone-number/verify` `{phoneNumber, code, updatePhoneNumber:
   true}` -> `200` with the updated user (`phoneNumberVerified: true`) on
   success. **`updatePhoneNumber: true` and an active (cookie-bearing)
@@ -88,11 +123,16 @@ calls fail with `403 MISSING_OR_NULL_ORIGIN`.
 
 `advanced.cookiePrefix: "jobhub-auth"` in `src/auth.js` names the cookie
 `jobhub-auth.session_token` -- but Better Auth prepends `__Secure-` to that
-name whenever the connection is treated as secure (an `https://` `BETTER_AUTH_URL`,
-or `NODE_ENV=production`), making the real name
-`__Secure-jobhub-auth.session_token`. This isn't something `src/auth.js`
-controls directly; whatever consumes this cookie needs to match on how the
-service is actually being reached in that environment.
+name (and sets the `Secure` attribute) whenever it treats the connection as
+secure, making the real name `__Secure-jobhub-auth.session_token`. With
+`BETTER_AUTH_URL` set -- which it always must be, see `.env.example` -- that
+decision follows **that URL's scheme**, not `NODE_ENV`: an `https://` value
+gives the prefixed name, an `http://` value the plain one, even with
+`NODE_ENV=production` (which the Dockerfile sets). Confirmed by running this
+service directly. This isn't something `src/auth.js` controls; whatever
+consumes this cookie needs to match on how the service is actually reached
+in that environment, which is why `poc/jobhub_poc/webapp/auth.py` checks
+both names.
 
 ## Awaiting OTP sends is intentional
 

@@ -2,7 +2,9 @@
   "name": "jobhub-poc-frontend",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
+    "test": "node --test",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && esbuild src/app.ts --bundle --minify --outfile=../static/app.js && esbuild src/auth.ts --bundle --minify --outfile=../static/auth.js"
   },
