@@ -43,9 +43,10 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
 
 **Two data tiers (Stage 2, 2026-09-23).** All tunables live in `poc/config/pipeline.ini`
 (read by `jobhub_poc/pipeline_config.py`, stdlib-only because pi05 imports it; env override
-`JOBHUB_PIPELINE_<SECTION>_<KEY>`; unknown keys are errors). **Cutover status:** until T7 is
-done, pi09's timer still runs the old `scripts/run_pipeline.sh` (filtered dump → `load_dump`);
-the new path is `scripts/run_pipeline_warehouse.sh`, and the old script stays as rollback.
+`JOBHUB_PIPELINE_<SECTION>_<KEY>`; unknown keys are errors). **Cutover done 2026-09-23 ~19:35 IST**: pi09's timer runs `scripts/run_pipeline_warehouse.sh`;
+the old `scripts/run_pipeline.sh` (filtered dump → `load_dump`) is kept only as rollback (switch
+`ExecStart` back in `~/.config/systemd/user/jobhub-pipeline.service`). The old dump archives
+(`dumps/` on both Pis, ~132 MB each) are no longer written or read.
 
 - **Warehouse (pi05, `~/jobhub-poc/scraper/data/warehouse.db`)**: `scraper/ingest.py` upserts
   the *whole* EverJobs sweep, unfiltered — same EverJobs id or same fingerprint (normalised
