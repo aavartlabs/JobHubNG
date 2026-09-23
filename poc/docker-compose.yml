@@ -16,6 +16,9 @@ services:
       # publishes no host port. Port 3200 matches auth-service's own PORT default
       # (src/server.js / .env.example), not an arbitrary choice.
       AUTH_SERVICE_URL: http://auth-service:3200
+      # The shared .env's WHATSAPP_GATEWAY_URL is localhost, right for the alert CLIs on
+      # the host but not inside this container (admin sign-in codes are sent from here).
+      WHATSAPP_GATEWAY_URL: http://whatsapp:3100
     volumes:
       - ./data:/app/data
     ports:
