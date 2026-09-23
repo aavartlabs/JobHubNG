@@ -1,0 +1,11 @@
+# Installed on pi09 as ~/.config/systemd/user/jobshub-restore-drill.service.
+[Unit]
+Description=JobsHub weekly restore drill (download + verify the newest MinIO backups)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/jobhub-poc
+ExecStart=%h/jobhub-poc/.venv/bin/python -m jobhub_poc.ops.restore_drill
+StandardOutput=append:%h/jobhub-poc/backup.log
+StandardError=append:%h/jobhub-poc/backup.log

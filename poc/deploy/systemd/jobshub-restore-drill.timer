@@ -1,0 +1,11 @@
+# Installed on pi09 as ~/.config/systemd/user/jobshub-restore-drill.timer.
+# Sundays 04:00 IST: after that night's 02:30 backup, clear of the 06:00 pipeline run.
+[Unit]
+Description=Weekly JobsHub restore drill
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00 Asia/Kolkata
+Persistent=true
+
+[Install]
+WantedBy=timers.target

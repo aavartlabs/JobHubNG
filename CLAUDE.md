@@ -209,6 +209,12 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `jobshub-data` only — no delete, no other buckets. Its keys are in `~/.jobshub-minio.env`
   (0600) on pi05/pi06/pi09 and reach `mc` only via `MC_HOST_jb`, never argv. `mc` is
   `~/bin/mc` on pi05/pi09.
+- **Restore drill (weekly):** `jobshub-restore-drill.timer` on pi09 (Sundays 04:00 IST) runs
+  `python -m jobhub_poc.ops.restore_drill`: for each DB it takes the newest daily backup
+  (FAIL if > 2 days old — backups stopped), checks the upload sha256, decompresses, runs
+  `PRAGMA integrity_check` and checks key tables aren't empty. Results in `backup.log`
+  (`PASS/FAIL host/db [date] ...`); a failure also fails the unit
+  (`systemctl --user status jobshub-restore-drill` on pi09). Nothing alerts anyone yet.
 - **Restore:** on any host with the env file:
   `set -a; . ~/.jobshub-minio.env; set +a; export MC_HOST_jb="http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@${MINIO_ENDPOINT#*://}"`,
   then `~/bin/mc ls jb/jobshub-data/backups/daily/` → `~/bin/mc cp jb/jobshub-data/backups/daily/<date>/<host>/<db>.gz .`
