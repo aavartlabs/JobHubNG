@@ -185,15 +185,25 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 
 ## Accounts (`poc` web app)
 
-Real self-service accounts, live since 2026-09-23 — the old single shared login (`app_users`,
-`WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD`, `scripts/seed_demo_user.py`) is gone, along with
-all three of those things. Identity lives in `poc/auth-service/`, a second container
-(`jobhub-auth`) running Better Auth over its own `auth.db`; Flask reverse-proxies `/auth/*`
-to it and issues no session cookie of its own. Signup is email + password + mobile, with
-both the email (Resend) and the mobile (the existing `whatsapp-sender` gateway) verified by
-OTP before the account can do anything. `/jobs` and `/api/jobs` are public; `/alerts/*`
-requires a fully verified account and is scoped to `alert_subscriptions.owner_auth_user_id`.
-See `docs/rbac.md` and `poc/auth-service/README.md`.
+Real self-service accounts, live since 2026-09-23. Identity lives in `poc/auth-service/`, a
+second container (`jobhub-auth`) running Better Auth over its own `auth.db`; Flask
+reverse-proxies `/auth/*` to it and issues no site-user session of its own. Signup is
+email + password + mobile, with both the email (Resend) and the mobile (the existing
+`whatsapp-sender` gateway) verified by OTP before the account can do anything. `/jobs` and
+`/api/jobs` are public; `/alerts/*` requires a fully verified account and is scoped to
+`alert_subscriptions.owner_auth_user_id`.
+
+**Cloudflare Turnstile** gates signup, login, every OTP send, the alert form and the admin
+login. Fetch-driven pages send a per-request token as `X-Turnstile-Token`; `auth_proxy.py`'s
+`_TURNSTILE_ACTIONS` maps each protected Better Auth path to its action, and
+`webapp/turnstile.py` checks success + action + hostname and fails closed. Adding a new
+Better Auth endpoint that sends a message or checks a password means adding it there.
+
+**Admin console (`/admin`)** is separate from site users: an `app_users` row in `jobhub.db`,
+Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +
+per-username lockout (`admin_login_attempts`). It edits users through auth-service's
+`/internal/admin/*` API (`auth-service/src/admin.js`, key `AUTH_ADMIN_API_KEY`), which lives
+outside `/auth/*` so the public proxy can never reach it. See `docs/rbac.md` and `poc/auth-service/README.md`.
 
 ## Retired stack (`apps/`)
 

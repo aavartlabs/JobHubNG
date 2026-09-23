@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, g, redirect, render_template, request, url_for
 
+from jobhub_poc.webapp import turnstile
 from jobhub_poc.webapp.auth import login_required
 
 bp = Blueprint("alerts", __name__)
@@ -15,6 +16,11 @@ _PHONE_RE = re.compile(r"^\+?[0-9]{7,15}$")
 def register():
     if request.method == "GET":
         return render_template("alerts_register.html")
+
+    # This form picks which WhatsApp number receives alerts, so it's bot-checked even
+    # though only verified accounts can reach it.
+    if not turnstile.verify(request.form.get("cf-turnstile-response"), "alert_register"):
+        return render_template("alerts_register.html", error="Bot check failed or expired. Please try again."), 403
 
     phone = request.form.get("phone_number", "").strip()
     if not _PHONE_RE.match(phone):

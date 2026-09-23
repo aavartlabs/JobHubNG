@@ -1,8 +1,9 @@
 """Owner identity, sourced from poc/auth-service/ (a standalone Better Auth companion
-service), not from anything stored by this Flask app itself. There is no local
-app_users table or Flask session anymore -- g.current_user is populated fresh on every
-request from the auth-service's own session cookie, via load_current_user() below
-(registered as app.before_request in app.py).
+service), not from anything stored by this Flask app itself -- g.current_user is
+populated fresh on every request from the auth-service's own session cookie, via
+load_current_user() below (registered as app.before_request in app.py). The app_users
+table and Flask's own session cookie belong only to the admin console (admin.py) and
+never make anyone a site user.
 """
 import functools
 

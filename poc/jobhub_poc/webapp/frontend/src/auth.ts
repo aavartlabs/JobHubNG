@@ -9,6 +9,7 @@ import {
   resolvePhoneNumber,
   savePendingPhone,
 } from "./pending_phone";
+import { getTurnstileToken } from "./turnstile";
 
 interface AuthUser {
   id: string;
@@ -41,13 +42,29 @@ function pendingPhoneStorage(): PendingPhoneStorage | null {
   }
 }
 
-async function postJson(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: any }> {
+const BOT_CHECK_FAILED = "Bot check failed or didn't load. Please try again.";
+
+/** `action` marks a Turnstile-protected endpoint (see auth_proxy.py's
+    _TURNSTILE_ACTIONS): a fresh token for it is sent as X-Turnstile-Token. */
+async function postJson(
+  path: string,
+  body: unknown,
+  action?: string,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (action) {
+    try {
+      headers["X-Turnstile-Token"] = await getTurnstileToken(action);
+    } catch {
+      return { ok: false, status: 0, data: { message: BOT_CHECK_FAILED } };
+    }
+  }
   let resp: Response;
   try {
     resp = await fetch(path, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
   } catch {
@@ -102,7 +119,7 @@ function initLogin(): void {
     const email = (document.getElementById("login-email") as HTMLInputElement | null)?.value.trim() ?? "";
     const password = (document.getElementById("login-password") as HTMLInputElement | null)?.value ?? "";
 
-    const { ok, data } = await postJson("/auth/sign-in/email", { email, password });
+    const { ok, data } = await postJson("/auth/sign-in/email", { email, password }, "login");
     if (!ok) {
       showError(errorEl, errorMessage(data, "Could not log in. Check your email and password."));
       return;
@@ -130,7 +147,7 @@ function initRegister(): void {
     // phone-number/verify later refuses to attach a number that "already exists" on any
     // user, including the requester's own just-created one (confirmed in Task 1). Sign-up
     // leaves us with an active session (autoSignIn), which the next two calls need.
-    const signUp = await postJson("/auth/sign-up/email", { name, email, password });
+    const signUp = await postJson("/auth/sign-up/email", { name, email, password }, "signup");
     if (!signUp.ok) {
       showError(errorEl, errorMessage(signUp.data, "Could not create your account."));
       return;
@@ -147,8 +164,8 @@ function initRegister(): void {
     // 3 & 4. Trigger both OTP sends as separate steps, then move on to /verify
     // regardless of their outcome -- that page re-derives status from get-session and
     // offers its own resend affordances, so this is best-effort here.
-    await postJson("/auth/phone-number/send-otp", { phoneNumber });
-    await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" });
+    await postJson("/auth/phone-number/send-otp", { phoneNumber }, "send_phone_otp");
+    await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" }, "send_email_otp");
 
     window.location.href = "/verify";
   });
@@ -259,7 +276,17 @@ function initVerify(): void {
   resendEmailBtn?.addEventListener("click", async () => {
     resendEmailBtn.disabled = true;
     resendEmailBtn.textContent = "Sending...";
-    await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" });
+    const { ok, data } = await postJson(
+      "/auth/email-otp/send-verification-otp",
+      { email, type: "email-verification" },
+      "send_email_otp",
+    );
+    if (!ok) {
+      showError(emailError, errorMessage(data, "Couldn't send a new code. Try again."));
+      resendEmailBtn.textContent = "Resend email code";
+      resendEmailBtn.disabled = false;
+      return;
+    }
     resendEmailBtn.textContent = "Code sent again -- resend email code";
     window.setTimeout(() => {
       resendEmailBtn.disabled = false;
@@ -299,7 +326,7 @@ function initVerify(): void {
     // /verify prefills the number they just asked a code for, not a stale one.
     savePendingPhone(storage, phoneNumber);
     resendPhoneBtn.disabled = true;
-    const { ok, data } = await postJson("/auth/phone-number/send-otp", { phoneNumber });
+    const { ok, data } = await postJson("/auth/phone-number/send-otp", { phoneNumber }, "send_phone_otp");
     resendPhoneBtn.disabled = false;
     if (!ok) {
       showError(phoneError, errorMessage(data, "Couldn't send a code to that number. Check it and try again."));

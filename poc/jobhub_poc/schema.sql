@@ -48,3 +48,22 @@ CREATE TABLE IF NOT EXISTS alerts_sent (
     status            TEXT NOT NULL,
     UNIQUE(subscription_id, job_id)
 );
+
+-- Admin console login (webapp/admin.py). Not end users -- those live in auth-service's
+-- own auth.db. Set or rotate a password with scripts/set_admin_password.py.
+CREATE TABLE IF NOT EXISTS app_users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    username       TEXT NOT NULL UNIQUE,
+    password_hash  TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+
+-- Admin login brute-force counters, one row per "ip:<addr>" or "user:<name>" key.
+-- locked_until is an ISO-8601 UTC timestamp; lock_count drives the doubling backoff.
+CREATE TABLE IF NOT EXISTS admin_login_attempts (
+    key           TEXT PRIMARY KEY,
+    failures      INTEGER NOT NULL DEFAULT 0,
+    lock_count    INTEGER NOT NULL DEFAULT 0,
+    locked_until  TEXT,
+    updated_at    TEXT NOT NULL
+);

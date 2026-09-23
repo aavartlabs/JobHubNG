@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_turnstile.html" as turnstile with context %}
 {% block content %}
 <h1>Register a job alert</h1>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
@@ -6,6 +7,7 @@
   <label>Phone number <input type="text" name="phone_number" placeholder="+15551234567" required></label>
   <label>Title contains <input type="text" name="title_keyword" placeholder="(optional)"></label>
   <label>Location contains <input type="text" name="location_keyword" placeholder="(optional)"></label>
+  {{ turnstile.widget("alert_register") }}
   <button type="submit">Register</button>
 </form>
 {% endblock %}

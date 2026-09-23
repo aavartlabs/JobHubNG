@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Registered users</h1>
+<p>{{ users|length }} user{{ "" if users|length == 1 else "s" }}.</p>
+{% if users %}
+<table>
+  <thead>
+    <tr><th>Name</th><th>Email</th><th>Mobile</th><th>State</th><th>Sessions</th><th>Alerts</th><th>Joined</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td>{{ u.name }}</td>
+      <td>{{ u.email }} {{ "✓" if u.emailVerified else "✗" }}</td>
+      <td>{{ u.phoneNumber or "—" }} {{ "✓" if u.phoneNumberVerified else "✗" }}</td>
+      <td>
+        {% if u.emailVerified and u.phoneNumberVerified %}Verified
+        {% elif not u.emailVerified and not u.phoneNumberVerified %}Pending email + phone
+        {% elif not u.emailVerified %}Pending email
+        {% else %}Pending phone{% endif %}
+      </td>
+      <td>{{ u.activeSessions }}</td>
+      <td>{{ u.subscriptions }}</td>
+      <td>{{ u.createdAt[:10] }}</td>
+      <td><a href="{{ url_for('admin.edit_user', user_id=u.id) }}">Manage</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

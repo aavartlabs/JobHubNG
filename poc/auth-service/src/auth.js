@@ -13,13 +13,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // this service owns its own user/session/verification tables.
 const DB_PATH = process.env.AUTH_DB_PATH || path.join(__dirname, "..", "auth.db");
 
+// Shared with src/admin.js (the internal admin API), so both use one connection.
+export const db = new Database(DB_PATH);
+
 const trustedOrigins = (process.env.TRUSTED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
 export const auth = betterAuth({
-  database: new Database(DB_PATH),
+  database: db,
   basePath: "/auth",
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,

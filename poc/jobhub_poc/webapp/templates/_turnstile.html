@@ -1,0 +1,15 @@
+{# Server-rendered forms: Turnstile's implicit render adds a hidden cf-turnstile-response
+   field to the enclosing <form>, which the handler checks via turnstile.verify(). #}
+{% macro widget(action) -%}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<div class="cf-turnstile" data-sitekey="{{ turnstile_sitekey }}" data-action="{{ action }}"></div>
+{%- endmacro %}
+
+
+{# fetch()-driven pages (login/register/verify): frontend/src/turnstile.ts renders one
+   widget per protected call into #turnstile-container and sends the token as a header. #}
+{% macro explicit() -%}
+<meta name="turnstile-sitekey" content="{{ turnstile_sitekey }}">
+<div id="turnstile-container"></div>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+{%- endmacro %}

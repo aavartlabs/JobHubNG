@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -34,3 +35,33 @@ AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:3200")
 # calls through auth_proxy.py already send this same origin automatically and don't need
 # this value; it exists only for Flask's own direct server-to-server call.
 WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
+
+
+def hostnames_from_origin(origin):
+    return {urlparse(origin).hostname} if urlparse(origin).hostname else set()
+
+
+# Cloudflare Turnstile (webapp/turnstile.py). The sitekey is public; the secret is not.
+# Get both from the Turnstile widget in the Cloudflare dashboard. For local dev without a
+# real widget, Cloudflare's published test pair (sitekey 1x00000000000000000000AA, secret
+# 1x0000000000000000000000000000000AA) works only with TURNSTILE_ALLOW_TEST_KEYS=1.
+TURNSTILE_SITEKEY = os.environ.get("TURNSTILE_SITEKEY", "")
+CF_TURNSTILE_SECRET = os.environ.get("CF_TURNSTILE_SECRET", "")
+# Hostnames a token must have been solved on. Defaults to WEB_ORIGIN's host, so a
+# production deployment never accepts a token solved on localhost.
+TURNSTILE_HOSTNAMES = {
+    h.strip() for h in os.environ.get("TURNSTILE_HOSTNAMES", "").split(",") if h.strip()
+} or hostnames_from_origin(WEB_ORIGIN)
+TURNSTILE_ALLOW_TEST_KEYS = os.environ.get("TURNSTILE_ALLOW_TEST_KEYS", "") == "1"
+
+# Shared key for auth-service's /internal/admin/* API (auth-service/src/admin.js), which
+# the admin pages use to list/edit/delete users. docker-compose.yml passes this same value
+# to auth-service as ADMIN_API_KEY. Empty disables the admin user pages.
+AUTH_ADMIN_API_KEY = os.environ.get("AUTH_ADMIN_API_KEY", "")
+
+# Admin login brute-force lockout (webapp/admin.py): after ADMIN_MAX_FAILURES failed
+# attempts from one IP or against one username, lock that key for ADMIN_LOCKOUT_MINUTES,
+# doubling on each further lockout, capped at ADMIN_LOCKOUT_MAX_MINUTES.
+ADMIN_MAX_FAILURES = int(os.environ.get("ADMIN_MAX_FAILURES", "5"))
+ADMIN_LOCKOUT_MINUTES = int(os.environ.get("ADMIN_LOCKOUT_MINUTES", "15"))
+ADMIN_LOCKOUT_MAX_MINUTES = int(os.environ.get("ADMIN_LOCKOUT_MAX_MINUTES", str(24 * 60)))

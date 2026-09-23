@@ -38,12 +38,13 @@ def _seed_subscription(conn, owner_id, phone="+15550001111"):
     return cur.lastrowid
 
 
-def test_register_alert_creates_subscription_row(conn, requests_mock):
+def test_register_alert_creates_subscription_row(conn, requests_mock, turnstile_calls):
     client = _logged_in_client(conn, requests_mock)
     resp = client.post("/alerts/register", data={
         "phone_number": "+15551234567",
         "title_keyword": "engineer",
         "location_keyword": "remote",
+        "cf-turnstile-response": "good-token",
     })
     assert resp.status_code in (200, 302)
     row = conn.execute("SELECT * FROM alert_subscriptions WHERE phone_number = '+15551234567'").fetchone()
@@ -51,19 +52,38 @@ def test_register_alert_creates_subscription_row(conn, requests_mock):
     assert row["title_keyword"] == "engineer"
 
 
-def test_register_alert_stamps_current_users_owner_id(conn, requests_mock):
+def test_register_alert_stamps_current_users_owner_id(conn, requests_mock, turnstile_calls):
     client = _logged_in_client(conn, requests_mock, user_id="auth-user-42")
-    client.post("/alerts/register", data={"phone_number": "+15551234567"})
+    client.post("/alerts/register", data={"phone_number": "+15551234567", "cf-turnstile-response": "good-token"})
     row = conn.execute("SELECT * FROM alert_subscriptions WHERE phone_number = '+15551234567'").fetchone()
     assert row["owner_auth_user_id"] == "auth-user-42"
 
 
-def test_register_alert_malformed_phone_returns_400(conn, requests_mock):
+def test_register_alert_malformed_phone_returns_400(conn, requests_mock, turnstile_calls):
     client = _logged_in_client(conn, requests_mock)
-    resp = client.post("/alerts/register", data={"phone_number": "not-a-phone"})
+    resp = client.post("/alerts/register", data={"phone_number": "not-a-phone", "cf-turnstile-response": "good-token"})
     assert resp.status_code == 400
     count = conn.execute("SELECT COUNT(*) AS c FROM alert_subscriptions").fetchone()["c"]
     assert count == 0
+
+
+def test_register_alert_without_valid_turnstile_token_is_rejected(conn, requests_mock, turnstile_calls):
+    client = _logged_in_client(conn, requests_mock)
+    for data in ({"phone_number": "+15551234567"},
+                 {"phone_number": "+15551234567", "cf-turnstile-response": "forged"}):
+        resp = client.post("/alerts/register", data=data)
+        assert resp.status_code == 403
+    assert conn.execute("SELECT COUNT(*) AS c FROM alert_subscriptions").fetchone()["c"] == 0
+    assert turnstile_calls[-1] == ("forged", "alert_register")
+
+
+def test_register_alert_form_renders_turnstile_widget(conn, requests_mock, monkeypatch):
+    monkeypatch.setattr(config, "TURNSTILE_SITEKEY", "sitekey-123")
+    client = _logged_in_client(conn, requests_mock)
+    html = client.get("/alerts/register").get_data(as_text=True)
+    assert 'data-sitekey="sitekey-123"' in html
+    assert 'data-action="alert_register"' in html
+    assert "challenges.cloudflare.com/turnstile/v0/api.js" in html
 
 
 def test_register_alert_requires_login(conn, requests_mock):

@@ -1,3 +1,4 @@
+import pytest
 import requests
 
 from jobhub_poc import config
@@ -181,3 +182,12 @@ def test_logout_warns_but_still_logs_out_client_side_on_non_2xx_sign_out(conn, r
     assert any(h.startswith("__Secure-jobhub-auth.session_token=") for h in set_cookie_headers)
     warnings = [r for r in caplog.records if r.levelname == "WARNING"]
     assert any("403" in r.getMessage() for r in warnings), caplog.text
+
+
+@pytest.mark.parametrize("path", ["/login", "/register", "/verify"])
+def test_auth_pages_carry_turnstile_sitekey_and_explicit_loader(conn, monkeypatch, path):
+    monkeypatch.setattr(config, "TURNSTILE_SITEKEY", "sitekey-123")
+    html = _app_and_client(conn)[1].get(path).get_data(as_text=True)
+    assert '<meta name="turnstile-sitekey" content="sitekey-123">' in html
+    assert 'id="turnstile-container"' in html
+    assert "turnstile/v0/api.js?render=explicit" in html

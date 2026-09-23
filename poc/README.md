@@ -119,7 +119,29 @@ possible locally.
   only because pi05<->pi09 trust was unconfirmed at design time; harita's
   old timer is disabled (not deleted) there as a rollback path.
 
-## Known, deliberate simplifications
+## Bot protection and the admin console
+
+**Cloudflare Turnstile** guards every request a bot could abuse: signup, login, every
+email and WhatsApp code send (including resends), the alert subscription form, and the
+admin login. The browser gets a fresh single-use token per request (`frontend/src/turnstile.ts`
+for the fetch-driven auth pages, an implicit widget on the server-rendered forms) and
+Flask verifies it with Cloudflare's siteverify (`webapp/turnstile.py`) before anything
+reaches auth-service or the database, requiring `success`, the expected action, and a
+hostname in `TURNSTILE_HOSTNAMES` (default: `WEB_ORIGIN`'s host). It fails closed. Config:
+`TURNSTILE_SITEKEY`, `CF_TURNSTILE_SECRET`; see `.env.example` for Cloudflare's test keys
+for local dev (`TURNSTILE_ALLOW_TEST_KEYS=1`, never in production).
+
+**Admin console** at `/admin`: sign in as an `app_users` row (create or rotate one with
+`scripts/set_admin_password.py <username>`, which also clears that username's lockout), then
+list every registered user with their verification state, sessions and alert counts; edit
+name/email/mobile and the two verified flags; sign a user out everywhere; or delete them
+(with their alert subscriptions and history). User records are changed through
+auth-service's internal `/internal/admin/*` API, keyed by `AUTH_ADMIN_API_KEY` and not
+reachable through the public `/auth/*` proxy. Login brute force: Turnstile, then a lockout
+per IP and per username (`ADMIN_MAX_FAILURES`, default 5 -> 15 min, doubling, capped at 24h),
+every attempt logged to `docker logs jobhub-web`.
+
+
 
 - An evergreen listing that keeps reappearing every scrape is purged 15 days
   after we *first* saw it, not 15 days after it stops appearing --

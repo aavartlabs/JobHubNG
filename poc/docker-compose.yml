@@ -49,6 +49,9 @@ services:
       # sign-out, which is worse than compose refusing to start.
       BETTER_AUTH_URL: ${WEB_ORIGIN:?set WEB_ORIGIN in poc/.env to this deployment's public origin, e.g. https://jobhubs.aavartlabs.com}
       TRUSTED_ORIGINS: ${WEB_ORIGIN:?set WEB_ORIGIN in poc/.env to this deployment's public origin, e.g. https://jobhubs.aavartlabs.com}
+      # Key for /internal/admin/* (src/admin.js), shared with web's AUTH_ADMIN_API_KEY so
+      # both sides read one value from poc/.env.
+      ADMIN_API_KEY: ${AUTH_ADMIN_API_KEY:?set AUTH_ADMIN_API_KEY in poc/.env (openssl rand -base64 32)}
     volumes:
       - ./auth-service/data:/app/data
     networks:

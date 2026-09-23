@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_turnstile.html" as turnstile with context %}
 {% block content %}
 <h1>Log in</h1>
 <p id="login-error" class="error" hidden></p>
@@ -8,5 +9,6 @@
   <button type="submit">Log in</button>
 </form>
 <p>Don't have an account? <a href="{{ url_for('auth.register') }}">Register</a></p>
+{{ turnstile.explicit() }}
 <script src="{{ url_for('static', filename='auth.js') }}"></script>
 {% endblock %}

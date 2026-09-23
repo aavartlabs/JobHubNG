@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Couldn't reach user records</h1>
+<p class="error">{{ message }}</p>
+<p>User records live in auth-service; this page needs it running and AUTH_ADMIN_API_KEY set.</p>
+{% endblock %}
