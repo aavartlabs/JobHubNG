@@ -42,7 +42,11 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
 ```
 
 - **Scraper (pi05 only)**: `poc/scraper/dump_jobs.py` calls EverJobs once per pipeline run
-  and filters/caps results client-side by `SEARCH_TERMS`. EverJobs' `query`/`results`
+  and filters/caps results client-side by `SEARCH_TERMS`. **Which site buckets get scraped
+  is decided server-side** by `DEFAULT_SITE_NAMES` in pi05's EverJobs systemd unit
+  (currently `google,naukri,linkedin,indeed,glassdoor`) — not by anything the client
+  sends; `EVER_JOBS_SITE_NAMES` in `scraper/config.py` is only logged, and should be kept in
+  sync by hand. A 5-bucket fetch takes close to the 600s `REQUEST_TIMEOUT_SECONDS`. EverJobs' `query`/`results`
   params are **not honored server-side** — a site bucket like `google` returns every job
   from ~1,500+ registered companies regardless of query (confirmed live: 15,000+ jobs,
   79MB, ~2.5 min per call), so per-term filtering has to happen after the fetch.
@@ -55,13 +59,15 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
   listing that reappears every scrape still gets purged 15 days after it was *first* seen,
   not 15 days after it stops appearing.
 - **Web app (pi09, Docker container `jobhub-web`)**: `poc/jobhub_poc/webapp/` is a Flask
-  app (blueprints: `auth`, `routes_jobs`, `routes_alerts`, `routes_api`) behind a single
-  shared login (`app_users` table, one seeded demo account, not per-user). `GET /api/jobs`
+  app (blueprints: `auth`, `auth_proxy`, `routes_jobs`, `routes_alerts`, `routes_api`); it
+  holds no identity of its own — see [Accounts](#accounts-poc-web-app). `GET /api/jobs`
   (`routes_api.py`) returns paginated/filterable/sortable JSON; `poc/jobhub_poc/webapp/frontend/`
   is a small esbuild-bundled TypeScript client (no framework) that renders it —
-  `templates/jobs.html` is just a shell that loads the compiled `static/app.js`. The
-  `Dockerfile` is a two-stage build: Node only at build time (to produce `static/app.js`),
-  Python-only at runtime.
+  `templates/jobs.html` is just a shell that loads the compiled `static/app.js` (plus
+  `static/auth.js` for the auth pages). The `Dockerfile` is a two-stage build: Node only at
+  build time, Python-only at runtime. **The compiled `static/app.js` / `static/auth.js` are
+  also committed to git** and are what the non-Docker `make web` path serves — after editing
+  `frontend/src/*.ts`, run `npm run build` there and commit the regenerated bundles too.
 - **Alerts**: `poc/jobhub_poc/alerts/matcher.py` finds active `alert_subscriptions` whose
   title/location keyword substrings match newly-inserted jobs (only ids returned by
   `load_dump()` as genuinely new are considered — not a timestamp-window heuristic).
@@ -106,7 +112,12 @@ npm install && npm test                    # mocked Resend + a local stub for wh
 
 cd ../jobhub_poc/webapp/frontend
 npm install && npm test                    # pure-logic TS helpers only (node --test, no DOM)
+npm run build                              # typecheck + esbuild -> ../static/{app,auth}.js
 ```
+
+Single test: `.venv/bin/pytest tests/test_matcher.py -v` or
+`.venv/bin/pytest tests/test_matcher.py::test_name -v` (pytest's `testpaths = tests`);
+for the Node packages, `node --test test/<name>.test.js` from that package's directory.
 
 Run against the bundled real fixture without a live scraper:
 ```bash
@@ -129,10 +140,15 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   service, `Restart=always`, boot-enabled) plus a Python venv for `dump_jobs.py`. Never runs
   the web app or SQLite.
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
-  `~/jobhub-poc/data/jobhub.db`, plus two Docker containers: `jobhub-web` (the Flask app,
-  `restart: unless-stopped`) and `jobhub-whatsapp` (the gateway, same restart policy). Never
-  runs EverJobs. **Also the orchestration host**, as of 2026-09-22 — `poc/scripts/run_pipeline.sh`
-  runs locally on pi09 (`ssh pi05 ...` to scrape, direct `scp` back, then load/purge/alert
+  `~/jobhub-poc/data/jobhub.db`, plus Docker containers from `poc/docker-compose.yml`:
+  `jobhub-web` (the Flask app), `jobhub-auth` (Better Auth), and `jobhub-whatsapp` (the
+  gateway), all `restart: unless-stopped`. `jobhub-cloudflare-tunnel` also runs there but
+  is not defined in this repo. `~/jobhub-poc` on pi09 is **not a git checkout** — deploys are
+  an rsync of `poc/` (excluding `.env`, `data/`, `dumps/`, `.venv/`, `whatsapp-sender/auth_info/`,
+  `auth-service/data/`) followed by `docker compose build && docker compose up -d`. The
+  auth stack went live 2026-09-23; the Resend sender is `noreply@alerts.aavartlabs.com`
+  (`alerts.aavartlabs.com` is the Resend-verified domain). Never runs EverJobs.
+  **Also the orchestration host**, as of 2026-09-22 — `poc/scripts/run_pipeline.sh` runs locally on pi09 (`ssh pi05 ...` to scrape, direct `scp` back, then load/purge/alert
   with no further SSH hop) and is scheduled every 6 hours via a systemd **user** timer on
   pi09 itself (`~/.config/systemd/user/jobhub-pipeline.{service,timer}` — host config, not
   checked into this repo; `Linger=yes` so it runs unattended). Logs append to
@@ -148,7 +164,8 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 
 ## Key Environment Variables (`poc/.env.example`, separate from the root `.env.example`)
 
-- `EVER_JOBS_API_URL` / `EVER_JOBS_API_KEY` / `EVER_JOBS_SITE_NAMES` — scraper target
+- `EVER_JOBS_API_URL` / `EVER_JOBS_API_KEY` — scraper target; `EVER_JOBS_SITE_NAMES` is
+  informational only (see Scraper note above). `REQUEST_TIMEOUT_SECONDS` defaults to 600
 - `SEARCH_TERMS` (comma-separated) / `RESULTS_PER_TERM` — client-side filter/cap applied
   after the single EverJobs fetch, since server-side query params aren't honored
 - `JOBHUB_SQLITE_PATH` / `PURGE_WINDOW_DAYS` — storage + freshness window
@@ -168,7 +185,7 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 
 ## Accounts (`poc` web app)
 
-Real self-service accounts, as of 2026-09-22 — the old single shared login (`app_users`,
+Real self-service accounts, live since 2026-09-23 — the old single shared login (`app_users`,
 `WEB_ADMIN_USERNAME`/`WEB_ADMIN_PASSWORD`, `scripts/seed_demo_user.py`) is gone, along with
 all three of those things. Identity lives in `poc/auth-service/`, a second container
 (`jobhub-auth`) running Better Auth over its own `auth.db`; Flask reverse-proxies `/auth/*`
