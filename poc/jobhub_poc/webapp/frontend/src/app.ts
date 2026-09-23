@@ -1,3 +1,5 @@
+import { POSTED_WITHIN_OPTIONS, postedLabel } from "./jobs_query";
+
 interface Job {
   id: number;
   title: string;
@@ -6,6 +8,7 @@ interface Job {
   employment_type: string | null;
   is_remote: boolean;
   first_seen_at: string;
+  posted_at: string | null;
 }
 
 /** Only from /api/jobs/<id>, which requires a signed-in, verified user. */
@@ -29,12 +32,13 @@ interface JobsResponse {
   total_pages: number;
 }
 
-type SortKey = "freshness" | "title";
+type SortKey = "freshness" | "posted" | "title";
 
 interface State {
   title: string;
   location: string;
   sort: SortKey;
+  postedWithin: number;
   page: number;
   pageSize: number;
 }
@@ -43,6 +47,7 @@ const state: State = {
   title: "",
   location: "",
   sort: "freshness",
+  postedWithin: 0,
   page: 1,
   pageSize: 10,
 };
@@ -74,7 +79,7 @@ function renderRows(jobs: Job[], startIndex: number): string {
         <td>${escapeHtml(job.title)}</td>
         <td>${escapeHtml(job.company_name ?? "")}</td>
         <td>${escapeHtml(job.location ?? "")}</td>
-        <td>${formatDate(job.first_seen_at)}</td>
+        <td class="posted" title="${escapeHtml(formatDate(job.posted_at ?? job.first_seen_at))}">${escapeHtml(postedLabel(job.posted_at, job.first_seen_at))}</td>
         <td class="actions">
           <button type="button" class="details-button" data-job-id="${job.id}">Details</button>
           <button type="button" class="apply-button" data-job-id="${job.id}">Apply &rarr;</button>
@@ -200,6 +205,7 @@ async function loadJobs(): Promise<void> {
   if (state.title) params.set("title", state.title);
   if (state.location) params.set("location", state.location);
   params.set("sort", state.sort);
+  if (state.postedWithin) params.set("posted_within", String(state.postedWithin));
   params.set("page", String(state.page));
   params.set("page_size", String(state.pageSize));
 
@@ -264,11 +270,17 @@ function init(): void {
   const locationInput = document.getElementById("location-input") as HTMLInputElement | null;
   const sortSelect = document.getElementById("sort-select") as HTMLSelectElement | null;
   const pageSizeSelect = document.getElementById("page-size-select") as HTMLSelectElement | null;
+  const postedSelect = document.getElementById("posted-within-select") as HTMLSelectElement | null;
+  if (postedSelect) {
+    postedSelect.innerHTML = POSTED_WITHIN_OPTIONS.map((o) => `<option value="${o.days}">${o.label}</option>`).join("");
+  }
 
   const applyFiltersAndReload = () => {
     state.title = titleInput?.value.trim() ?? "";
     state.location = locationInput?.value.trim() ?? "";
-    state.sort = sortSelect && sortSelect.value === "title" ? "title" : "freshness";
+    const sort = sortSelect?.value;
+    state.sort = sort === "title" || sort === "posted" ? sort : "freshness";
+    state.postedWithin = Number(postedSelect?.value) || 0;
     state.pageSize = pageSizeSelect ? Number(pageSizeSelect.value) || 10 : 10;
     state.page = 1;
     void loadJobs();
@@ -279,6 +291,7 @@ function init(): void {
     applyFiltersAndReload();
   });
   sortSelect?.addEventListener("change", applyFiltersAndReload);
+  postedSelect?.addEventListener("change", applyFiltersAndReload);
   pageSizeSelect?.addEventListener("change", applyFiltersAndReload);
 
   void loadJobs();

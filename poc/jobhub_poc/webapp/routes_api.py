@@ -6,10 +6,14 @@ from jobhub_poc.webapp.auth import access_state, login_url, verify_url
 
 bp = Blueprint("api", __name__)
 
+# Posted date when the source gave a usable one, else when we first saw the job.
+_POSTED_OR_SEEN = "COALESCE(posted_at, first_seen_at)"
 _SORTS = {
     "freshness": "first_seen_at DESC",
+    "posted": f"{_POSTED_OR_SEEN} DESC",
     "title": "title ASC",
 }
+_POSTED_WITHIN_DAYS = {1, 3, 7, 30}
 _DEFAULT_PAGE_SIZE = 25
 _MAX_PAGE_SIZE = 100
 
@@ -41,6 +45,10 @@ def list_jobs_json():
     if location:
         where += " AND location LIKE ?"
         params.append(f"%{location}%")
+    posted_within = request.args.get("posted_within", "")
+    if posted_within.isdigit() and int(posted_within) in _POSTED_WITHIN_DAYS:
+        where += f" AND {_POSTED_OR_SEEN} >= ?"
+        params.append((datetime.now(timezone.utc) - timedelta(days=int(posted_within))).isoformat())
 
     total = conn.execute(f"SELECT COUNT(*) FROM jobs {where}", params).fetchone()[0]
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -60,6 +68,7 @@ def list_jobs_json():
             "employment_type": r["employment_type"],
             "is_remote": bool(r["is_remote"]),
             "first_seen_at": r["first_seen_at"],
+            "posted_at": r["posted_at"],
         }
         for r in rows
     ]

@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     is_remote         INTEGER NOT NULL DEFAULT 0,
     apply_url         TEXT,
     posted_at_source  TEXT,
+    -- posted_at_source normalised to UTC ISO by jobhub_poc/dates.py (NULL if unusable).
+    -- Feeds only the "posted within" filter/sort, always COALESCEd with first_seen_at.
+    posted_at         TEXT,
     first_seen_at     TEXT NOT NULL,
     last_seen_at      TEXT NOT NULL,
     raw_json          TEXT NOT NULL

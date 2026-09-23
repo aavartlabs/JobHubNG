@@ -13,6 +13,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from jobhub_poc.dates import normalize_posted
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -44,8 +46,9 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
     """Insert or refresh one EverJobs-shaped job keyed by dedupe_key. Returns the new
     jobs.id if it was inserted, None if an existing row was updated. Doesn't commit.
     Shared by load_dump (old dump files) and load_delta (pi05 warehouse deltas)."""
-    existing = conn.execute("SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)).fetchone()
+    existing = conn.execute("SELECT id, first_seen_at FROM jobs WHERE dedupe_key = ?", (dedupe_key,)).fetchone()
     apply_url = job.get("applyUrl") or job.get("jobUrl")
+    posted_at = normalize_posted(job.get("datePosted"), existing[1] if existing else first_seen_at)
 
     if existing is None:
         cur = conn.execute(
@@ -53,9 +56,9 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
             INSERT INTO jobs (
                 dedupe_key, external_job_id, source_site, search_term,
                 title, company_name, location, description, employment_type,
-                is_remote, apply_url, posted_at_source,
+                is_remote, apply_url, posted_at_source, posted_at,
                 first_seen_at, last_seen_at, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 dedupe_key,
@@ -70,6 +73,7 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
                 1 if job.get("isRemote") else 0,
                 apply_url,
                 job.get("datePosted"),
+                posted_at,
                 first_seen_at,
                 last_seen_at,
                 json.dumps(job),
@@ -82,7 +86,7 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
         UPDATE jobs SET
             title = ?, company_name = ?, location = ?, description = ?,
             employment_type = ?, is_remote = ?, apply_url = ?,
-            posted_at_source = ?, last_seen_at = ?, raw_json = ?
+            posted_at_source = ?, posted_at = ?, last_seen_at = ?, raw_json = ?
         WHERE dedupe_key = ?
         """,
         (
@@ -94,6 +98,7 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
             1 if job.get("isRemote") else 0,
             apply_url,
             job.get("datePosted"),
+            posted_at,
             last_seen_at,
             json.dumps(job),
             dedupe_key,

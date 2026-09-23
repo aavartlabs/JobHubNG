@@ -5,8 +5,10 @@
   <form id="filter-form" class="filters">
     <input type="text" id="title-input" placeholder="Title contains...">
     <input type="text" id="location-input" placeholder="Location contains...">
-    <select id="sort-select">
-      <option value="freshness">Newest first</option>
+    <select id="posted-within-select" aria-label="Posted within"></select>
+    <select id="sort-select" aria-label="Sort">
+      <option value="freshness">Newest on JobHub</option>
+      <option value="posted">Recently posted</option>
       <option value="title">Title A-Z</option>
     </select>
     <select id="page-size-select">
@@ -23,7 +25,7 @@
 <div class="table-wrap">
   <table>
     <thead>
-      <tr><th class="serial">#</th><th>Title</th><th>Company</th><th>Location</th><th>First seen</th><th></th></tr>
+      <tr><th class="serial">#</th><th>Title</th><th>Company</th><th>Location</th><th>Posted</th><th></th></tr>
     </thead>
     <tbody id="jobs-body">
       <tr><td colspan="6" class="empty">Loading...</td></tr>
