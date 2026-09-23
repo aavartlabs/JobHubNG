@@ -19,6 +19,10 @@ WEB_SECRET_KEY = os.environ.get("WEB_SECRET_KEY", "dev-only-change-me")
 NOTIFIER_BACKEND = os.environ.get("NOTIFIER_BACKEND", "console")
 WHATSAPP_GATEWAY_URL = os.environ.get("WHATSAPP_GATEWAY_URL", "")
 WHATSAPP_GATEWAY_API_KEY = os.environ.get("WHATSAPP_GATEWAY_API_KEY", "")
+# Resend, for alert digests sent by email (alerts/senders.py). The same Resend account as
+# auth-service's OTP emails; RESEND_FROM_EMAIL must be on a Resend-verified domain.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
 
 # poc/auth-service/ -- the standalone Better Auth companion service. Reached only
 # server-side (auth_proxy.py's passthrough, and auth.py's get-session/sign-out calls),
