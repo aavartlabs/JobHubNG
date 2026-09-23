@@ -202,3 +202,13 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
                                          "rejected_old", "skipped"))),
         )
     return stats
+
+
+def purge_warehouse(conn, retention_days, now=None):
+    """Deletes jobs no sweep has listed for retention_days ([retention]
+    warehouse_retention_days). Returns how many went."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=retention_days)).isoformat()
+    with conn:
+        cur = conn.execute("DELETE FROM jobs WHERE last_seen_at < ?", (cutoff,))
+    return cur.rowcount

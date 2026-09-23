@@ -12,7 +12,6 @@ else:
 
 
 SQLITE_PATH = os.environ.get("JOBHUB_SQLITE_PATH", "./data/jobhub.db")
-PURGE_WINDOW_DAYS = int(os.environ.get("PURGE_WINDOW_DAYS", "15"))
 
 WEB_PORT = int(os.environ.get("WEB_PORT", "8100"))
 WEB_SECRET_KEY = os.environ.get("WEB_SECRET_KEY", "dev-only-change-me")

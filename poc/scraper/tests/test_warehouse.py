@@ -173,3 +173,39 @@ def test_cli_fetches_once_ingests_and_reports(tmp_path, monkeypatch, capsys):
     assert (stats["inserted"], stats["rejected_old"]) == (2, 1)
     assert '"inserted": 2' in capsys.readouterr().out
     assert not list(tmp_path.glob("*.json*"))  # keep_raw_dumps_days = 0 by default
+
+
+def test_purge_removes_jobs_not_seen_within_retention(conn):
+    from warehouse import purge_warehouse
+
+    ingest(conn, [_job("a"), _job("b", city="Pune")], 60, now=NOW)
+    later = NOW + timedelta(days=31)
+    ingest(conn, [_job("a")], 0, now=later)  # only a still listed (age limit off here)
+    assert purge_warehouse(conn, retention_days=30, now=later) == 1
+    assert [r["source_id"] for r in _rows(conn)] == ["a"]
+
+
+def test_raw_dumps_older_than_the_keep_window_are_deleted(tmp_path):
+    import os
+    from ingest import rotate_raw_dumps
+
+    old = tmp_path / "sweep_old.json.gz"
+    new = tmp_path / "sweep_new.json.gz"
+    other = tmp_path / "notes.txt"
+    for f in (old, new, other):
+        f.write_text("x")
+    three_days_ago = (NOW - timedelta(days=3)).timestamp()
+    os.utime(old, (three_days_ago, three_days_ago))
+    os.utime(new, (NOW.timestamp(), NOW.timestamp()))
+    os.utime(other, (three_days_ago, three_days_ago))
+    assert rotate_raw_dumps(tmp_path, keep_days=2, now=NOW) == 1
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt", "sweep_new.json.gz"]
+
+
+def test_cli_purges_after_ingesting(tmp_path, monkeypatch):
+    import ingest as cli
+
+    monkeypatch.setenv("WAREHOUSE_DB_PATH", str(tmp_path / "wh.db"))
+    cli.main(fetch=lambda: [_job("a"), _job("b", city="Pune")], now=NOW)
+    stats = cli.main(fetch=lambda: [_job("a")], now=NOW + timedelta(days=31))
+    assert stats["purged"] == 1
