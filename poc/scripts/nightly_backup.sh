@@ -6,7 +6,7 @@
 set -euo pipefail
 
 APP_DIR=${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
-PI05_DIR=${PI05_DIR:-/home/rudra/jobhub-poc}
+PI05_DIR=${PI05_DIR:-jobhub-poc}  # relative: ssh commands start in the remote home
 status=0
 
 echo "== $(date -Is) backup pi09 =="

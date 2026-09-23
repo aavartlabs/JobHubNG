@@ -9,7 +9,7 @@
 # 3. load + purge + alert    -> locally, against the SQLite DB
 set -euo pipefail
 
-PI05_SCRAPER_DIR=${PI05_SCRAPER_DIR:-/home/rudra/jobhub-poc/scraper}
+PI05_SCRAPER_DIR=${PI05_SCRAPER_DIR:-jobhub-poc/scraper}  # relative to the remote home
 # Defaults to the poc/ checkout this script lives under, so it works
 # unmodified wherever the app host's role ends up (this host today, a
 # different one later -- see tasks_all.md's "moving off Raspberry Pi

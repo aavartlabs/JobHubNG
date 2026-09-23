@@ -35,6 +35,7 @@ _SCHEMA = {
         "results_per_term": ("count", "0"),
     },
     "sync": {"max_alert_terms": ("count", "200")},
+    "archive": {"cold_after_days": ("days", "90")},
 }
 
 
@@ -63,11 +64,17 @@ class SyncConfig:
 
 
 @dataclass(frozen=True)
+class ArchiveConfig:
+    cold_after_days: int  # history older than this moves from the warehouse to MinIO
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     ingest: IngestConfig
     retention: RetentionConfig
     serving: ServingConfig
     sync: SyncConfig
+    archive: ArchiveConfig
 
 
 def _split(raw):
@@ -126,4 +133,5 @@ def load_pipeline_config(path=None, env=None):
         retention=RetentionConfig(**values["retention"]),
         serving=ServingConfig(**values["serving"]),
         sync=SyncConfig(**values["sync"]),
+        archive=ArchiveConfig(**values["archive"]),
     )

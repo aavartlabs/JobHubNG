@@ -1,0 +1,10 @@
+# Installed on pi09 as ~/.config/systemd/user/jobshub-cold-export.service.
+[Unit]
+Description=JobsHub monthly cold-history export (pi05 warehouse -> MinIO archive/history)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh pi05 "cd jobhub-poc/scraper && .venv/bin/python cold_export.py"
+StandardOutput=append:%h/jobhub-poc/backup.log
+StandardError=append:%h/jobhub-poc/backup.log

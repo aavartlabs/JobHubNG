@@ -9,7 +9,7 @@
 # 4. purge + alerts   -> locally, as before
 set -euo pipefail
 
-PI05_DIR=${PI05_DIR:-/home/rudra/jobhub-poc}
+PI05_DIR=${PI05_DIR:-jobhub-poc}  # relative: ssh commands start in the remote home
 APP_DIR=${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 REMOTE_DELTA=/tmp/jobhub_delta.jsonl.gz
 TERMS_FILE=/tmp/jobhub_alert_terms.json

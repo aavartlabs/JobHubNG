@@ -1,0 +1,11 @@
+# Installed on pi09 as ~/.config/systemd/user/jobshub-cold-export.timer.
+# 1st of the month, 03:30 IST: after that night's 02:30 backup has captured the rows.
+[Unit]
+Description=Monthly JobsHub cold-history export
+
+[Timer]
+OnCalendar=*-*-01 03:30:00 Asia/Kolkata
+Persistent=true
+
+[Install]
+WantedBy=timers.target

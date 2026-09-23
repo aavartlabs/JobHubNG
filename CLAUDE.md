@@ -173,7 +173,7 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `ingest.py`/`export.py` warehouse path) and the SQLite **warehouse** at
   `~/jobhub-poc/scraper/data/warehouse.db`. It never runs the web app. Deploy there = rsync of
   `poc/scraper/*.py`, `poc/jobhub_poc/{__init__,dates,pipeline_config}.py` and
-  `poc/config/pipeline.ini` into `~/jobhub-poc/` (user `rudra`).
+  `poc/config/pipeline.ini` into `~/jobhub-poc/` on pi05.
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
   `~/jobhub-poc/data/jobhub.db`, plus Docker containers from `poc/docker-compose.yml`:
   `jobhub-web` (the Flask app), `jobhub-auth` (Better Auth), and `jobhub-whatsapp` (the
@@ -218,6 +218,11 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `PRAGMA integrity_check` and checks key tables aren't empty. Results in `backup.log`
   (`PASS/FAIL host/db [date] ...`); a failure also fails the unit
   (`systemctl --user status jobshub-restore-drill` on pi09). Nothing alerts anyone yet.
+- **Cold history (monthly):** `jobshub-cold-export.timer` on pi09 (1st of the month, 03:30
+  IST) runs `scraper/cold_export.py` on pi05 over SSH: `jobs_archive` rows archived and
+  `job_versions` spans ended more than `[archive] cold_after_days` (90) ago are uploaded as
+  gzip JSONL (version JSON decompressed) to `jobshub-data/archive/history/<date>/`, and only
+  after the upload is verified are they deleted from the warehouse (then `VACUUM`).
 - **Restore:** on any host with the env file:
   `set -a; . ~/.jobshub-minio.env; set +a; export MC_HOST_jb="http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@${MINIO_ENDPOINT#*://}"`,
   then `~/bin/mc ls jb/jobshub-data/backups/daily/` → `~/bin/mc cp jb/jobshub-data/backups/daily/<date>/<host>/<db>.gz .`

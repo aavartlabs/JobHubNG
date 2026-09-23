@@ -19,6 +19,7 @@ def test_checked_in_ini_loads_with_the_agreed_defaults():
     assert cfg.retention.keep_raw_dumps_days == 0
     assert "engineer" in cfg.serving.search_terms
     assert cfg.serving.locations == ()
+    assert cfg.archive.cold_after_days == 90
 
 
 def test_missing_keys_fall_back_to_built_in_defaults(tmp_path):
