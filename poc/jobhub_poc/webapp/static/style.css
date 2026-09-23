@@ -152,26 +152,37 @@ td.empty { text-align: center; color: var(--text-muted); padding: 1.5rem; }
 th.serial, td.serial { width: 3rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 td.actions { white-space: nowrap; display: flex; gap: 0.6rem; align-items: center; }
-.details-toggle {
+.details-button {
   background: transparent;
   color: var(--orange-dark);
   border: 1px solid var(--orange-light);
   padding: 0.3rem 0.7rem;
   font-size: 0.8rem;
 }
-.details-toggle:hover:not(:disabled) { background: var(--orange-light); }
-.apply-link {
+.details-button:hover:not(:disabled) { background: var(--orange-light); }
+td .apply-button {
+  background: transparent;
   color: var(--green-dark);
+  border: none;
+  padding: 0.3rem 0.2rem;
   font-weight: 600;
-  text-decoration: none;
   font-size: 0.85rem;
 }
-.apply-link:hover { text-decoration: underline; }
+td .apply-button:hover { text-decoration: underline; }
 
-tr.description-row td {
-  background: #fbfaf6;
-  white-space: normal;
+.job-detail {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem 1.25rem;
+  margin: 0 0 1.25rem;
 }
+.job-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.job-detail-head h2 { margin: 0; font-size: 1.15rem; }
+#close-details { background: transparent; color: var(--text-muted); font-size: 1.3rem; padding: 0 0.4rem; }
+.job-detail-meta { color: var(--text-muted); margin: 0.25rem 0 0.75rem; }
+.job-detail .description-text { max-height: 24rem; overflow-y: auto; margin-bottom: 1rem; }
+
 .description-text {
   max-width: 70ch;
   white-space: pre-wrap;

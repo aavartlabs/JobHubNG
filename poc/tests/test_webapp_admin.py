@@ -361,3 +361,16 @@ def test_edit_normalises_phone_and_refuses_non_international(client, requests_mo
     }, follow_redirects=True)
     assert patch.call_count == 1
     assert "country code" in resp.get_data(as_text=True)
+
+
+def test_delete_also_removes_the_users_job_interactions(client, conn, requests_mock):
+    conn.execute(
+        "INSERT INTO job_interactions (owner_auth_user_id, job_dedupe_key, action, created_at) "
+        "VALUES ('u1', 'k', 'view_details', 'x'), ('u2', 'k', 'view_details', 'x')"
+    )
+    conn.commit()
+    _logged_in(client, requests_mock)
+    requests_mock.delete(f"{USERS_URL}/u1", json={"ok": True})
+    client.post("/admin/users/u1/delete", data={"csrf_token": _csrf(client)})
+    owners = [r["owner_auth_user_id"] for r in conn.execute("SELECT owner_auth_user_id FROM job_interactions")]
+    assert owners == ["u2"]

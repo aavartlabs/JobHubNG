@@ -299,6 +299,7 @@ def delete_user(user_id):
         (user_id,),
     )
     conn.execute("DELETE FROM alert_subscriptions WHERE owner_auth_user_id = ?", (user_id,))
+    conn.execute("DELETE FROM job_interactions WHERE owner_auth_user_id = ?", (user_id,))
     conn.commit()
     current_app.logger.info("admin %s deleted user %s", session["admin_username"], user_id)
     flash("User deleted.")

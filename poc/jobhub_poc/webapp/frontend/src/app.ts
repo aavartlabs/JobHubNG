@@ -5,9 +5,20 @@ interface Job {
   location: string | null;
   employment_type: string | null;
   is_remote: boolean;
-  apply_url: string | null;
-  description: string | null;
   first_seen_at: string;
+}
+
+/** Only from /api/jobs/<id>, which requires a signed-in, verified user. */
+interface JobDetails extends Job {
+  description: string | null;
+  apply_url: string | null;
+}
+
+/** 401/403 bodies from /api/jobs/<id>: where to send the person instead. */
+interface GateResponse {
+  code: "LOGIN_REQUIRED" | "VERIFY_REQUIRED";
+  login_url?: string;
+  verify_url?: string;
 }
 
 interface JobsResponse {
@@ -26,7 +37,6 @@ interface State {
   sort: SortKey;
   page: number;
   pageSize: number;
-  expandedJobId: number | null;
 }
 
 const state: State = {
@@ -35,8 +45,11 @@ const state: State = {
   sort: "freshness",
   page: 1,
   pageSize: 10,
-  expandedJobId: null,
 };
+
+// Rendered by templates/jobs.html from the server's view of the session, so Apply can
+// send a signed-out visitor to login without first opening (and closing) a new tab.
+const access = document.getElementById("jobs-app")?.dataset.access ?? "anonymous";
 
 function escapeHtml(value: string): string {
   const div = document.createElement("div");
@@ -55,29 +68,116 @@ function renderRows(jobs: Job[], startIndex: number): string {
     return `<tr><td colspan="6" class="empty">No jobs match the current filters.</td></tr>`;
   }
   return jobs
-    .map((job, i) => {
-      const apply = job.apply_url
-        ? `<a class="apply-link" href="${escapeHtml(job.apply_url)}" target="_blank" rel="noopener">Apply &rarr;</a>`
-        : "";
-      const isExpanded = state.expandedJobId === job.id;
-      const descRow = isExpanded
-        ? `<tr class="description-row"><td colspan="6">${
-            job.description ? `<div class="description-text">${escapeHtml(job.description)}</div>` : "<em>No description available for this posting.</em>"
-          }</td></tr>`
-        : "";
-      return `<tr>
+    .map(
+      (job, i) => `<tr>
         <td class="serial">${startIndex + i}</td>
         <td>${escapeHtml(job.title)}</td>
         <td>${escapeHtml(job.company_name ?? "")}</td>
         <td>${escapeHtml(job.location ?? "")}</td>
         <td>${formatDate(job.first_seen_at)}</td>
         <td class="actions">
-          <button type="button" class="details-toggle" data-job-id="${job.id}">${isExpanded ? "Hide" : "Details"}</button>
-          ${apply}
+          <button type="button" class="details-button" data-job-id="${job.id}">Details</button>
+          <button type="button" class="apply-button" data-job-id="${job.id}">Apply &rarr;</button>
         </td>
-      </tr>${descRow}`;
-    })
+      </tr>`,
+    )
     .join("");
+}
+
+function loginUrlFor(jobId: number): string {
+  return `/login?next=${encodeURIComponent(`/jobs?job=${jobId}`)}`;
+}
+
+/** Follows a 401/403 gate response; returns true if it navigated away. */
+async function followGate(response: Response): Promise<boolean> {
+  if (response.status !== 401 && response.status !== 403) return false;
+  let body: GateResponse | null = null;
+  try {
+    body = (await response.json()) as GateResponse;
+  } catch {
+    body = null;
+  }
+  window.location.href = body?.verify_url ?? body?.login_url ?? "/login";
+  return true;
+}
+
+function renderDetails(job: JobDetails): string {
+  const description = job.description
+    ? `<div class="description-text">${escapeHtml(job.description)}</div>`
+    : "<p><em>No description available for this posting.</em></p>";
+  const apply = job.apply_url
+    ? `<button type="button" class="apply-button" data-job-id="${job.id}">Apply on employer's site &rarr;</button>`
+    : "";
+  return `<div class="job-detail-head">
+      <h2>${escapeHtml(job.title)}</h2>
+      <button type="button" id="close-details" aria-label="Close details">&times;</button>
+    </div>
+    <p class="job-detail-meta">${escapeHtml([job.company_name, job.location].filter(Boolean).join(" \u00b7 "))}</p>
+    ${description}
+    ${apply}`;
+}
+
+async function showDetails(jobId: number): Promise<void> {
+  const panel = document.getElementById("job-detail");
+  if (!panel) return;
+  let response: Response;
+  try {
+    response = await fetch(`/api/jobs/${jobId}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
+  } catch {
+    return;
+  }
+  if (await followGate(response)) return;
+  if (!response.ok) {
+    panel.innerHTML = `<p class="error">That job is no longer available.</p>`;
+    panel.hidden = false;
+    return;
+  }
+  const job = (await response.json()) as JobDetails;
+  panel.innerHTML = renderDetails(job);
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("close-details")?.addEventListener("click", () => {
+    panel.hidden = true;
+  });
+  bindApplyButtons(panel);
+}
+
+async function applyTo(jobId: number): Promise<void> {
+  if (access === "anonymous") {
+    window.location.href = loginUrlFor(jobId);
+    return;
+  }
+  // Opened synchronously inside the click so popup blockers allow it, then pointed at
+  // the employer once the click is logged and the URL is known.
+  const tab = window.open("about:blank", "_blank");
+  let response: Response;
+  try {
+    response = await fetch(`/api/jobs/${jobId}/apply-click`, { method: "POST", credentials: "same-origin" });
+  } catch {
+    tab?.close();
+    return;
+  }
+  if (await followGate(response)) {
+    tab?.close();
+    return;
+  }
+  if (!response.ok) {
+    tab?.close();
+    return;
+  }
+  const { apply_url: applyUrl } = (await response.json()) as { apply_url: string };
+  if (tab) {
+    tab.opener = null;
+    tab.location.href = applyUrl;
+  } else {
+    window.location.href = applyUrl;
+  }
+}
+
+function bindApplyButtons(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>(".apply-button").forEach((btn) => {
+    btn.addEventListener("click", () => void applyTo(Number(btn.dataset.jobId)));
+  });
 }
 
 function renderPagination(data: JobsResponse): string {
@@ -139,13 +239,10 @@ async function loadJobs(): Promise<void> {
   }
   if (paginationEl) paginationEl.innerHTML = renderPagination(data);
 
-  tbody.querySelectorAll<HTMLButtonElement>(".details-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const jobId = Number(btn.dataset.jobId);
-      state.expandedJobId = state.expandedJobId === jobId ? null : jobId;
-      void loadJobs();
-    });
+  tbody.querySelectorAll<HTMLButtonElement>(".details-button").forEach((btn) => {
+    btn.addEventListener("click", () => void showDetails(Number(btn.dataset.jobId)));
   });
+  bindApplyButtons(tbody);
 
   document.getElementById("prev-page")?.addEventListener("click", () => {
     if (state.page > 1) {
@@ -174,7 +271,6 @@ function init(): void {
     state.sort = sortSelect && sortSelect.value === "title" ? "title" : "freshness";
     state.pageSize = pageSizeSelect ? Number(pageSizeSelect.value) || 10 : 10;
     state.page = 1;
-    state.expandedJobId = null;
     void loadJobs();
   };
 
@@ -186,6 +282,10 @@ function init(): void {
   pageSizeSelect?.addEventListener("change", applyFiltersAndReload);
 
   void loadJobs();
+
+  // Back from login/signup via /jobs?job=<id>: open the job they asked for.
+  const deepLinked = Number(new URLSearchParams(window.location.search).get("job"));
+  if (Number.isInteger(deepLinked) && deepLinked > 0) void showDetails(deepLinked);
 }
 
 document.addEventListener("DOMContentLoaded", init);

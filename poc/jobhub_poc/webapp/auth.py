@@ -6,6 +6,7 @@ table and Flask's own session cookie belong only to the admin console (admin.py)
 never make anyone a site user.
 """
 import functools
+from urllib.parse import quote
 
 import requests
 from flask import Blueprint, current_app, g, redirect, render_template, request, url_for
@@ -88,16 +89,41 @@ def load_current_user():
         g.current_user = data.get("user")
 
 
+def login_url(next_path):
+    """/login?next=<next_path>. The frontend re-validates `next` before following it
+    (frontend/src/nav.ts safeNext), so only same-origin paths are ever honoured."""
+    return f"{url_for('auth.login')}?next={quote(next_path, safe='/?')}"
+
+
+def verify_url(next_path):
+    return f"{url_for('auth.verify')}?next={quote(next_path, safe='/?')}"
+
+
+def access_state():
+    """"anonymous", "unverified" or "verified" for the current request's user."""
+    user = getattr(g, "current_user", None)
+    if user is None:
+        return "anonymous"
+    # phoneNumberVerified is `null` (not `false`) before phone verification --
+    # Python's `and` already treats None as falsy here, no special-casing needed.
+    if not (user.get("emailVerified") and user.get("phoneNumberVerified")):
+        return "unverified"
+    return "verified"
+
+
+def _current_path():
+    query = request.query_string.decode()
+    return f"{request.path}?{query}" if query else request.path
+
+
 def login_required(view):
     @functools.wraps(view)
     def wrapped(*args, **kwargs):
-        user = getattr(g, "current_user", None)
-        if user is None:
-            return redirect(url_for("auth.login"))
-        # phoneNumberVerified is `null` (not `false`) before phone verification --
-        # Python's `and` already treats None as falsy here, no special-casing needed.
-        if not (user.get("emailVerified") and user.get("phoneNumberVerified")):
-            return redirect(url_for("auth.verify"))
+        state = access_state()
+        if state == "anonymous":
+            return redirect(login_url(_current_path()))
+        if state == "unverified":
+            return redirect(verify_url(_current_path()))
         return view(*args, **kwargs)
     return wrapped
 

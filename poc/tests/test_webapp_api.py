@@ -41,18 +41,10 @@ def test_api_jobs_returns_json_shape(conn):
     assert job["title"] == "Software Engineer"
     assert job["company_name"] == "Acme"
     assert job["location"] == "Remote"
-    assert job["apply_url"] == "https://example.com/1"
-    assert job["description"] == "Build great things."
     assert "first_seen_at" in job
-
-
-def test_api_jobs_description_is_null_when_missing(conn):
-    _seed_job(conn, "1", "Software Engineer", "Remote", "2026-09-16T10:00:00+00:00")
-    app = create_app(test_conn=conn)
-    app.config["TESTING"] = True
-    resp = app.test_client().get("/api/jobs")
-    data = json.loads(resp.data)
-    assert data["jobs"][0]["description"] is None
+    # Details and the apply link are for signed-in users only (see /api/jobs/<id>).
+    assert "apply_url" not in job
+    assert "description" not in job
 
 
 def test_api_jobs_title_filter(conn):

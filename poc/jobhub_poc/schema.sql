@@ -67,3 +67,18 @@ CREATE TABLE IF NOT EXISTS admin_login_attempts (
     locked_until  TEXT,
     updated_at    TEXT NOT NULL
 );
+
+-- What signed-in users did with a job (opened details, clicked apply): history for the
+-- future applications tracker and recommendations. Keyed by the job's dedupe_key plus a
+-- snapshot, NOT a foreign key to jobs.id: purge deletes jobs, and this must outlive them.
+CREATE TABLE IF NOT EXISTS job_interactions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_auth_user_id  TEXT NOT NULL,
+    job_dedupe_key      TEXT NOT NULL,
+    job_title           TEXT,
+    job_company         TEXT,
+    job_apply_url       TEXT,
+    action              TEXT NOT NULL CHECK (action IN ('view_details', 'click_apply')),
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_job_interactions_owner ON job_interactions(owner_auth_user_id);

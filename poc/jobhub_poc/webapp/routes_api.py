@@ -1,4 +1,8 @@
-from flask import Blueprint, current_app, jsonify, request
+from datetime import datetime, timedelta, timezone
+
+from flask import Blueprint, current_app, g, jsonify, request
+
+from jobhub_poc.webapp.auth import access_state, login_url, verify_url
 
 bp = Blueprint("api", __name__)
 
@@ -55,8 +59,6 @@ def list_jobs_json():
             "location": r["location"],
             "employment_type": r["employment_type"],
             "is_remote": bool(r["is_remote"]),
-            "apply_url": r["apply_url"],
-            "description": r["description"],
             "first_seen_at": r["first_seen_at"],
         }
         for r in rows
@@ -68,3 +70,77 @@ def list_jobs_json():
         "total": total,
         "total_pages": total_pages,
     })
+
+
+# ---- job details: signed-in, verified users only (drives signups) ----
+
+# Re-opening the same job's details within this window isn't a new signal.
+_VIEW_DEDUPE_WINDOW = timedelta(hours=1)
+
+
+def _gate(job_id):
+    """None if the caller may see job details, else the JSON error response."""
+    next_path = f"/jobs?job={job_id}"
+    state = access_state()
+    if state == "anonymous":
+        return jsonify({"code": "LOGIN_REQUIRED", "login_url": login_url(next_path)}), 401
+    if state == "unverified":
+        return jsonify({"code": "VERIFY_REQUIRED", "verify_url": verify_url(next_path)}), 403
+    return None
+
+
+def _record(conn, job, action):
+    now = datetime.now(timezone.utc)
+    user_id = g.current_user["id"]
+    if action == "view_details" and conn.execute(
+        "SELECT 1 FROM job_interactions WHERE owner_auth_user_id = ? AND job_dedupe_key = ? "
+        "AND action = 'view_details' AND created_at >= ?",
+        (user_id, job["dedupe_key"], (now - _VIEW_DEDUPE_WINDOW).isoformat()),
+    ).fetchone():
+        return
+    conn.execute(
+        """
+        INSERT INTO job_interactions
+            (owner_auth_user_id, job_dedupe_key, job_title, job_company, job_apply_url, action, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (user_id, job["dedupe_key"], job["title"], job["company_name"], job["apply_url"], action, now.isoformat()),
+    )
+    conn.commit()
+
+
+@bp.route("/api/jobs/<int:job_id>")
+def job_details(job_id):
+    denied = _gate(job_id)
+    if denied:
+        return denied
+    conn = current_app.get_db()
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if job is None:
+        return jsonify({"code": "NOT_FOUND"}), 404
+    _record(conn, job, "view_details")
+    return jsonify({
+        "id": job["id"],
+        "title": job["title"],
+        "company_name": job["company_name"],
+        "location": job["location"],
+        "employment_type": job["employment_type"],
+        "is_remote": bool(job["is_remote"]),
+        "first_seen_at": job["first_seen_at"],
+        "description": job["description"],
+        "apply_url": job["apply_url"],
+    })
+
+
+@bp.route("/api/jobs/<int:job_id>/apply-click", methods=["POST"])
+def apply_click(job_id):
+    """Logs the click, then hands back the employer's URL for the browser to open."""
+    denied = _gate(job_id)
+    if denied:
+        return denied
+    conn = current_app.get_db()
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if job is None or not job["apply_url"]:
+        return jsonify({"code": "NOT_FOUND"}), 404
+    _record(conn, job, "click_apply")
+    return jsonify({"apply_url": job["apply_url"]})

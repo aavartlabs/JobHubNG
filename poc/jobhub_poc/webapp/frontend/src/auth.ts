@@ -9,6 +9,7 @@ import {
   resolvePhoneNumber,
   savePendingPhone,
 } from "./pending_phone";
+import { safeNext, withNext } from "./nav";
 import { normalizePhone } from "./phone";
 import { getTurnstileToken } from "./turnstile";
 
@@ -111,6 +112,20 @@ function errorMessage(data: any, fallback: string): string {
   return fallback;
 }
 
+/** `next` from this page's URL (e.g. /login?next=/jobs?job=12), unvalidated. */
+function currentNext(): string | null {
+  return new URLSearchParams(window.location.search).get("next");
+}
+
+/** Keeps `next` on the login <-> register cross-links, so switching pages mid-flow
+    still returns the person to the job they were looking at. */
+function carryNextOnLinks(): void {
+  const next = currentNext();
+  document.querySelectorAll<HTMLAnchorElement>('main a[href="/login"], main a[href="/register"]').forEach((a) => {
+    a.href = withNext(a.getAttribute("href") ?? "/", next);
+  });
+}
+
 // ---- /login ----
 function initLogin(): void {
   const form = document.getElementById("login-form") as HTMLFormElement | null;
@@ -129,7 +144,7 @@ function initLogin(): void {
       showError(errorEl, errorMessage(data, "Could not log in. Check your email and password."));
       return;
     }
-    window.location.href = "/jobs";
+    window.location.href = safeNext(currentNext());
   });
 }
 
@@ -189,7 +204,7 @@ function initRegister(): void {
     }
     await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" }, "send_email_otp");
 
-    window.location.href = "/verify";
+    window.location.href = withNext("/verify", currentNext());
   });
 }
 
@@ -232,7 +247,10 @@ function initVerify(): void {
   }
 
   function maybeShowContinue(): void {
-    if (emailDone && phoneDone && continueEl) continueEl.hidden = false;
+    if (!(emailDone && phoneDone && continueEl)) return;
+    const link = continueEl.querySelector("a");
+    if (link) link.href = safeNext(currentNext());
+    continueEl.hidden = false;
   }
 
   function markEmailVerified(): void {
@@ -367,6 +385,7 @@ function initVerify(): void {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  carryNextOnLinks();
   initLogin();
   initRegister();
   initVerify();

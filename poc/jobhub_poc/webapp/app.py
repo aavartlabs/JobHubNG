@@ -70,6 +70,7 @@ def create_app(test_conn=None):
             "turnstile_sitekey": config.TURNSTILE_SITEKEY,
             "is_admin": admin.is_admin,
             "csrf_token": admin.csrf_token,
+            "access_state": auth.access_state,
         }
 
     app.register_blueprint(auth.bp)
