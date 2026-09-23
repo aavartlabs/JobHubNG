@@ -5,7 +5,7 @@ import { betterAuth } from "better-auth";
 import { emailOTP, phoneNumber } from "better-auth/plugins";
 
 import { sendEmailOTP } from "./email.js";
-import { sendPhoneOTP } from "./phone.js";
+import { isValidPhoneNumber, sendPhoneOTP } from "./phone.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -97,6 +97,9 @@ export const auth = betterAuth({
     }),
     phoneNumber({
       otpLength: 6,
+      // Rejects malformed numbers (e.g. "+01...", or no country code) with 400
+      // INVALID_PHONE_NUMBER on send-otp and verify, before any WhatsApp send.
+      phoneNumberValidator: isValidPhoneNumber,
       async sendOTP({ phoneNumber: number, code }) {
         await sendPhoneOTP(number, code);
       },

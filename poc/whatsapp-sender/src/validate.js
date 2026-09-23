@@ -13,8 +13,10 @@ export function validateSendPayload(body) {
   if (typeof message !== "string" || message.trim() === "") {
     return { valid: false, error: "message is required" };
   }
-  const digits = phone.replace(/[^0-9]/g, "");
-  if (digits.length < 7 || digits.length > 15) {
+  // Optional "+", then a country code that never starts with 0, 7-15 digits in all.
+  // Spaces, dashes, dots and brackets are tolerated; letters are not silently dropped.
+  const compact = phone.trim().replace(/[\s().-]/g, "");
+  if (!/^\+?[1-9][0-9]{6,14}$/.test(compact)) {
     return { valid: false, error: "phone does not look like a valid number" };
   }
   return { valid: true, phone, message };

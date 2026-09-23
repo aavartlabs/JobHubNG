@@ -9,6 +9,7 @@ import {
   resolvePhoneNumber,
   savePendingPhone,
 } from "./pending_phone";
+import { normalizePhone } from "./phone";
 import { getTurnstileToken } from "./turnstile";
 
 interface AuthUser {
@@ -41,6 +42,10 @@ function pendingPhoneStorage(): PendingPhoneStorage | null {
     return null;
   }
 }
+
+// Carries a failed first phone-code send from /register over to /verify, where the
+// person can see it and correct the number -- otherwise it just never arrives, silently.
+const PHONE_SEND_ERROR_KEY = "jobhub.phoneSendError";
 
 const BOT_CHECK_FAILED = "Bot check failed or didn't load. Please try again.";
 
@@ -141,7 +146,14 @@ function initRegister(): void {
     const name = (document.getElementById("register-name") as HTMLInputElement | null)?.value.trim() ?? "";
     const email = (document.getElementById("register-email") as HTMLInputElement | null)?.value.trim() ?? "";
     const password = (document.getElementById("register-password") as HTMLInputElement | null)?.value ?? "";
-    const phoneNumber = (document.getElementById("register-phone") as HTMLInputElement | null)?.value.trim() ?? "";
+    const phone = normalizePhone(
+      (document.getElementById("register-phone") as HTMLInputElement | null)?.value ?? "",
+    );
+    if (!phone.ok) {
+      showError(errorEl, phone.error);
+      return;
+    }
+    const phoneNumber = phone.phone;
 
     // 1. Sign up with email+password only -- deliberately NOT phoneNumber. Better Auth's
     // phone-number/verify later refuses to attach a number that "already exists" on any
@@ -164,7 +176,17 @@ function initRegister(): void {
     // 3 & 4. Trigger both OTP sends as separate steps, then move on to /verify
     // regardless of their outcome -- that page re-derives status from get-session and
     // offers its own resend affordances, so this is best-effort here.
-    await postJson("/auth/phone-number/send-otp", { phoneNumber }, "send_phone_otp");
+    const phoneSend = await postJson("/auth/phone-number/send-otp", { phoneNumber }, "send_phone_otp");
+    if (!phoneSend.ok) {
+      try {
+        window.sessionStorage.setItem(
+          PHONE_SEND_ERROR_KEY,
+          errorMessage(phoneSend.data, "We couldn't send a WhatsApp code to that number."),
+        );
+      } catch {
+        // storage unavailable -- /verify still offers a resend
+      }
+    }
     await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" }, "send_email_otp");
 
     window.location.href = "/verify";
@@ -198,9 +220,15 @@ function initVerify(): void {
   let emailDone = false;
   let phoneDone = false;
 
-  /** The number to verify against: whatever is in the editable field right now. */
-  function currentPhoneNumber(): string {
-    return phoneInput?.value.trim() ?? "";
+  /** The number to verify against: whatever is in the editable field right now,
+      normalised, or null (with the reason shown) if it isn't a usable number. */
+  function currentPhoneNumber(): string | null {
+    const phone = normalizePhone(phoneInput?.value ?? "");
+    if (!phone.ok) {
+      showError(phoneError, phone.error);
+      return null;
+    }
+    return phone.phone;
   }
 
   function maybeShowContinue(): void {
@@ -244,6 +272,16 @@ function initVerify(): void {
     statusEl.textContent = "Enter the codes sent to your email and phone to finish setting up your account.";
     emailSection.hidden = false;
     phoneSection.hidden = false;
+
+    try {
+      const sendError = window.sessionStorage.getItem(PHONE_SEND_ERROR_KEY);
+      if (sendError) {
+        window.sessionStorage.removeItem(PHONE_SEND_ERROR_KEY);
+        showError(phoneError, `${sendError} Check the number below and use "Resend phone code".`);
+      }
+    } catch {
+      // storage unavailable
+    }
 
     if (sessionData.user.emailVerified) markEmailVerified();
     if (sessionData.user.phoneNumberVerified) markPhoneVerified();
@@ -297,10 +335,7 @@ function initVerify(): void {
     e.preventDefault();
     if (phoneError) phoneError.hidden = true;
     const phoneNumber = currentPhoneNumber();
-    if (!phoneNumber) {
-      showError(phoneError, "Enter the mobile number you registered with, e.g. +15551234567.");
-      return;
-    }
+    if (!phoneNumber) return;
     const code = (document.getElementById("phone-otp-code") as HTMLInputElement | null)?.value.trim() ?? "";
 
     const { ok, data } = await postJson("/auth/phone-number/verify", {
@@ -318,10 +353,7 @@ function initVerify(): void {
   resendPhoneBtn?.addEventListener("click", async () => {
     if (phoneError) phoneError.hidden = true;
     const phoneNumber = currentPhoneNumber();
-    if (!phoneNumber) {
-      showError(phoneError, "Enter the mobile number you registered with, e.g. +15551234567.");
-      return;
-    }
+    if (!phoneNumber) return;
     // Keep the stash in step with whatever the user actually typed, so a reload of
     // /verify prefills the number they just asked a code for, not a stale one.
     savePendingPhone(storage, phoneNumber);

@@ -1,4 +1,19 @@
+import { APIError } from "better-auth/api";
+
 const SENT_STATUS = "sent";
+// whatsapp-sender's answer when the number has no WhatsApp account (src/server.js).
+const NOT_ON_WHATSAPP = "not_on_whatsapp";
+const E164 = /^\+[1-9][0-9]{6,14}$/;
+
+/**
+ * "+", a country code that never starts with 0, 7-15 digits in all (E.164) --
+ * Better Auth's phoneNumberValidator, so a malformed number is a 400 before any
+ * WhatsApp send. Same rule as the frontend's normalizePhone and Flask's
+ * normalize_e164; the browser strips spaces/dashes before it gets here.
+ */
+export function isValidPhoneNumber(phoneNumber) {
+  return typeof phoneNumber === "string" && E164.test(phoneNumber);
+}
 
 /**
  * Builds a `sendPhoneOTP(phoneNumber, code)` function bound to a
@@ -42,6 +57,14 @@ export function createPhoneOTPSender({
       // non-JSON or empty body -- treated as a failure below
     }
 
+    if (body?.error === NOT_ON_WHATSAPP) {
+      // The person's fault to fix, not a server failure: surface it as a 400 with a
+      // message the verify page can show, instead of Better Auth's generic 500.
+      throw APIError.from("BAD_REQUEST", {
+        code: "NOT_ON_WHATSAPP",
+        message: "That number isn't on WhatsApp. Check the country code and number.",
+      });
+    }
     if (!res.ok || body?.status !== SENT_STATUS) {
       const detail = body?.error ? `: ${body.error}` : "";
       throw new Error(`WhatsApp gateway did not confirm the OTP send (HTTP ${res.status}${detail})`);

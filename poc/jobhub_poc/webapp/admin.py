@@ -25,6 +25,7 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from jobhub_poc import config
+from jobhub_poc.phone import normalize_e164
 from jobhub_poc.webapp import turnstile
 from jobhub_poc.webapp.auth import client_ip
 
@@ -236,7 +237,11 @@ def edit_user(user_id):
 
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone_number", "").strip()
+    raw_phone = request.form.get("phone_number", "").strip()
+    phone = normalize_e164(raw_phone) if raw_phone else ""
+    if phone is None:
+        flash("Not saved: mobile must be + and the country code, e.g. +91 98765 43210.")
+        return redirect(url_for("admin.edit_user", user_id=user_id))
     email_verified = request.form.get("email_verified") == "on"
     phone_verified = request.form.get("phone_verified") == "on"
 

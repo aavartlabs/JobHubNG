@@ -1,3 +1,4 @@
+import pytest
 from jobhub_poc import config
 from jobhub_poc.webapp.app import create_app
 
@@ -157,3 +158,19 @@ def test_deactivate_nonexistent_subscription_is_a_no_op(conn, requests_mock):
     client = _logged_in_client(conn, requests_mock, user_id="auth-user-1")
     resp = client.post("/alerts/999999/deactivate")
     assert resp.status_code in (200, 302)
+
+
+@pytest.mark.parametrize("phone", ["+019902065845", "9902065845", "919902065845", "+91 9902O65845"])
+def test_register_alert_requires_international_format(conn, requests_mock, turnstile_calls, phone):
+    """A bare or 0-prefixed number becomes a WhatsApp JID in the wrong country -- or none."""
+    client = _logged_in_client(conn, requests_mock)
+    resp = client.post("/alerts/register", data={"phone_number": phone, "cf-turnstile-response": "good-token"})
+    assert resp.status_code == 400
+    assert conn.execute("SELECT COUNT(*) AS c FROM alert_subscriptions").fetchone()["c"] == 0
+
+
+def test_register_alert_stores_number_without_separators(conn, requests_mock, turnstile_calls):
+    client = _logged_in_client(conn, requests_mock)
+    client.post("/alerts/register", data={"phone_number": " +91 99020-65845 ", "cf-turnstile-response": "good-token"})
+    row = conn.execute("SELECT phone_number FROM alert_subscriptions").fetchone()
+    assert row["phone_number"] == "+919902065845"

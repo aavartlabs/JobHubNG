@@ -4,6 +4,7 @@ import qrcodeTerminal from "qrcode-terminal";
 import pino from "pino";
 
 import { toJid } from "./jid.js";
+import { isOnWhatsApp } from "./registered.js";
 import { validateSendPayload } from "./validate.js";
 import { createAckTracker } from "./ack-tracker.js";
 import { createSentMessageCache } from "./sent-message-cache.js";
@@ -131,9 +132,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  const jid = toJid(validated.phone);
+  try {
+    if (!(await isOnWhatsApp(sock, jid))) {
+      // Answer now rather than wait ACK_TIMEOUT_MS for an ack that can't come.
+      sendJson(res, 422, { error: "not_on_whatsapp" });
+      return;
+    }
+  } catch (err) {
+    // A failed lookup isn't evidence the number is bad -- fall through and try the
+    // send, which behaves exactly as it did before this check existed.
+    console.warn(`[whatsapp-sender] onWhatsApp lookup failed, sending anyway: ${err?.message || err}`);
+  }
+
   try {
     const content = { text: validated.message };
-    const sent = await sock.sendMessage(toJid(validated.phone), content);
+    const sent = await sock.sendMessage(jid, content);
     const msgId = sent?.key?.id;
     if (!msgId) {
       // No message id to track (shouldn't normally happen) -- report sent

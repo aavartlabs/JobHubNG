@@ -15,7 +15,8 @@ import crypto from "node:crypto";
 
 const PREFIX = "/internal/admin/users";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^\+?[0-9]{7,15}$/;
+// E.164, same rule as src/phone.js's isValidPhoneNumber.
+const PHONE_RE = /^\+[1-9][0-9]{6,14}$/;
 // Better Auth's email-otp plugin keys pending codes as `${type}-otp-${email}`;
 // the phone-number plugin keys them by the bare number.
 const EMAIL_OTP_TYPES = ["sign-in", "email-verification", "forget-password"];

@@ -9,7 +9,7 @@
   <label>Name <input type="text" name="name" value="{{ user.name }}" required></label>
   <label>Email <input type="email" name="email" value="{{ user.email }}" required></label>
   <label><input type="checkbox" name="email_verified" {{ "checked" if user.emailVerified }}> Email verified</label>
-  <label>Mobile <input type="text" name="phone_number" value="{{ user.phoneNumber or '' }}" placeholder="+15551234567"></label>
+  <label>Mobile <input type="text" name="phone_number" value="{{ user.phoneNumber or '' }}" placeholder="+91 98765 43210"></label>
   <label><input type="checkbox" name="phone_verified" {{ "checked" if user.phoneNumberVerified }}> Mobile verified</label>
   <p class="hint">Changing the email or mobile marks it unverified, whatever the checkbox says;
      tick it in a second save if you've confirmed it yourself.</p>

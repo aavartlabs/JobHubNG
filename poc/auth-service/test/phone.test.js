@@ -93,3 +93,31 @@ test("throws when WHATSAPP_GATEWAY_URL is not configured, without making a reque
   const sendPhoneOTP = createPhoneOTPSender({ gatewayUrl: "" });
   await assert.rejects(sendPhoneOTP("+15551234567", "123456"));
 });
+
+test("isValidPhoneNumber accepts only +<country code><number>", async () => {
+  const { isValidPhoneNumber } = await import("../src/phone.js");
+  assert.equal(isValidPhoneNumber("+919902065845"), true);
+  assert.equal(isValidPhoneNumber("+15551234567"), true);
+  for (const bad of ["+019902065845", "9902065845", "+91 99020 65845", "", null, "+1234"]) {
+    assert.equal(isValidPhoneNumber(bad), false, String(bad));
+  }
+});
+
+test("a gateway 'not_on_whatsapp' answer becomes a 400 the user can read, not a 500", async () => {
+  const { APIError } = await import("better-auth/api");
+  await withStubGateway(
+    (req, res) => {
+      res.writeHead(422, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_on_whatsapp" }));
+    },
+    async (gatewayUrl) => {
+      const sendPhoneOTP = createPhoneOTPSender({ gatewayUrl, apiKey: "k" });
+      await assert.rejects(sendPhoneOTP("+15551234567", "123456"), (err) => {
+        assert.ok(err instanceof APIError, "expected an APIError");
+        assert.equal(err.statusCode, 400);
+        assert.match(err.body?.message ?? "", /isn't on WhatsApp/);
+        return true;
+      });
+    },
+  );
+});

@@ -344,3 +344,20 @@ def test_failed_auth_service_delete_keeps_subscriptions(client, conn, requests_m
     client.post("/admin/users/u1/delete", data={"csrf_token": _csrf(client)})
 
     assert conn.execute("SELECT count(*) AS n FROM alert_subscriptions").fetchone()["n"] == 1
+
+
+def test_edit_normalises_phone_and_refuses_non_international(client, requests_mock):
+    _logged_in(client, requests_mock)
+    patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
+    client.post("/admin/users/u1", data={
+        "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com",
+        "phone_number": "+1 555 000 0009", "email_verified": "on", "phone_verified": "on",
+    })
+    assert patch.last_request.json() == {"phoneNumber": "+15550000009", "phoneNumberVerified": False}
+
+    resp = client.post("/admin/users/u1", data={
+        "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com",
+        "phone_number": "9902065845", "email_verified": "on", "phone_verified": "on",
+    }, follow_redirects=True)
+    assert patch.call_count == 1
+    assert "country code" in resp.get_data(as_text=True)

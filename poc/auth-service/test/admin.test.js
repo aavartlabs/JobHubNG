@@ -145,7 +145,7 @@ test("an empty phone number clears it", async () => {
 
 test("rejects invalid field values with 400", async () => {
   await withServer(seededDb(), async (base) => {
-    for (const body of [{ email: "not-an-email" }, { name: "" }, { phoneNumber: "12ab" }, { emailVerified: "yes" }, {}]) {
+    for (const body of [{ email: "not-an-email" }, { name: "" }, { phoneNumber: "12ab" }, { phoneNumber: "+019902065845" }, { phoneNumber: "9902065845" }, { emailVerified: "yes" }, {}]) {
       assert.equal((await call(base, "PATCH", "/internal/admin/users/u1", { body })).status, 400, JSON.stringify(body));
     }
   });
