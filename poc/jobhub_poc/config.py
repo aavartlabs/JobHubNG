@@ -40,6 +40,12 @@ AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:3200")
 WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 
 
+# Former public hostnames of this deployment (comma-separated). Requests for them are
+# permanently redirected to the same path on WEB_ORIGIN (webapp/app.py), so old links --
+# bookmarks, digests already sent -- keep working. The tunnel must still route them here.
+LEGACY_HOSTS = {h.strip().lower() for h in os.environ.get("LEGACY_HOSTS", "").split(",") if h.strip()}
+
+
 def hostnames_from_origin(origin):
     return {urlparse(origin).hostname} if urlparse(origin).hostname else set()
 

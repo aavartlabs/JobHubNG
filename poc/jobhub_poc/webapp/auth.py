@@ -19,7 +19,7 @@ bp = Blueprint("auth", __name__)
 # connection as secure, which with BETTER_AUTH_URL set (always, see that service's
 # .env.example) follows that URL's scheme and NOT NODE_ENV -- confirmed by running the
 # real service both ways (see poc/auth-service/README.md). Production
-# (jobhubs.aavartlabs.com) is https, local dev is http, so both names must be checked;
+# (jobshub.aavartlabs.com) is https, local dev is http, so both names must be checked;
 # don't hardcode one.
 SESSION_COOKIE_NAMES = ("__Secure-jobhub-auth.session_token", "jobhub-auth.session_token")
 

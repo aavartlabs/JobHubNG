@@ -2,7 +2,7 @@
 
 Job intelligence pipeline: scrapes jobs from EverJobs, stores them in SQLite, serves them
 through a small public web app, and sends WhatsApp alerts on matches. Live at
-https://jobhubs.aavartlabs.com.
+https://jobshub.aavartlabs.com.
 
 **This repo contains two generations of the project — only `poc/` is live.** The original
 Spring Boot/Next.js/Postgres stack under `apps/` was scrapped as the active runtime surface
@@ -42,7 +42,7 @@ pi05: scraper/                          pi09: jobhub_poc/  (Docker container "jo
                                              alerts/   registration + matcher + notifier, account-owned
                                              (pi09 pulls directly, no relay host)
 
-https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
+https://jobshub.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
 ```
 
 **Stack:** Python (Flask + a small esbuild-bundled TypeScript frontend, no framework) +

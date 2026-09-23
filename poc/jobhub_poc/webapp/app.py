@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import timedelta
 
-from flask import Flask, g, redirect, url_for
+from flask import Flask, g, redirect, request, url_for
 
 from jobhub_poc import config, db
 from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs
@@ -41,6 +41,18 @@ def create_app(test_conn=None):
             conn = g.pop("db", None)
             if conn is not None:
                 conn.close()
+
+    @app.before_request
+    def redirect_legacy_hosts():
+        # Before anything else (session lookups included): a request for a former
+        # hostname goes to the same path on the current one. 301 for GET/HEAD; 308 for
+        # anything else so a POST stays a POST.
+        host = request.host.split(":")[0].lower()
+        if host in config.LEGACY_HOSTS:
+            query = request.query_string.decode()
+            target = f"{config.WEB_ORIGIN.rstrip('/')}{request.path}{'?' + query if query else ''}"
+            return redirect(target, code=301 if request.method in ("GET", "HEAD") else 308)
+        return None
 
     app.before_request(auth.load_current_user)
 

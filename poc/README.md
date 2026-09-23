@@ -16,7 +16,7 @@ pi05: scraper/            pi09: jobhub_poc/  (Docker container "jobhub-web")
   dump_jobs.py -----json--> alerts/    registration + matcher + notifier, account-owned
      (pi09 pulls directly, no relay host)
 
-https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
+https://jobshub.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
 ```
 
 - **Scraper (pi05)**: `scraper/` runs independently, its own venv. EverJobs'
@@ -37,7 +37,7 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
   just a shell (filter form + empty `<tbody>`) that loads the compiled
   `static/app.js`. Both the JSON API and the page shell are **public** --
   browsing jobs needs no account. Only `/alerts/*` is gated.
-- **Production**: `jobhubs.aavartlabs.com` (Cloudflare Tunnel, already
+- **Production**: `jobshub.aavartlabs.com` (Cloudflare Tunnel, already
   running on pi09) has a **fixed** target of `http://jobhub-web:3000` on the
   `jobhub` Docker network -- set remotely in Cloudflare's dashboard, not
   editable from here. The `web` service in `docker-compose.yml` is built and

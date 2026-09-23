@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 JobHubNG is a job intelligence pipeline: it scrapes jobs from an external service
 (EverJobs), stores them in SQLite, serves them through a small public web app, and
 sends WhatsApp alerts when new jobs match a saved subscription. It is deployed at
-`jobhubs.aavartlabs.com` via a Cloudflare Tunnel.
+`jobshub.aavartlabs.com` via a Cloudflare Tunnel, as **JobsHub** (renamed 2026-09-24 from
+"JobHub POC" on `jobhubs.aavartlabs.com`; that old hostname is still routed by the tunnel
+and 301/308-redirected by the app to the same path on the new one, via `LEGACY_HOSTS`).
 
 **This repo contains two generations of the project. Only one is live.**
 
@@ -35,7 +37,7 @@ pi05: scraper/ + warehouse.db                 pi09: jobhub_poc/  (Docker contain
                                                  (pi09 orchestrates: ssh pi05 ingest+export,
                                                   scp the delta, load, purge, alert)
 
-https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
+https://jobshub.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
                                                                     |
                                                      pi09: jobhub-whatsapp container
                                                        (baileys WhatsApp Web session)
