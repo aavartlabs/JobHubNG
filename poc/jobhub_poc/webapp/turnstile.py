@@ -24,6 +24,8 @@ def verify(token, action):
         current_app.logger.error("turnstile: CF_TURNSTILE_SECRET or TURNSTILE_HOSTNAMES unset; rejecting")
         return False
     if not isinstance(token, str) or not token or len(token) > _MAX_TOKEN_LENGTH:
+        # Usually a stale cached page script that predates Turnstile, or a bot.
+        current_app.logger.info("turnstile: missing or oversized token for %s", action)
         return False
 
     try:

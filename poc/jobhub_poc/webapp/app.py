@@ -1,4 +1,6 @@
+import hashlib
 import logging
+import os
 from datetime import timedelta
 
 from flask import Flask, g, redirect, url_for
@@ -41,6 +43,26 @@ def create_app(test_conn=None):
                 conn.close()
 
     app.before_request(auth.load_current_user)
+
+    # Cloudflare overrides the origin's Cache-Control and has browsers keep /static/*
+    # for 4 hours, so a deploy's new auth.js/app.js/style.css wouldn't reach anyone who
+    # visited recently. A content hash in the URL makes every change a new URL.
+    static_versions = {}
+
+    @app.url_defaults
+    def version_static_urls(endpoint, values):
+        if endpoint != "static" or "filename" not in values:
+            return
+        path = os.path.join(app.static_folder, values["filename"])
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return
+        key = (path, stat.st_mtime_ns, stat.st_size)
+        if key not in static_versions:
+            with open(path, "rb") as f:
+                static_versions[key] = hashlib.sha256(f.read()).hexdigest()[:12]
+        values["v"] = static_versions[key]
 
     @app.context_processor
     def inject_template_globals():
