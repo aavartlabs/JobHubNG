@@ -194,6 +194,27 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - To change the pipeline cadence: edit `OnCalendar=` in that timer file on **pi09**, then
   `ssh pi09 "systemctl --user daemon-reload && systemctl --user restart jobhub-pipeline.timer"`.
 
+## Backups (MinIO on pi06, since 2026-09-24)
+
+- **What/when:** `jobshub-backup.timer` on pi09 (02:30 IST, user unit; templates in
+  `poc/deploy/systemd/`) runs `poc/scripts/nightly_backup.sh`: `backup_to_minio.sh` for pi09's
+  `data/jobhub.db` + `auth-service/data/auth.db`, then the same script on pi05 over SSH for
+  `scraper/data/warehouse.db` (pi05's user has no systemd linger). Log: `~/jobhub-poc/backup.log`.
+- **How:** SQLite online backup → `quick_check` → gzip → `mc cp` to
+  `jobshub-data/backups/daily/<local date>/<host>/<db>.gz` with a `sha256` metadata attribute,
+  then size re-check; Sundays also `weekly/`, the 1st also `monthly/`. Bucket lifecycle
+  expires daily/weekly/monthly after 14/84/365 days. ~44 MB per night.
+- **Access:** MinIO `http://<pi06>:9000` (plain HTTP on the LAN, **no client-side
+  encryption** by Sanjay's choice). User `jobshub-backup` can get/put/list in
+  `jobshub-data` only — no delete, no other buckets. Its keys are in `~/.jobshub-minio.env`
+  (0600) on pi05/pi06/pi09 and reach `mc` only via `MC_HOST_jb`, never argv. `mc` is
+  `~/bin/mc` on pi05/pi09.
+- **Restore:** on any host with the env file:
+  `set -a; . ~/.jobshub-minio.env; set +a; export MC_HOST_jb="http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@${MINIO_ENDPOINT#*://}"`,
+  then `~/bin/mc ls jb/jobshub-data/backups/daily/` → `~/bin/mc cp jb/jobshub-data/backups/daily/<date>/<host>/<db>.gz .`
+  → `gunzip` → check `PRAGMA integrity_check` → stop the container/pipeline that uses it and
+  swap the file in.
+
 ## Key Environment Variables (`poc/.env.example`, separate from the root `.env.example`)
 
 - `EVER_JOBS_API_URL` / `EVER_JOBS_API_KEY` — scraper target; `EVER_JOBS_SITE_NAMES` is

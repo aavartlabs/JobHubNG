@@ -1,0 +1,12 @@
+# Installed on pi09 as ~/.config/systemd/user/jobshub-backup.timer.
+# 02:30 IST: clear of the 00:00/06:00 pipeline runs (a sweep takes ~5 minutes).
+[Unit]
+Description=Nightly JobsHub backups to MinIO
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

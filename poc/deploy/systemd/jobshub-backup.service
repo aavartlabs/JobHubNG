@@ -1,0 +1,11 @@
+# Installed on pi09 as ~/.config/systemd/user/jobshub-backup.service (user sanjayu, linger on).
+[Unit]
+Description=JobsHub nightly database backups to MinIO (pi06)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/jobhub-poc
+ExecStart=/usr/bin/bash scripts/nightly_backup.sh
+StandardOutput=append:%h/jobhub-poc/backup.log
+StandardError=append:%h/jobhub-poc/backup.log
