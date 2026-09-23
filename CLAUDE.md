@@ -28,12 +28,12 @@ steps live in `poc/PLAN.md`; day-to-day architecture and quick start live in `po
 ## Live Architecture (`poc/`)
 
 ```
-pi05: scraper/                          pi09: jobhub_poc/  (Docker container "jobhub-web")
-  EverJobs (prebuilt Node dist)            loader/   JSON dump -> SQLite (dedupe, purge)
-  dump_jobs.py --json dump--------------->  webapp/   Flask JSON API + TS frontend, public
-                                             alerts/   registration + matcher + notifier, account-owned
-                                             (pi09 pulls the dump and runs the rest itself,
-                                              scheduled locally -- no relay host)
+pi05: scraper/ + warehouse.db                 pi09: jobhub_poc/  (Docker container "jobhub-web")
+  EverJobs (prebuilt Node dist)                  loader/   delta -> jobhub.db (serving), purge
+  ingest.py: full sweep -> warehouse.db          webapp/   Flask JSON API + TS frontend
+  export.py: gzip delta ------------------------> alerts/   matcher + notifier, account-owned
+                                                 (pi09 orchestrates: ssh pi05 ingest+export,
+                                                  scp the delta, load, purge, alert)
 
 https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
                                                                     |
@@ -41,23 +41,38 @@ https://jobhubs.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
                                                        (baileys WhatsApp Web session)
 ```
 
-- **Scraper (pi05 only)**: `poc/scraper/dump_jobs.py` calls EverJobs once per pipeline run
-  and filters/caps results client-side by `SEARCH_TERMS`. **Which site buckets get scraped
-  is decided server-side** by `DEFAULT_SITE_NAMES` in pi05's EverJobs systemd unit
-  (currently `google,naukri,linkedin,indeed,glassdoor`) — not by anything the client
-  sends; `EVER_JOBS_SITE_NAMES` in `scraper/config.py` is only logged, and should be kept in
-  sync by hand. A 5-bucket fetch takes close to the 600s `REQUEST_TIMEOUT_SECONDS`. EverJobs' `query`/`results`
-  params are **not honored server-side** — a site bucket like `google` returns every job
-  from ~1,500+ registered companies regardless of query (confirmed live: 15,000+ jobs,
-  79MB, ~2.5 min per call), so per-term filtering has to happen after the fetch.
-- **Loader (pi09 only)**: `poc/jobhub_poc/loader/load_dump.py` upserts each job on
-  `dedupe_key` (external id, else a content hash) into SQLite. Freshness/purge is keyed
-  **solely on `first_seen_at`** (our own discovery timestamp, set once and never touched on
-  re-load) — never on the source's own `datePosted`, which in real data ranges from 2021 to
-  2026 and can't be trusted. `loader/purge.py` deletes rows older than
-  `PURGE_WINDOW_DAYS` by that same field. A known, deliberate simplification: an evergreen
-  listing that reappears every scrape still gets purged 15 days after it was *first* seen,
-  not 15 days after it stops appearing.
+**Two data tiers (Stage 2, 2026-09-23).** All tunables live in `poc/config/pipeline.ini`
+(read by `jobhub_poc/pipeline_config.py`, stdlib-only because pi05 imports it; env override
+`JOBHUB_PIPELINE_<SECTION>_<KEY>`; unknown keys are errors). **Cutover status:** until T7 is
+done, pi09's timer still runs the old `scripts/run_pipeline.sh` (filtered dump → `load_dump`);
+the new path is `scripts/run_pipeline_warehouse.sh`, and the old script stays as rollback.
+
+- **Warehouse (pi05, `~/jobhub-poc/scraper/data/warehouse.db`)**: `scraper/ingest.py` upserts
+  the *whole* EverJobs sweep, unfiltered — same EverJobs id or same fingerprint (normalised
+  title + company + city) is one job. Jobs whose posted date (`jobhub_poc/dates.py`) is older
+  than `[ingest] max_posted_age_days` are neither inserted nor touched. `content_hash` means
+  `updated_at` moves only on real content changes; `last_seen_at` moves on every sighting.
+  Purged by `last_seen_at` after `warehouse_retention_days`. pi05 runs only the stdlib files
+  `jobhub_poc/{__init__,dates,pipeline_config}.py` + `config/pipeline.ini`, not the app.
+- **Export → serving**: `scraper/export.py --since <watermark>` writes a gzip JSONL delta of
+  warehouse rows whose title matches `[serving] search_terms` (and `locations` if set): full
+  records for new/changed jobs, tiny `touch` records for jobs merely seen again. pi09's
+  `loader/load_delta.py` applies it and the watermark (`sync_state` table) in one transaction.
+  `dedupe_key` is the EverJobs id — the same key `load_dump` always used — so a cutover
+  doesn't re-announce existing jobs. **But** the first sync after cutover still inserts
+  thousands of newly-eligible jobs: run it once with `SUPPRESS_ALERTS=1`.
+- **Serving purge**: `loader/purge.py` deletes jobs not seen for `serving_retention_days`,
+  keyed on `last_seen_at` (not first_seen — live listings survive), deleting their
+  `alerts_sent` rows first (FK). `EVER_JOBS_SITE_NAMES` / `SEARCH_TERMS` / `RESULTS_PER_TERM`
+  in `scraper/.env` only matter to the old `dump_jobs.py` path.
+- **EverJobs facts**: which site buckets are scraped is decided **server-side** by
+  `DEFAULT_SITE_NAMES` in pi05's EverJobs systemd unit (currently
+  `google,naukri,linkedin,indeed,glassdoor`), not by the client. `query`/`results` are **not
+  honored** — every call returns the whole sweep (2026-09-23: 15,203 jobs, ~3 min;
+  ingest peak RSS ~570 MB; ~11k distinct fresh jobs ≈ 129 MB warehouse).
+- **Posted dates** (`datePosted`) are unreliable — ISO, bare dates, epoch seconds, "Sep 23,
+  2026", years-stale values. Never key retention on them; `dates.normalize_posted` only feeds
+  the age filter and (T8) the "posted within" filter, falling back to first_seen.
 - **Web app (pi09, Docker container `jobhub-web`)**: `poc/jobhub_poc/webapp/` is a Flask
   app (blueprints: `auth`, `auth_proxy`, `routes_jobs`, `routes_alerts`, `routes_api`); it
   holds no identity of its own — see [Accounts](#accounts-poc-web-app). `GET /api/jobs`
@@ -102,7 +117,7 @@ cp .env.example .env                       # edit as needed
 
 cd scraper
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/pytest -v                        # 10 tests, separate venv/deps from poc/
+.venv/bin/pytest -v                        # separate venv/deps from poc/ (warehouse, export, dump tests)
 
 cd ../whatsapp-sender
 npm install && npm test                    # pure-logic tests only, no live WhatsApp needed
@@ -136,9 +151,12 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 
 ## Deployment
 
-- **pi05**: runs the scraper only — the prebuilt EverJobs Node server (as a systemd system
-  service, `Restart=always`, boot-enabled) plus a Python venv for `dump_jobs.py`. Never runs
-  the web app or SQLite.
+- **pi05**: runs EverJobs (prebuilt Node server, systemd system service `jobhub-everjobs`,
+  `Restart=always`, boot-enabled), the scraper venv (`dump_jobs.py` old path;
+  `ingest.py`/`export.py` warehouse path) and the SQLite **warehouse** at
+  `~/jobhub-poc/scraper/data/warehouse.db`. It never runs the web app. Deploy there = rsync of
+  `poc/scraper/*.py`, `poc/jobhub_poc/{__init__,dates,pipeline_config}.py` and
+  `poc/config/pipeline.ini` into `~/jobhub-poc/` (user `rudra`).
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
   `~/jobhub-poc/data/jobhub.db`, plus Docker containers from `poc/docker-compose.yml`:
   `jobhub-web` (the Flask app), `jobhub-auth` (Better Auth), and `jobhub-whatsapp` (the
@@ -166,9 +184,9 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 
 - `EVER_JOBS_API_URL` / `EVER_JOBS_API_KEY` — scraper target; `EVER_JOBS_SITE_NAMES` is
   informational only (see Scraper note above). `REQUEST_TIMEOUT_SECONDS` defaults to 600
-- `SEARCH_TERMS` (comma-separated) / `RESULTS_PER_TERM` — client-side filter/cap applied
+- `SEARCH_TERMS` (comma-separated) / `RESULTS_PER_TERM` — **old dump path only**; the warehouse path uses `config/pipeline.ini [serving]`. Client-side filter/cap applied
   after the single EverJobs fetch, since server-side query params aren't honored
-- `JOBHUB_SQLITE_PATH` / `PURGE_WINDOW_DAYS` — storage + freshness window
+- `JOBHUB_SQLITE_PATH` — serving DB path (retention moved to `config/pipeline.ini [retention]`)
 - `WEB_PORT` / `WEB_SECRET_KEY` — web app; note the Docker Compose deployment
   force-overrides `WEB_PORT` to `3000` regardless of what's in `.env` (see Cloudflare
   Tunnel note above) — don't trust `.env`'s `WEB_PORT` as what the container binds to
