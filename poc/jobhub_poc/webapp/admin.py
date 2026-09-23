@@ -18,29 +18,22 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-import requests
 from flask import (
     Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from jobhub_poc import config
+from jobhub_poc import auth_admin_client, config
+from jobhub_poc.auth_admin_client import AuthServiceError
 from jobhub_poc.phone import normalize_e164
 from jobhub_poc.webapp import turnstile
 from jobhub_poc.webapp.auth import client_ip
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
-_API_TIMEOUT_SECONDS = 10
 # Compared against when the username doesn't exist, so a miss costs as much time as a
 # wrong password and response timing doesn't reveal which usernames are real.
 _DUMMY_HASH = generate_password_hash("not-a-real-password")
-
-
-class AuthServiceError(Exception):
-    def __init__(self, message, status=502):
-        super().__init__(message)
-        self.status = status
 
 
 # ---- session + CSRF ----
@@ -117,25 +110,7 @@ def _record_failure(conn, key):
 # ---- auth-service internal API ----
 
 def _api(method, path="", json=None):
-    if not config.AUTH_ADMIN_API_KEY:
-        raise AuthServiceError("AUTH_ADMIN_API_KEY is not set, so the admin API is disabled", 503)
-    try:
-        resp = requests.request(
-            method,
-            f"{config.AUTH_SERVICE_URL}/internal/admin/users{path}",
-            headers={"x-admin-api-key": config.AUTH_ADMIN_API_KEY},
-            json=json,
-            timeout=_API_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException as exc:
-        raise AuthServiceError(f"auth-service unreachable: {exc}") from exc
-    try:
-        data = resp.json()
-    except ValueError:
-        data = {}
-    if not resp.ok:
-        raise AuthServiceError(data.get("error") or f"auth-service returned {resp.status_code}", resp.status_code)
-    return data
+    return auth_admin_client.call(method, path, json)
 
 
 def _find_user(user_id):
