@@ -76,12 +76,12 @@ def test_purging_a_job_that_was_alerted_on_does_not_fail(conn):
     those rows first, or the first aged-out alerted job crashes the pipeline."""
     job_id = _insert_job_seen(conn, "alerted", _days_ago(30), _days_ago(20))
     sub = conn.execute(
-        "INSERT INTO alert_subscriptions (phone_number, owner_auth_user_id, is_active, created_at) "
-        "VALUES ('+15550000001', 'u1', 1, 'x')"
+        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "VALUES ('[\"sre\"]', 'u1', 1, 'x', 1)"
     ).lastrowid
     conn.execute(
-        "INSERT INTO alerts_sent (subscription_id, job_id, notifier_backend, message, sent_at, status) "
-        "VALUES (?, ?, 'console', 'm', 'x', 'SENT')", (sub, job_id))
+        "INSERT INTO alerts_sent (subscription_id, job_id, channel, notifier_backend, message, sent_at, status) "
+        "VALUES (?, ?, 'whatsapp', 'console', 'm', 'x', 'SENT')", (sub, job_id))
     conn.commit()
     assert purge(conn, window_days=15) == 1
     assert conn.execute("SELECT count(*) FROM alerts_sent").fetchone()[0] == 0

@@ -1,47 +1,41 @@
-"""Match active alert subscriptions against newly-inserted jobs."""
+"""Which active alerts match which newly-inserted jobs, grouped per alert so each alert
+gets one digest. Only ids the loader reported as genuinely new are considered."""
+import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from jobhub_poc.alerts.rules import Rule, rule_matches
 
 
 @dataclass
-class Match:
+class AlertMatch:
     subscription_id: int
-    job_id: int
-    phone_number: str
-    job_title: str
-    job_location: str | None
+    owner_auth_user_id: str
+    rule: Rule
+    notify_email: bool
+    notify_whatsapp: bool
+    jobs: list[dict] = field(default_factory=list)
 
 
-def find_matches(conn: sqlite3.Connection, new_job_ids: list[int]) -> list[Match]:
+def rule_from_row(row) -> Rule:
+    load = lambda key: tuple(json.loads(row[key] or "[]"))
+    return Rule(titles=load("titles"), locations=load("locations"), companies=load("companies"),
+                keywords=load("keywords"), work_mode=row["work_mode"])
+
+
+def find_matches(conn: sqlite3.Connection, new_job_ids: list[int]) -> list[AlertMatch]:
     if not new_job_ids:
         return []
-
     placeholders = ",".join("?" * len(new_job_ids))
-    jobs = conn.execute(
-        f"SELECT id, title, location FROM jobs WHERE id IN ({placeholders})",
+    jobs = [dict(r) for r in conn.execute(
+        f"SELECT id, title, company_name, location, description, is_remote FROM jobs WHERE id IN ({placeholders})",
         new_job_ids,
-    ).fetchall()
-
-    subscriptions = conn.execute(
-        "SELECT id, phone_number, title_keyword, location_keyword FROM alert_subscriptions WHERE is_active = 1"
-    ).fetchall()
-
-    matches: list[Match] = []
-    for job in jobs:
-        job_title = (job["title"] or "").lower()
-        job_location = (job["location"] or "").lower()
-        for sub in subscriptions:
-            title_kw = (sub["title_keyword"] or "").strip().lower()
-            location_kw = (sub["location_keyword"] or "").strip().lower()
-            if title_kw and title_kw not in job_title:
-                continue
-            if location_kw and location_kw not in job_location:
-                continue
-            matches.append(Match(
-                subscription_id=sub["id"],
-                job_id=job["id"],
-                phone_number=sub["phone_number"],
-                job_title=job["title"],
-                job_location=job["location"],
-            ))
+    )]
+    matches = []
+    for sub in conn.execute("SELECT * FROM alert_subscriptions WHERE is_active = 1 ORDER BY id"):
+        rule = rule_from_row(sub)
+        matched = [job for job in jobs if rule_matches(rule, job)]
+        if matched:
+            matches.append(AlertMatch(sub["id"], sub["owner_auth_user_id"], rule,
+                                      bool(sub["notify_email"]), bool(sub["notify_whatsapp"]), matched))
     return matches

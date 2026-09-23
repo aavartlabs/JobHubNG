@@ -188,8 +188,8 @@ def test_admin_session_does_not_make_you_a_site_user(client, requests_mock):
 
 def test_users_page_lists_users_state_and_subscription_counts(client, conn, requests_mock):
     conn.execute(
-        "INSERT INTO alert_subscriptions (phone_number, owner_auth_user_id, is_active, created_at) "
-        "VALUES ('+15550000001', 'u1', 1, 'x'), ('+15550000001', 'u1', 0, 'x')"
+        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "VALUES ('[\"sre\"]', 'u1', 1, 'x', 1), ('[\"sre\"]', 'u1', 0, 'x', 1)"
     )
     conn.commit()
     _logged_in(client, requests_mock, users=[
@@ -312,12 +312,12 @@ def test_delete_needs_a_confirmation_page_first(client, requests_mock):
 def test_delete_removes_user_and_their_subscriptions_and_history(client, conn, requests_mock):
     _seed_job(conn)
     conn.execute(
-        "INSERT INTO alert_subscriptions (id, phone_number, owner_auth_user_id, is_active, created_at) "
-        "VALUES (10, '+15550000001', 'u1', 1, 'x'), (11, '+15550000002', 'u2', 1, 'x')"
+        "INSERT INTO alert_subscriptions (id, titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "VALUES (10, '[\"sre\"]', 'u1', 1, 'x', 1), (11, '[\"sre\"]', 'u2', 1, 'x', 1)"
     )
     conn.execute(
-        "INSERT INTO alerts_sent (subscription_id, job_id, notifier_backend, message, sent_at, status) "
-        "VALUES (10, 1, 'console', 'm', 'x', 'SENT'), (11, 1, 'console', 'm', 'x', 'SENT')"
+        "INSERT INTO alerts_sent (subscription_id, job_id, channel, notifier_backend, message, sent_at, status) "
+        "VALUES (10, 1, 'whatsapp', 'console', 'm', 'x', 'SENT'), (11, 1, 'whatsapp', 'console', 'm', 'x', 'SENT')"
     )
     conn.commit()
     _logged_in(client, requests_mock)
@@ -334,8 +334,8 @@ def test_delete_removes_user_and_their_subscriptions_and_history(client, conn, r
 
 def test_failed_auth_service_delete_keeps_subscriptions(client, conn, requests_mock):
     conn.execute(
-        "INSERT INTO alert_subscriptions (phone_number, owner_auth_user_id, is_active, created_at) "
-        "VALUES ('+15550000001', 'u1', 1, 'x')"
+        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "VALUES ('[\"sre\"]', 'u1', 1, 'x', 1)"
     )
     conn.commit()
     _logged_in(client, requests_mock)

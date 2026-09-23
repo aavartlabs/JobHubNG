@@ -26,30 +26,41 @@ CREATE INDEX IF NOT EXISTS idx_jobs_title         ON jobs(title);
 CREATE INDEX IF NOT EXISTS idx_jobs_location      ON jobs(location);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen_at ON jobs(first_seen_at);
 
--- owner_auth_user_id is an opaque id from poc/auth-service/'s own Better Auth user table
--- (a different SQLite file/service entirely) -- deliberately TEXT with no REFERENCES,
--- not a foreign key into anything in this database.
+-- Alerts v2 (2026-09-23). An alert is its owner's filters plus which of the owner's own
+-- verified contacts it goes to -- no phone number of its own (contacts come from
+-- auth-service at send time, see alerts/contacts.py). owner_auth_user_id is an opaque id
+-- from auth-service's own user table (a different SQLite file), not a foreign key.
+-- titles/locations/companies/keywords are JSON arrays of lower-case terms: OR within a
+-- list, AND across lists (alerts/rules.py). db._migrate converts the pre-v2 shape.
 CREATE TABLE IF NOT EXISTS alert_subscriptions (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    phone_number        TEXT NOT NULL,
-    title_keyword       TEXT,
-    location_keyword    TEXT,
-    owner_auth_user_id  TEXT,
+    owner_auth_user_id  TEXT NOT NULL,
+    titles              TEXT NOT NULL DEFAULT '[]',
+    locations           TEXT NOT NULL DEFAULT '[]',
+    companies           TEXT NOT NULL DEFAULT '[]',
+    keywords            TEXT NOT NULL DEFAULT '[]',
+    work_mode           TEXT CHECK (work_mode IN ('remote', 'onsite')),
+    notify_email        INTEGER NOT NULL DEFAULT 0,
+    notify_whatsapp     INTEGER NOT NULL DEFAULT 0,
     is_active           INTEGER NOT NULL DEFAULT 1,
-    created_at          TEXT NOT NULL
+    created_at          TEXT NOT NULL,
+    CHECK (notify_email + notify_whatsapp >= 1)
 );
-CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_active ON alert_subscriptions(is_active);
 CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_owner ON alert_subscriptions(owner_auth_user_id);
 
+-- One row per (alert, job, channel) ever considered: SENT, FAILED, or SKIPPED (e.g. the
+-- owner's contact for that channel isn't verified). The UNIQUE constraint is what makes a
+-- re-run never re-send. Jobs from one digest share its message and sent_at.
 CREATE TABLE IF NOT EXISTS alerts_sent (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     subscription_id   INTEGER NOT NULL REFERENCES alert_subscriptions(id),
     job_id            INTEGER NOT NULL REFERENCES jobs(id),
+    channel           TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp')),
     notifier_backend  TEXT NOT NULL,
     message           TEXT NOT NULL,
     sent_at           TEXT NOT NULL,
     status            TEXT NOT NULL,
-    UNIQUE(subscription_id, job_id)
+    UNIQUE(subscription_id, job_id, channel)
 );
 
 -- Admin console login (webapp/admin.py). Not end users -- those live in auth-service's

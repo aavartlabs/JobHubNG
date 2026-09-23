@@ -1,26 +1,24 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Your job alerts</h1>
-<p><a href="{{ url_for('alerts.register') }}">Register a new alert</a></p>
-{% if subscriptions %}
+<p><a href="{{ url_for('alerts.register') }}">+ New alert</a></p>
+{% if alerts %}
 <div class="table-wrap">
   <table>
-    <thead>
-      <tr><th>Phone</th><th>Title contains</th><th>Location contains</th><th>Status</th><th></th></tr>
-    </thead>
+    <thead><tr><th>Looking for</th><th>Sent to</th><th>Status</th><th></th></tr></thead>
     <tbody>
-      {% for sub in subscriptions %}
+      {% for alert in alerts %}{% set sub = alert.row %}
       <tr>
-        <td>{{ sub['phone_number'] }}</td>
-        <td>{{ sub['title_keyword'] or '' }}</td>
-        <td>{{ sub['location_keyword'] or '' }}</td>
-        <td>{{ 'Active' if sub['is_active'] else 'Inactive' }}</td>
+        <td>{{ alert.summary }}</td>
+        <td>{{ ["Email" if sub['notify_email'], "WhatsApp" if sub['notify_whatsapp']] | select | join(" + ") }}</td>
+        <td>{{ 'Active' if sub['is_active'] else 'Paused' }}</td>
         <td class="actions">
           {% if sub['is_active'] %}
-          <form method="post" action="{{ url_for('alerts.deactivate', sub_id=sub['id']) }}">
-            <button type="submit">Deactivate</button>
-          </form>
+          <form method="post" action="{{ url_for('alerts.pause', sub_id=sub['id']) }}"><button type="submit">Pause</button></form>
+          {% else %}
+          <form method="post" action="{{ url_for('alerts.resume', sub_id=sub['id']) }}"><button type="submit">Resume</button></form>
           {% endif %}
+          <form method="post" action="{{ url_for('alerts.delete', sub_id=sub['id']) }}"><button type="submit">Delete</button></form>
         </td>
       </tr>
       {% endfor %}

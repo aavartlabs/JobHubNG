@@ -1,13 +1,29 @@
 {% extends "base.html" %}
 {% import "_turnstile.html" as turnstile with context %}
 {% block content %}
-<h1>Register a job alert</h1>
+<h1>New job alert</h1>
+<p class="hint">Separate several values with commas: a job matches if it fits <em>any</em> value in a
+   field and <em>every</em> field you fill in. You'll get one message per update listing the new
+   matches — never one per job.</p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post">
-  <label>WhatsApp number (with country code) <input type="tel" name="phone_number" inputmode="tel" placeholder="+91 98765 43210" required></label>
-  <label>Title contains <input type="text" name="title_keyword" placeholder="(optional)"></label>
-  <label>Location contains <input type="text" name="location_keyword" placeholder="(optional)"></label>
+<form method="post" class="alert-form">
+  <label>Job titles <input type="text" name="titles" value="{{ form.get('titles', '') }}" placeholder="SRE, DevOps, CloudOps"></label>
+  <label>Locations <input type="text" name="locations" value="{{ form.get('locations', '') }}" placeholder="Bangalore, Kolkata, Remote"></label>
+  <label>Companies <input type="text" name="companies" value="{{ form.get('companies', '') }}" placeholder="(optional)"></label>
+  <label>Keywords in the description <input type="text" name="keywords" value="{{ form.get('keywords', '') }}" placeholder="Kubernetes, Terraform (optional)"></label>
+  <label>Work mode
+    <select name="work_mode">
+      <option value="">Any</option>
+      <option value="remote" {{ 'selected' if form.get('work_mode') == 'remote' }}>Remote only</option>
+      <option value="onsite" {{ 'selected' if form.get('work_mode') == 'onsite' }}>On-site only</option>
+    </select>
+  </label>
+  <fieldset>
+    <legend>Send alerts to</legend>
+    <label><input type="checkbox" name="notify_email" {{ 'checked' if not form or form.get('notify_email') }}> Email ({{ masked_email }})</label>
+    <label><input type="checkbox" name="notify_whatsapp" {{ 'checked' if not form or form.get('notify_whatsapp') }}> WhatsApp ({{ masked_phone }})</label>
+  </fieldset>
   {{ turnstile.widget("alert_register") }}
-  <button type="submit">Register</button>
+  <button type="submit">Create alert</button>
 </form>
 {% endblock %}
