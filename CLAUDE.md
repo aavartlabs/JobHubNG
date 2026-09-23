@@ -55,7 +55,10 @@ the old `scripts/run_pipeline.sh` (filtered dump → `load_dump`) is kept only a
   title + company + city) is one job. Jobs whose posted date (`jobhub_poc/dates.py`) is older
   than `[ingest] max_posted_age_days` are neither inserted nor touched. `content_hash` means
   `updated_at` moves only on real content changes; `last_seen_at` moves on every sighting.
-  Purged by `last_seen_at` after `warehouse_retention_days`. pi05 runs only the stdlib files
+  **History is kept (2026-09-24):** before a content change overwrites a job, the previous
+  version goes to `job_versions` (zlib-compressed raw JSON + the span it was current), and
+  retention *moves* jobs unseen for `warehouse_retention_days` into `jobs_archive` instead of
+  deleting them (~1,200 changed jobs/day → a few MB/day compressed; pi05 has ~47 GB free). pi05 runs only the stdlib files
   `jobhub_poc/{__init__,dates,pipeline_config}.py` + `config/pipeline.ini`, not the app.
 - **Export → serving**: `scraper/export.py --since <watermark>` writes a gzip JSONL delta of
   warehouse rows whose title matches `[serving] search_terms` (and `locations` if set): full

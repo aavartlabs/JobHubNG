@@ -7,14 +7,18 @@ filtered out today is lost for good.
 A job is the same job if it has the same EverJobs id, or else the same fingerprint
 (normalised title + company + city) -- which folds the same opening listed on two sites
 into one row. Posted-date freshness is enforced on every sighting: a job older than
-max_posted_age_days is neither inserted nor touched, so retention (by last_seen) removes
+max_posted_age_days is neither inserted nor touched, so retention (by last_seen) retires
 it even while the source keeps listing it.
+
+Nothing is lost: a content change first copies the previous version into job_versions,
+and retention moves retired jobs into jobs_archive instead of deleting them.
 """
 import hashlib
 import json
 import re
 import sqlite3
 import sys
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -62,6 +66,38 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
 );
 """
 
+# Every column of a jobs row, in order -- jobs_archive keeps the same set (plus job_id and
+# archived_at), and purge_warehouse copies them by this list.
+JOB_COLUMNS = (
+    "source_id", "fingerprint", "site", "title", "company_name", "location", "description",
+    "employment_type", "is_remote", "apply_url", "posted_at_source", "posted_at",
+    "first_seen_at", "last_seen_at", "updated_at", "raw_json", "content_hash",
+)
+
+# History (2026-09-24): nothing is overwritten or deleted outright.
+#  - job_versions: a job's previous content, zlib-compressed raw JSON, and the span it was
+#    current [valid_from, valid_to). One row per real content change.
+#  - jobs_archive: jobs retired by retention, with everything they had.
+_HISTORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS job_versions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id        INTEGER NOT NULL,
+    content_hash  TEXT,
+    raw_json_z    BLOB NOT NULL,
+    valid_from    TEXT NOT NULL,
+    valid_to      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wh_job_versions_job ON job_versions(job_id);
+
+CREATE TABLE IF NOT EXISTS jobs_archive (
+    archive_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id        INTEGER NOT NULL,
+""" + ",\n".join(f"    {c} {'INTEGER' if c == 'is_remote' else 'TEXT'}" for c in JOB_COLUMNS) + """,
+    archived_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wh_jobs_archive_source ON jobs_archive(source_id);
+"""
+
 # Columns added after the first pi05 dry run (2026-09-23); open_warehouse adds them to an
 # older file in place.
 _ADDED_COLUMNS = {"jobs": {"content_hash": "TEXT"}, "ingest_runs": {"unchanged": "INTEGER NOT NULL DEFAULT 0"}}
@@ -76,6 +112,7 @@ def open_warehouse(path):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(_SCHEMA)
+    conn.executescript(_HISTORY_SCHEMA)
     for table, columns in _ADDED_COLUMNS.items():
         have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
         for name, decl in columns.items():
@@ -121,6 +158,19 @@ def _fields(job, posted_at):
         "posted_at": posted_at,
         "raw_json": json.dumps(job, separators=(",", ":")),
     }
+
+
+def load_version(raw_json_z):
+    """The job JSON stored in a job_versions row."""
+    return json.loads(zlib.decompress(raw_json_z))
+
+
+def _save_version(conn, job_id, now_stamp):
+    old = conn.execute("SELECT raw_json, content_hash, updated_at FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    conn.execute(
+        "INSERT INTO job_versions (job_id, content_hash, raw_json_z, valid_from, valid_to) VALUES (?, ?, ?, ?, ?)",
+        (job_id, old["content_hash"], zlib.compress(old["raw_json"].encode(), 9), old["updated_at"], now_stamp),
+    )
 
 
 def _content_hash(fields):
@@ -182,6 +232,7 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
                 stats["unchanged"] += 1
                 continue
 
+            _save_version(conn, row["id"], stamp)
             # A changed title on a known id moves its fingerprint -- unless another row
             # already owns that fingerprint, in which case the old one is kept.
             new_fp = fp if fp != row["fingerprint"] and not conn.execute(
@@ -205,10 +256,17 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
 
 
 def purge_warehouse(conn, retention_days, now=None):
-    """Deletes jobs no sweep has listed for retention_days ([retention]
-    warehouse_retention_days). Returns how many went."""
+    """Retires jobs no sweep has listed for retention_days ([retention]
+    warehouse_retention_days): each moves to jobs_archive with everything it had, then
+    leaves jobs. Returns how many were archived."""
     now = now or datetime.now(timezone.utc)
     cutoff = (now - timedelta(days=retention_days)).isoformat()
+    columns = ", ".join(JOB_COLUMNS)
     with conn:
+        conn.execute(
+            f"""INSERT INTO jobs_archive (job_id, {columns}, archived_at)
+                SELECT id, {columns}, ? FROM jobs WHERE last_seen_at < ?""",
+            (now.isoformat(), cutoff),
+        )
         cur = conn.execute("DELETE FROM jobs WHERE last_seen_at < ?", (cutoff,))
     return cur.rowcount

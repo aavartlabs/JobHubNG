@@ -208,4 +208,58 @@ def test_cli_purges_after_ingesting(tmp_path, monkeypatch):
     monkeypatch.setenv("WAREHOUSE_DB_PATH", str(tmp_path / "wh.db"))
     cli.main(fetch=lambda: [_job("a"), _job("b", city="Pune")], now=NOW)
     stats = cli.main(fetch=lambda: [_job("a")], now=NOW + timedelta(days=31))
-    assert stats["purged"] == 1
+    assert stats["archived"] == 1
+
+
+# ---- history (L5): nothing is overwritten or deleted outright ----
+
+def test_a_content_change_keeps_the_previous_version(conn):
+    from warehouse import load_version
+
+    ingest(conn, [_job(description="v1 text")], 60, now=NOW)
+    later = NOW + timedelta(hours=6)
+    ingest(conn, [_job(description="v2 text")], 60, now=later)
+    [row] = _rows(conn)
+    [version] = [dict(r) for r in conn.execute("SELECT * FROM job_versions")]
+    assert version["job_id"] == row["id"]
+    assert (version["valid_from"], version["valid_to"]) == (NOW.isoformat(), later.isoformat())
+    assert load_version(version["raw_json_z"])["description"] == "v1 text"
+    assert row["description"] == "v2 text"
+
+
+def test_unchanged_sightings_add_no_versions(conn):
+    for hours in (0, 6, 12):
+        ingest(conn, [_job()], 60, now=NOW + timedelta(hours=hours))
+    assert conn.execute("SELECT count(*) FROM job_versions").fetchone()[0] == 0
+
+
+def test_versions_are_stored_compressed(conn):
+    big = "responsibilities " * 400
+    ingest(conn, [_job(description=big)], 60, now=NOW)
+    ingest(conn, [_job(description=big + "!")], 60, now=NOW + timedelta(hours=6))
+    blob = conn.execute("SELECT raw_json_z FROM job_versions").fetchone()[0]
+    assert len(blob) < len(big) / 4
+
+
+def test_retention_archives_instead_of_deleting(conn):
+    from warehouse import purge_warehouse
+
+    ingest(conn, [_job("a"), _job("b", city="Pune")], 60, now=NOW)
+    later = NOW + timedelta(days=31)
+    ingest(conn, [_job("a")], 0, now=later)
+    assert purge_warehouse(conn, retention_days=30, now=later) == 1
+    [archived] = [dict(r) for r in conn.execute("SELECT * FROM jobs_archive")]
+    assert archived["source_id"] == "b" and archived["archived_at"] == later.isoformat()
+    assert archived["raw_json"] and archived["first_seen_at"] == NOW.isoformat()
+    assert [r["source_id"] for r in _rows(conn)] == ["a"]
+
+
+def test_a_job_that_returns_after_archiving_starts_a_fresh_row(conn):
+    from warehouse import purge_warehouse
+
+    ingest(conn, [_job("b")], 60, now=NOW)
+    purge_warehouse(conn, 30, now=NOW + timedelta(days=31))
+    back = NOW + timedelta(days=40)
+    stats = ingest(conn, [_job("b", posted="2026-10-30")], 60, now=back)
+    assert stats["inserted"] == 1
+    assert conn.execute("SELECT count(*) FROM jobs_archive").fetchone()[0] == 1

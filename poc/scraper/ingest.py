@@ -72,7 +72,7 @@ def main(fetch=None, now=None):
     conn = open_warehouse(os.environ.get("WAREHOUSE_DB_PATH", DEFAULT_DB_PATH))
     try:
         stats = ingest(conn, jobs, max_posted_age_days=cfg.ingest.max_posted_age_days, now=now)
-        stats["purged"] = purge_warehouse(conn, cfg.retention.warehouse_retention_days, now)
+        stats["archived"] = purge_warehouse(conn, cfg.retention.warehouse_retention_days, now)
     finally:
         conn.close()
     print(json.dumps({"ingested_at": now.isoformat(), **stats}))
