@@ -119,6 +119,20 @@ possible locally.
   only because pi05<->pi09 trust was unconfirmed at design time; harita's
   old timer is disabled (not deleted) there as a rollback path.
 
+## Job alerts (v2)
+
+A signed-in, verified user creates alerts at `/alerts/register`: comma-separated job
+titles, locations, companies and description keywords (OR within a field, AND across
+fields; whole words; Bangalore = Bengaluru etc.), an optional work mode, and whether to
+receive them by email, WhatsApp or both — always to the account's own verified contacts.
+Each pipeline run sends **one digest per alert per channel** (up to 10 jobs + "N more",
+linking back to JobHub). Dry-run the next run's digests without sending anything:
+
+    NOTIFIER_BACKEND=console .venv/bin/python -m jobhub_poc.alerts.run_alerts --recent-minutes 1440
+
+Email digests need `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (a Resend-verified domain) in
+`poc/.env`; contacts come from auth-service via `AUTH_SERVICE_URL` + `AUTH_ADMIN_API_KEY`.
+
 ## Bot protection and the admin console
 
 **Cloudflare Turnstile** guards every request a bot could abuse: signup, login, every

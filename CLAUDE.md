@@ -84,15 +84,23 @@ the old `scripts/run_pipeline.sh` (filtered dump → `load_dump`) is kept only a
   build time, Python-only at runtime. **The compiled `static/app.js` / `static/auth.js` are
   also committed to git** and are what the non-Docker `make web` path serves — after editing
   `frontend/src/*.ts`, run `npm run build` there and commit the regenerated bundles too.
-- **Alerts**: `poc/jobhub_poc/alerts/matcher.py` finds active `alert_subscriptions` whose
-  title/location keyword substrings match newly-inserted jobs (only ids returned by
-  `load_dump()` as genuinely new are considered — not a timestamp-window heuristic).
-  `notifier.py` sends via a pluggable `Notifier` (`get_notifier(backend, conn)`):
-  `ConsoleNotifier` (stdout + `alerts_sent` row) or `WhatsAppNotifier` (HTTP POST to the
-  `whatsapp-sender` gateway). Sends are idempotent — `alerts_sent` has a
-  `UNIQUE(subscription_id, job_id)` constraint, so a re-run never double-fires.
-  `NOTIFIER_BACKEND` env var switches backends with no code change; production currently
-  runs `whatsapp`.
+- **Alerts (v2, 2026-09-23)**: an alert is its owner's filters — JSON lists `titles`,
+  `locations`, `companies`, `keywords` (OR within a list, AND across; whole-word, with
+  location aliases like Bangalore/Bengaluru, `alerts/rules.py`) plus `work_mode` — and which
+  of the owner's **own verified contacts** get it (`notify_email`/`notify_whatsapp`). No
+  phone number is stored per alert: `alerts/contacts.py` reads email/mobile from
+  auth-service's `/internal/admin/users` at send time (the host reaches it on
+  `127.0.0.1:3200`, published loopback-only by compose). `run_alerts` groups new-job matches
+  per alert and `alerts/delivery.py` sends **one digest per alert per channel per run**
+  (`alerts/digest.py`, ≤10 jobs linking to `/jobs?job=<id>` + "N more") via
+  `alerts/senders.py` (WhatsApp gateway, or Resend email with `RESEND_FROM_EMAIL`).
+  `alerts_sent` has `UNIQUE(subscription_id, job_id, channel)` and records SENT / FAILED /
+  SKIPPED (unverified channel), so re-runs never resend; alerts of deleted users are
+  deactivated. "New" means inserted into jobhub.db **and** first seen by the warehouse after
+  the previous sync (`load_delta`), so bulk re-syncs never announce old jobs. Active alert
+  titles/keywords are shipped to pi05 each run (`alerts/alert_terms.py`) and widen the
+  export; a changed term set triggers a full warehouse re-scan. `NOTIFIER_BACKEND=console`
+  prints digests instead of sending (dry run); `live` (or legacy `whatsapp`) sends.
 - **WhatsApp gateway (`poc/whatsapp-sender/`)**: a separate, hand-rolled Node service (no
   framework) holding a `baileys` (pinned `6.7.24`, not `7.0.0-rc*`) WhatsApp Web session.
   Exposes `GET /health` and `POST /send` (header `x-api-key`). Requires a one-time,
