@@ -11,7 +11,7 @@ def cfg(monkeypatch):
     monkeypatch.setattr(config, "WHATSAPP_GATEWAY_URL", GATEWAY)
     monkeypatch.setattr(config, "WHATSAPP_GATEWAY_API_KEY", "wa-key")
     monkeypatch.setattr(config, "RESEND_API_KEY", "re_key")
-    monkeypatch.setattr(config, "RESEND_FROM_EMAIL", "JobHub <noreply@alerts.example>")
+    monkeypatch.setattr(config, "RESEND_FROM_EMAIL", "JobsHub <noreply@alerts.example>")
     monkeypatch.setattr(config, "WEB_ORIGIN", "https://jobhubs.example")
 
 
@@ -43,7 +43,7 @@ def test_email_goes_through_resend_with_unsubscribe_header(requests_mock):
     req = requests_mock.last_request
     assert req.headers["Authorization"] == "Bearer re_key"
     body = req.json()
-    assert body["from"] == "JobHub <noreply@alerts.example>"
+    assert body["from"] == "JobsHub <noreply@alerts.example>"
     assert body["to"] == ["a@x.com"]
     assert (body["subject"], body["text"], body["html"]) == ("Subj", "text body", "<p>html</p>")
     assert body["headers"]["List-Unsubscribe"] == "<https://jobhubs.example/alerts>"

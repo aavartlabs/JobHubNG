@@ -1,6 +1,6 @@
 """One digest message per alert per channel per pipeline run. Pure; no I/O.
 
-Links go to the job on JobHub (/jobs?job=<id>), not straight to the employer: details
+Links go to the job on JobsHub (/jobs?job=<id>), not straight to the employer: details
 and Apply are behind sign-in there, and each view/apply is recorded as signal for the
 future tracker and recommendations. At most MAX_LISTED jobs are listed; the rest are
 summarised, so a big run is still one short message rather than a burst.
@@ -26,7 +26,7 @@ def describe_rule(rule):
 
 
 def _headline(rule, count):
-    return f'JobHub: {count} new job{"" if count == 1 else "s"} for "{describe_rule(rule)}"'
+    return f'JobsHub: {count} new job{"" if count == 1 else "s"} for "{describe_rule(rule)}"'
 
 
 def _line(job):
@@ -42,7 +42,7 @@ def build_whatsapp(rule, jobs, origin):
     for i, job in enumerate(jobs[:MAX_LISTED], 1):
         lines.append(f"{i}. {_line(job)}\n   {_job_url(origin, job)}")
     if len(jobs) > MAX_LISTED:
-        lines.append(f"\n…and {len(jobs) - MAX_LISTED} more on JobHub: {origin}/jobs")
+        lines.append(f"\n…and {len(jobs) - MAX_LISTED} more on JobsHub: {origin}/jobs")
     lines.append(f"\nManage alerts: {origin}/alerts")
     return "\n".join(lines)
 
@@ -56,7 +56,7 @@ def build_email(rule, jobs, origin):
     text_lines = [subject, ""]
     text_lines += [f"{i}. {_line(job)}\n   {_job_url(origin, job)}" for i, job in enumerate(listed, 1)]
     if more:
-        text_lines.append(f"\n…and {more} more on JobHub: {origin}/jobs")
+        text_lines.append(f"\n…and {more} more on JobsHub: {origin}/jobs")
     text_lines.append(f"\nManage or stop these alerts: {origin}/alerts")
 
     items = "".join(
@@ -65,7 +65,7 @@ def build_email(rule, jobs, origin):
         f'{escape(" — " + job["location"]) if job.get("location") else ""}</li>'
         for job in listed
     )
-    more_html = f'<p>…and {more} more on <a href="{escape(origin)}/jobs">JobHub</a>.</p>' if more else ""
+    more_html = f'<p>…and {more} more on <a href="{escape(origin)}/jobs">JobsHub</a>.</p>' if more else ""
     html = (
         f"<p><strong>{escape(subject)}</strong></p><ol>{items}</ol>{more_html}"
         f'<p style="color:#777;font-size:12px"><a href="{escape(origin)}/alerts">Manage or stop these alerts</a></p>'

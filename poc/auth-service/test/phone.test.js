@@ -43,7 +43,7 @@ test("posts the exact {phone, message} body and x-api-key header, resolves on a 
   assert.equal(received.headers["x-api-key"], "secret-key");
   assert.deepEqual(received.body, {
     phone: "+15551234567",
-    message: "Your JobHubNG verification code is 123456.",
+    message: "Your JobsHub verification code is 123456.",
   });
 });
 

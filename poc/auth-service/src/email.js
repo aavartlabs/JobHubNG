@@ -1,14 +1,14 @@
 import { Resend } from "resend";
 
 const SUBJECTS = {
-  "sign-in": "Your JobHubNG sign-in code",
-  "email-verification": "Verify your JobHubNG email address",
-  "forget-password": "Your JobHubNG password reset code",
-  "change-email": "Confirm your new JobHubNG email address",
+  "sign-in": "Your JobsHub sign-in code",
+  "email-verification": "Verify your JobsHub email address",
+  "forget-password": "Your JobsHub password reset code",
+  "change-email": "Confirm your new JobsHub email address",
 };
 
 function subjectFor(type) {
-  return SUBJECTS[type] || "Your JobHubNG verification code";
+  return SUBJECTS[type] || "Your JobsHub verification code";
 }
 
 /**
@@ -50,7 +50,7 @@ export function createEmailOTPSender({
       from: fromEmail,
       to: email,
       subject: subjectFor(type),
-      text: `Your JobHubNG verification code is ${otp}.`,
+      text: `Your JobsHub verification code is ${otp}.`,
     });
 
     if (error) {

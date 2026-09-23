@@ -38,7 +38,7 @@ export function createPhoneOTPSender({
       throw new Error("WHATSAPP_GATEWAY_URL is not configured");
     }
 
-    const message = `Your JobHubNG verification code is ${code}.`;
+    const message = `Your JobsHub verification code is ${code}.`;
     const headers = { "Content-Type": "application/json" };
     if (apiKey) {
       headers["x-api-key"] = apiKey;

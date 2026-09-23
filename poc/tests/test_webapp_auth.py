@@ -191,3 +191,12 @@ def test_auth_pages_carry_turnstile_sitekey_and_explicit_loader(conn, monkeypatc
     assert '<meta name="turnstile-sitekey" content="sitekey-123">' in html
     assert 'id="turnstile-container"' in html
     assert "turnstile/v0/api.js?render=explicit" in html
+
+
+def test_every_page_carries_the_jobshub_brand_and_favicons(conn):
+    html = _app_and_client(conn)[1].get("/jobs").get_data(as_text=True)
+    assert "<title>JobsHub</title>" in html
+    assert 'class="brand-name">JobsHub<' in html and "by aavartlabs" in html
+    assert "/static/brand/mark-64.png" in html
+    assert "/static/brand/favicon.ico" in html and "/static/brand/apple-touch-icon.png" in html
+    assert "POC" not in html

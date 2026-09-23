@@ -2,12 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>JobHub POC</title>
+  <title>{% block title %}JobsHub{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2A1238">
+  <link rel="icon" href="{{ url_for('static', filename='brand/favicon.ico') }}" sizes="any">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='brand/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header>
-    <strong>JobHub POC</strong>
+    <a class="brand" href="{{ url_for('jobs.list_jobs') }}" aria-label="JobsHub home">
+      <img src="{{ url_for('static', filename='brand/mark-64.png') }}" alt="" width="30" height="33">
+      <span><span class="brand-name">JobsHub</span><span class="brand-by">by aavartlabs</span></span>
+    </a>
     <nav>
       <a href="{{ url_for('jobs.list_jobs') }}">Jobs</a>
       {% if is_admin() %}
