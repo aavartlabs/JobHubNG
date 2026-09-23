@@ -87,3 +87,23 @@ def test_touch_records_only_refresh_last_seen(conn, tmp_path):
     assert sorted(rows) == ["a"]  # a touch can't create a row: it carries no job content
     assert rows["a"]["last_seen_at"] == "2026-09-30T00:00:00+00:00"
     assert rows["a"]["title"] == "SRE"
+
+
+def test_only_jobs_the_warehouse_first_saw_after_the_last_sync_count_as_new(conn, tmp_path):
+    """A full re-sync (new alert terms) pulls in warehouse jobs that are weeks old; they
+    must be loaded, but not announced to alerts as new."""
+    load_delta(conn, _write(tmp_path, [_rec("seed")]), watermark="2026-09-23T00:00:00+00:00")
+    new_ids = load_delta(conn, _write(tmp_path, [
+        _rec("backlog", first="2026-09-01T00:00:00+00:00"),
+        _rec("fresh", first="2026-09-23T06:00:00+00:00"),
+    ], name="n.gz"), watermark="2026-09-23T06:00:00+00:00")
+    rows = _jobs(conn)
+    assert {"backlog", "fresh"} <= set(rows)
+    assert new_ids == [rows["fresh"]["id"]]
+
+
+def test_terms_fingerprint_is_stored_with_the_watermark(conn, tmp_path):
+    from jobhub_poc.loader.load_delta import get_state
+
+    load_delta(conn, _write(tmp_path, []), watermark="w", terms_fingerprint="abc")
+    assert get_state(conn, "alert_terms_fingerprint") == "abc"

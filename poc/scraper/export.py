@@ -30,13 +30,16 @@ def _first_match(text, needles):
     return next((n for n in needles if n in text), None)
 
 
-def export_delta(conn, since, terms, locations, out_path, cap=0):
+def export_delta(conn, since, terms, locations, out_path, cap=0, extra_terms=()):
     """Writes the delta to out_path and returns {"exported", "touched", "watermark"}.
 
     With no `since` (first sync) every matching row goes in full. Otherwise rows seen since
     the watermark go in full if their content changed (updated_at > since), or else as a
     small touch record {"dedupe_key", "last_seen_at", "touch": true} that only refreshes
     pi09's last_seen. The watermark is the newest last_seen_at scanned (unchanged if none).
+
+    extra_terms are the active alerts' titles/keywords (T14), matched against title *or*
+    description, so an alert can fire on jobs the site's own search terms don't cover.
     """
     query = "SELECT * FROM jobs"
     params = ()
@@ -53,6 +56,8 @@ def export_delta(conn, since, terms, locations, out_path, cap=0):
             if watermark is None or row["last_seen_at"] > watermark:
                 watermark = row["last_seen_at"]
             term = _first_match(row["title"], terms)
+            if term is None and extra_terms:
+                term = _first_match(f"{row['title']}\n{row['description'] or ''}", extra_terms)
             if term is None:
                 continue
             if locations and not _first_match(row["location"], locations):
@@ -80,14 +85,20 @@ def export_delta(conn, since, terms, locations, out_path, cap=0):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
-    parser.add_argument("--since", default=None, help="ISO updated_at watermark from the last sync")
+    parser.add_argument("--since", default=None, help="ISO last_seen watermark from the last sync")
+    parser.add_argument("--extra-terms-file", default=None,
+                        help="JSON list of active alert terms from pi09 (alerts/alert_terms.py)")
     args = parser.parse_args(argv)
 
     cfg = load_pipeline_config()
+    extra_terms = ()
+    if args.extra_terms_file:
+        with open(args.extra_terms_file) as f:
+            extra_terms = tuple(str(t).lower() for t in json.load(f))
     conn = open_warehouse(os.environ.get("WAREHOUSE_DB_PATH", DEFAULT_DB_PATH))
     try:
         result = export_delta(conn, args.since or None, cfg.serving.search_terms, cfg.serving.locations,
-                              args.out, cap=cfg.serving.results_per_term)
+                              args.out, cap=cfg.serving.results_per_term, extra_terms=extra_terms)
     finally:
         conn.close()
     print(json.dumps(result))

@@ -82,3 +82,24 @@ def test_rows_without_an_everjobs_id_get_a_stable_warehouse_key(conn, tmp_path):
     export_delta(conn, None, ("sre",), (), tmp_path / "d.gz")
     [rec] = _read(tmp_path / "d.gz")
     assert rec["dedupe_key"].startswith("wh-")
+
+
+def test_extra_alert_terms_also_export_matches_in_title_or_description(conn, tmp_path):
+    ingest(conn, [_job("a", "CloudOps Engineer"), _job("b", "Platform Lead", description="We run Terraform"),
+                  _job("c", "Chef")], 60, now=T0)
+    result = export_delta(conn, None, ("sre",), (), tmp_path / "d.gz", extra_terms=("cloudops", "terraform"))
+    assert sorted(r["dedupe_key"] for r in _read(tmp_path / "d.gz")) == ["a", "b"]
+    assert result["exported"] == 2
+
+
+def test_cli_reads_extra_terms_file(conn, tmp_path, monkeypatch):
+    import json as _json
+    import export as cli
+
+    ingest(conn, [_job("a", "CloudOps Engineer")], 60, now=T0)
+    conn.close()
+    monkeypatch.setenv("WAREHOUSE_DB_PATH", str(tmp_path / "wh.db"))
+    terms = tmp_path / "terms.json"
+    terms.write_text(_json.dumps(["cloudops"]))
+    result = cli.main(["--out", str(tmp_path / "d.gz"), "--extra-terms-file", str(terms)])
+    assert result["exported"] == 1

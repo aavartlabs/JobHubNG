@@ -54,11 +54,16 @@ services:
       ADMIN_API_KEY: ${AUTH_ADMIN_API_KEY:?set AUTH_ADMIN_API_KEY in poc/.env (openssl rand -base64 32)}
     volumes:
       - ./auth-service/data:/app/data
+    # Loopback only -- never the LAN, never the internet (the Cloudflare Tunnel targets
+    # jobhub-web alone). The alert pipeline runs on pi09's host, not in a container, and
+    # reads alert owners' verified contacts from /internal/admin/users
+    # (alerts/contacts.py, key AUTH_ADMIN_API_KEY) through this port. Browsers still only
+    # ever reach this service via web's /auth/* proxy.
+    ports:
+      - "127.0.0.1:3200:3200"
     networks:
       - jobhub
     restart: unless-stopped
-    # No ports: -- only ever reached via web's /auth/* proxy (auth_proxy.py) over
-    # container DNS, never published to the host.
 
   whatsapp:
     build:

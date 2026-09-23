@@ -23,9 +23,24 @@ from jobhub_poc.loader.load_dump import upsert_job
 WATERMARK_KEY = "warehouse_watermark"
 
 
-def get_watermark(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute("SELECT value FROM sync_state WHERE key = ?", (WATERMARK_KEY,)).fetchone()
+TERMS_FINGERPRINT_KEY = "alert_terms_fingerprint"
+
+
+def get_state(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM sync_state WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else None
+
+
+def get_watermark(conn: sqlite3.Connection) -> str | None:
+    return get_state(conn, WATERMARK_KEY)
+
+
+def _set_state(conn, key, value):
+    conn.execute(
+        """INSERT INTO sync_state (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+        (key, value, datetime.now(timezone.utc).isoformat()),
+    )
 
 
 def _read(path) -> list[dict]:
@@ -41,9 +56,13 @@ def _read(path) -> list[dict]:
     return records
 
 
-def load_delta(conn: sqlite3.Connection, path, watermark: str | None) -> list[int]:
-    """Returns the jobs.ids newly inserted (what alerts should consider)."""
+def load_delta(conn: sqlite3.Connection, path, watermark: str | None,
+               terms_fingerprint: str | None = None) -> list[int]:
+    """Returns the ids alerts should treat as new: inserted here AND first seen by the
+    warehouse after the previous sync. A full re-sync (e.g. new alert terms) inserts
+    warehouse jobs that are weeks old; those are loaded but not announced."""
     records = _read(path)  # parse everything before writing anything
+    previous = get_watermark(conn)
     new_ids: list[int] = []
     try:
         for rec in records:
@@ -55,14 +74,12 @@ def load_delta(conn: sqlite3.Connection, path, watermark: str | None) -> list[in
                 continue
             inserted = upsert_job(conn, rec["job"], rec["dedupe_key"], rec["first_seen_at"],
                                   rec["last_seen_at"], rec.get("search_term"))
-            if inserted is not None:
+            if inserted is not None and (previous is None or rec["first_seen_at"] > previous):
                 new_ids.append(inserted)
         if watermark:
-            conn.execute(
-                """INSERT INTO sync_state (key, value, updated_at) VALUES (?, ?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
-                (WATERMARK_KEY, watermark, datetime.now(timezone.utc).isoformat()),
-            )
+            _set_state(conn, WATERMARK_KEY, watermark)
+        if terms_fingerprint is not None:
+            _set_state(conn, TERMS_FINGERPRINT_KEY, terms_fingerprint)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -78,6 +95,9 @@ def main() -> None:
     parser.add_argument("--watermark", default=None, help="export.py's returned watermark")
     parser.add_argument("--new-ids-out", default=None)
     parser.add_argument("--print-watermark", action="store_true")
+    parser.add_argument("--print-terms-fingerprint", action="store_true")
+    parser.add_argument("--terms-fingerprint", default=None,
+                        help="alert_terms fingerprint the delta was exported with; stored on success")
     args = parser.parse_args()
 
     conn = db.get_connection()
@@ -85,9 +105,12 @@ def main() -> None:
     if args.print_watermark:
         print(get_watermark(conn) or "")
         return
+    if args.print_terms_fingerprint:
+        print(get_state(conn, TERMS_FINGERPRINT_KEY) or "")
+        return
     if not args.delta_path:
         parser.error("delta_path is required unless --print-watermark")
-    new_ids = load_delta(conn, args.delta_path, args.watermark)
+    new_ids = load_delta(conn, args.delta_path, args.watermark, args.terms_fingerprint)
     conn.close()
     print(f"loaded delta, {len(new_ids)} new job(s) inserted")
     if args.new_ids_out:
