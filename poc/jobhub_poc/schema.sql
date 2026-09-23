@@ -82,6 +82,18 @@ CREATE TABLE IF NOT EXISTS admin_login_attempts (
     updated_at    TEXT NOT NULL
 );
 
+-- Pending admin sign-ins waiting for their WhatsApp code (admin_codes.py). The nonce
+-- lives in the admin's session cookie; only a salted hash of the code is kept.
+CREATE TABLE IF NOT EXISTS admin_login_codes (
+    nonce       TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    code_salt   TEXT NOT NULL,
+    code_hash   TEXT NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    expires_at  TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
 -- What signed-in users did with a job (opened details, clicked apply): history for the
 -- future applications tracker and recommendations. Keyed by the job's dedupe_key plus a
 -- snapshot, NOT a foreign key to jobs.id: purge deletes jobs, and this must outlive them.

@@ -6,7 +6,10 @@ import requests
 from werkzeug.security import generate_password_hash
 
 from jobhub_poc import config
+from jobhub_poc.webapp import admin as admin_module
 from jobhub_poc.webapp.app import create_app
+
+_REAL_SEND_CODE = admin_module._send_code  # before the autouse fake replaces it
 
 USERS_URL = f"{config.AUTH_SERVICE_URL}/internal/admin/users"
 
@@ -17,6 +20,16 @@ def admin_config(monkeypatch):
     monkeypatch.setattr(config, "ADMIN_MAX_FAILURES", 3)
     monkeypatch.setattr(config, "ADMIN_LOCKOUT_MINUTES", 15)
     monkeypatch.setattr(config, "ADMIN_LOCKOUT_MAX_MINUTES", 60)
+
+
+@pytest.fixture(autouse=True)
+def sent_codes(monkeypatch):
+    """The WhatsApp second step: records each code instead of sending it."""
+    from jobhub_poc.webapp import admin
+
+    codes = []
+    monkeypatch.setattr(admin, "_send_code", lambda code, ip: codes.append(code))
+    return codes
 
 
 @pytest.fixture
@@ -60,9 +73,25 @@ def _csrf(client, path="/admin/users"):
     return re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
 
 
+def _enter_code(client, code, ip="198.51.100.1"):
+    html = client.get("/admin/login/code").get_data(as_text=True)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
+    return client.post("/admin/login/code", data={"csrf_token": token, "code": code},
+                       headers={"CF-Connecting-IP": ip})
+
+
 def _logged_in(client, requests_mock, users=None):
-    requests_mock.get(USERS_URL, json={"users": users if users is not None else [_user()]})
-    assert _login(client).status_code == 302
+    from jobhub_poc.webapp import admin
+
+    codes = []
+    real = admin._send_code
+    admin._send_code = lambda code, ip: codes.append(code)
+    try:
+        requests_mock.get(USERS_URL, json={"users": users if users is not None else [_user()]})
+        assert _login(client).status_code == 302
+        assert _enter_code(client, codes[-1]).status_code == 302
+    finally:
+        admin._send_code = real
     return client
 
 
@@ -89,13 +118,105 @@ def test_login_page_renders_turnstile_widget(client, monkeypatch):
     assert 'data-action="admin_login"' in html
 
 
-def test_correct_password_signs_in(client, requests_mock, turnstile_calls):
+def test_password_then_whatsapp_code_signs_in(client, requests_mock, turnstile_calls, sent_codes):
     requests_mock.get(USERS_URL, json={"users": []})
     resp = _login(client)
     assert resp.status_code == 302
-    assert resp.headers["Location"].endswith("/admin/users")
+    assert resp.headers["Location"].endswith("/admin/login/code")
     assert turnstile_calls[-1] == ("good-token", "admin_login")
+    # The password alone is not a session.
+    assert client.get("/admin/users").status_code == 302
+    [code] = sent_codes
+    assert re.fullmatch(r"[0-9]{6}", code)
+
+    resp = _enter_code(client, code)
+    assert resp.status_code == 302 and resp.headers["Location"].endswith("/admin/users")
     assert client.get("/admin/users").status_code == 200
+    # Used once, gone.
+    assert client.application.get_db().execute("SELECT count(*) AS n FROM admin_login_codes").fetchone()["n"] == 0
+
+
+def test_code_page_needs_a_correct_password_first(client):
+    resp = client.get("/admin/login/code")
+    assert resp.status_code == 302 and resp.headers["Location"].endswith("/admin/login")
+    assert client.post("/admin/login/code", data={"code": "123456"}).status_code == 302
+
+
+def test_code_post_needs_csrf(client, sent_codes):
+    _login(client)
+    assert client.post("/admin/login/code", data={"code": sent_codes[-1]}).status_code == 400
+
+
+def test_wrong_codes_run_out_and_count_toward_ip_lockout(client, conn, sent_codes, monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_MAX_FAILURES", 10)
+    _login(client)
+    real = sent_codes[-1]
+    wrong = "000000" if real != "000000" else "111111"
+    for left in (4, 3, 2, 1):
+        resp = _enter_code(client, wrong)
+        assert resp.status_code == 401 and f"{left} tries left" in resp.get_data(as_text=True)
+    resp = _enter_code(client, wrong)
+    assert resp.status_code == 401 and "expired" in resp.get_data(as_text=True)
+    # The right code no longer works either: sign in again.
+    assert client.get("/admin/login/code").status_code == 302
+    row = conn.execute("SELECT failures FROM admin_login_attempts WHERE key = 'ip:198.51.100.1'").fetchone()
+    assert row["failures"] == 5
+
+
+def test_expired_code_is_refused(client, conn, sent_codes):
+    _login(client)
+    conn.execute("UPDATE admin_login_codes SET expires_at = '2000-01-01T00:00:00+00:00'")
+    conn.commit()
+    resp = _enter_code(client, sent_codes[-1])
+    assert resp.status_code == 401 and "expired" in resp.get_data(as_text=True)
+    assert client.get("/admin/users").status_code == 302
+
+
+def test_code_only_works_in_the_session_that_entered_the_password(client, conn, sent_codes):
+    _login(client)
+    code = sent_codes[-1]
+    other = client.application.test_client()
+    assert other.post("/admin/login/code", data={"code": code}).status_code == 302  # no pending sign-in
+    assert other.get("/admin/users").status_code == 302
+
+
+def test_unsent_code_says_so_and_break_glass_code_works(client, conn, monkeypatch, requests_mock):
+    from jobhub_poc import admin_codes
+    from jobhub_poc.webapp import admin
+
+    def fail(code, ip):
+        raise RuntimeError("gateway down")
+
+    monkeypatch.setattr(admin, "_send_code", fail)
+    _login(client)
+    html = client.get("/admin/login/code").get_data(as_text=True)
+    assert "couldn't be sent" in html and "admin_login_code.py" in html
+
+    requests_mock.get(USERS_URL, json={"users": []})
+    code = admin_codes.reissue_for_username(conn, "admin")
+    assert _enter_code(client, code).status_code == 302
+    assert client.get("/admin/users").status_code == 200
+
+
+def test_send_code_refuses_without_admin_number(monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_ALERT_WHATSAPP", "")
+    with pytest.raises(RuntimeError, match="ADMIN_ALERT_WHATSAPP"):
+        _REAL_SEND_CODE("123456", "198.51.100.1")
+
+
+def test_send_code_whatsapps_only_the_admin_number(monkeypatch):
+    sent = []
+
+    class Sender:
+        def whatsapp(self, phone, text):
+            sent.append((phone, text))
+
+    monkeypatch.setattr(config, "ADMIN_ALERT_WHATSAPP", "+91 90000 00001")
+    monkeypatch.setattr(admin_module, "get_senders", lambda backend: Sender())
+    _REAL_SEND_CODE("123456", "198.51.100.1")
+    [(phone, text)] = sent
+    assert phone == "+919000000001"
+    assert "123456" in text and "198.51.100.1" in text
 
 
 def test_wrong_password_or_unknown_user_is_401_with_one_generic_message(client):

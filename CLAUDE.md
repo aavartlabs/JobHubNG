@@ -272,7 +272,10 @@ Better Auth endpoint that sends a message or checks a password means adding it t
 
 **Admin console (`/admin`)** is separate from site users: an `app_users` row in `jobhub.db`,
 Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +
-per-username lockout (`admin_login_attempts`). It edits users through auth-service's
+per-username lockout (`admin_login_attempts`). Sign-in is two-step: the password only starts a
+pending sign-in; a 6-digit code (5 min, 5 tries, `admin_codes.py` / `admin_login_codes`)
+is WhatsApped to `ADMIN_ALERT_WHATSAPP`. If it can't be sent, a shell on pi09 gets one with
+`scripts/admin_login_code.py <username>`. It edits users through auth-service's
 `/internal/admin/*` API (`auth-service/src/admin.js`, key `AUTH_ADMIN_API_KEY`), which lives
 outside `/auth/*` so the public proxy can never reach it. See `docs/rbac.md` and `poc/auth-service/README.md`.
 

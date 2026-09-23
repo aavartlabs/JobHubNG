@@ -12,6 +12,11 @@ Brute-force protection on /admin/login: Turnstile first, then a lockout keyed on
 the client IP and the username. After ADMIN_MAX_FAILURES failures a key is locked for
 ADMIN_LOCKOUT_MINUTES, doubling on each further lockout up to ADMIN_LOCKOUT_MAX_MINUTES.
 A locked key is refused before the password is even checked.
+
+Two-step sign-in: a correct password only starts a pending sign-in; the admin is in once
+they enter the 6-digit code WhatsApped to ADMIN_ALERT_WHATSAPP (admin_codes.py). Wrong
+codes count toward the IP lockout. If the WhatsApp can't be sent, whoever has a shell on
+the server can get a code with scripts/admin_login_code.py -- the page never shows one.
 """
 import functools
 import hmac
@@ -23,7 +28,8 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from jobhub_poc import auth_admin_client, config
+from jobhub_poc import admin_codes, auth_admin_client, config
+from jobhub_poc.alerts.senders import get_senders
 from jobhub_poc.auth_admin_client import AuthServiceError
 from jobhub_poc.phone import normalize_e164
 from jobhub_poc.webapp import turnstile
@@ -163,11 +169,65 @@ def login():
         f"DELETE FROM admin_login_attempts WHERE key IN ({','.join('?' * len(keys))})", keys
     )
     conn.commit()
+    nonce, code = admin_codes.issue(conn, row["id"])
     session.clear()  # no fixation: a fresh session, and a fresh CSRF token with it
+    session["admin_pending"] = nonce
+    try:
+        _send_code(code, ip)
+        current_app.logger.info("admin login: password ok, code sent (user=%r ip=%s)", username, ip)
+    except Exception as exc:  # noqa: BLE001 -- any send failure means "use the break-glass CLI"
+        session["admin_code_unsent"] = True
+        current_app.logger.error("admin login: code NOT sent (user=%r ip=%s): %s", username, ip, exc)
+    return redirect(url_for("admin.login_code"))
+
+
+def _send_code(code, ip):
+    number = normalize_e164(config.ADMIN_ALERT_WHATSAPP)
+    if not number:
+        raise RuntimeError("ADMIN_ALERT_WHATSAPP is not set")
+    get_senders(config.NOTIFIER_BACKEND).whatsapp(
+        number,
+        f"JobsHub admin sign-in code: {code}\n"
+        f"Valid {admin_codes.CODE_TTL_MINUTES} minutes. Requested from IP {ip}.\n"
+        "If this wasn't you, someone has the admin password: change it now.",
+    )
+
+
+@bp.route("/login/code", methods=["GET", "POST"])
+def login_code():
+    if "admin_pending" not in session:
+        return redirect(url_for("admin.login"))
+    unsent = session.get("admin_code_unsent", False)
+    if request.method == "GET":
+        return render_template("admin_login_code.html", unsent=unsent)
+
+    _check_csrf()
+    conn = current_app.get_db()
+    ip = client_ip()
+    if _lock_remaining(conn, [f"ip:{ip}"]) is not None:
+        session.clear()
+        return render_template("admin_login.html", error="Too many failed attempts. Try again later."), 429
+
+    status, value = admin_codes.check(conn, session["admin_pending"], request.form.get("code", ""))
+    if status == "wrong":
+        _record_failure(conn, f"ip:{ip}")
+        conn.commit()
+        current_app.logger.warning("admin login: wrong code (ip=%s)", ip)
+        return render_template(
+            "admin_login_code.html", unsent=unsent, error=f"Wrong code. {value} tries left."
+        ), 401
+    if status == "expired":
+        session.clear()
+        _record_failure(conn, f"ip:{ip}")
+        conn.commit()
+        return render_template("admin_login.html", error="That code has expired. Sign in again."), 401
+
+    row = conn.execute("SELECT * FROM app_users WHERE id = ?", (value,)).fetchone()
+    session.clear()
     session.permanent = True
     session["admin_user_id"] = row["id"]
     session["admin_username"] = row["username"]
-    current_app.logger.info("admin login: success (user=%r ip=%s)", username, ip)
+    current_app.logger.info("admin login: success (user=%r ip=%s)", row["username"], ip)
     return redirect(url_for("admin.users"))
 
 
