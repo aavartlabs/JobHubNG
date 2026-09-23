@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     first_seen_at     TEXT NOT NULL,
     last_seen_at      TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
-    raw_json          TEXT NOT NULL
+    raw_json          TEXT NOT NULL,
+    content_hash      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_wh_jobs_source_id  ON jobs(source_id);
 CREATE INDEX IF NOT EXISTS idx_wh_jobs_updated_at ON jobs(updated_at);
@@ -56,9 +57,14 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
     updated       INTEGER NOT NULL,
     duplicates    INTEGER NOT NULL,
     rejected_old  INTEGER NOT NULL,
-    skipped       INTEGER NOT NULL
+    skipped       INTEGER NOT NULL,
+    unchanged     INTEGER NOT NULL DEFAULT 0
 );
 """
+
+# Columns added after the first pi05 dry run (2026-09-23); open_warehouse adds them to an
+# older file in place.
+_ADDED_COLUMNS = {"jobs": {"content_hash": "TEXT"}, "ingest_runs": {"unchanged": "INTEGER NOT NULL DEFAULT 0"}}
 
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 
@@ -70,6 +76,12 @@ def open_warehouse(path):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(_SCHEMA)
+    for table, columns in _ADDED_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns.items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+    conn.commit()
     return conn
 
 
@@ -111,13 +123,20 @@ def _fields(job, posted_at):
     }
 
 
+def _content_hash(fields):
+    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+
+
 def ingest(conn, jobs, max_posted_age_days, now=None):
-    """Upserts one sweep. Returns counts: fetched/inserted/updated/duplicates/
-    rejected_old/skipped."""
+    """Upserts one sweep. Returns counts: fetched/inserted/updated (content changed)/
+    unchanged (only seen again)/duplicates/rejected_old/skipped.
+
+    updated_at moves only when a job's content changes; last_seen_at moves on every
+    sighting. export.py relies on that to send full records only for changed jobs."""
     now = now or datetime.now(timezone.utc)
     stamp = now.isoformat()
     oldest_allowed = now - timedelta(days=max_posted_age_days) if max_posted_age_days else None
-    stats = dict(fetched=len(jobs), inserted=0, updated=0, duplicates=0, rejected_old=0, skipped=0)
+    stats = dict(fetched=len(jobs), inserted=0, updated=0, unchanged=0, duplicates=0, rejected_old=0, skipped=0)
     touched = set()
 
     with conn:
@@ -129,10 +148,10 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
             source_id = None if job.get("id") is None else str(job["id"])
             row = None
             if source_id:
-                row = conn.execute("SELECT id, first_seen_at, fingerprint FROM jobs WHERE source_id = ?",
+                row = conn.execute("SELECT id, first_seen_at, fingerprint, content_hash FROM jobs WHERE source_id = ?",
                                    (source_id,)).fetchone()
             if row is None:
-                row = conn.execute("SELECT id, first_seen_at, fingerprint FROM jobs WHERE fingerprint = ?",
+                row = conn.execute("SELECT id, first_seen_at, fingerprint, content_hash FROM jobs WHERE fingerprint = ?",
                                    (fp,)).fetchone()
 
             posted_at = normalize_posted(job.get("datePosted"), row["first_seen_at"] if row else now)
@@ -145,15 +164,22 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
                 continue
 
             fields = _fields(job, posted_at)
+            content_hash = _content_hash(fields)
             if row is None:
                 cur = conn.execute(
                     f"""INSERT INTO jobs (source_id, fingerprint, {", ".join(fields)},
-                                          first_seen_at, last_seen_at, updated_at)
-                        VALUES (?, ?, {", ".join("?" * len(fields))}, ?, ?, ?)""",
-                    (source_id, fp, *fields.values(), stamp, stamp, stamp),
+                                          first_seen_at, last_seen_at, updated_at, content_hash)
+                        VALUES (?, ?, {", ".join("?" * len(fields))}, ?, ?, ?, ?)""",
+                    (source_id, fp, *fields.values(), stamp, stamp, stamp, content_hash),
                 )
                 touched.add(cur.lastrowid)
                 stats["inserted"] += 1
+                continue
+
+            if row["content_hash"] == content_hash:
+                conn.execute("UPDATE jobs SET last_seen_at = ? WHERE id = ?", (stamp, row["id"]))
+                touched.add(row["id"])
+                stats["unchanged"] += 1
                 continue
 
             # A changed title on a known id moves its fingerprint -- unless another row
@@ -162,15 +188,17 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
                 "SELECT 1 FROM jobs WHERE fingerprint = ?", (fp,)).fetchone() else row["fingerprint"]
             conn.execute(
                 f"""UPDATE jobs SET fingerprint = ?, {", ".join(f"{k} = ?" for k in fields)},
-                                    last_seen_at = ?, updated_at = ? WHERE id = ?""",
-                (new_fp, *fields.values(), stamp, stamp, row["id"]),
+                                    last_seen_at = ?, updated_at = ?, content_hash = ? WHERE id = ?""",
+                (new_fp, *fields.values(), stamp, stamp, content_hash, row["id"]),
             )
             touched.add(row["id"])
             stats["updated"] += 1
 
         conn.execute(
-            """INSERT INTO ingest_runs (started_at, fetched, inserted, updated, duplicates, rejected_old, skipped)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (stamp, *(stats[k] for k in ("fetched", "inserted", "updated", "duplicates", "rejected_old", "skipped"))),
+            """INSERT INTO ingest_runs (started_at, fetched, inserted, updated, unchanged, duplicates,
+                                        rejected_old, skipped)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (stamp, *(stats[k] for k in ("fetched", "inserted", "updated", "unchanged", "duplicates",
+                                         "rejected_old", "skipped"))),
         )
     return stats

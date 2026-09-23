@@ -39,6 +39,69 @@ def _dedupe_key(job: dict) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
+def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_at: str,
+               last_seen_at: str, search_term: str | None = None) -> int | None:
+    """Insert or refresh one EverJobs-shaped job keyed by dedupe_key. Returns the new
+    jobs.id if it was inserted, None if an existing row was updated. Doesn't commit.
+    Shared by load_dump (old dump files) and load_delta (pi05 warehouse deltas)."""
+    existing = conn.execute("SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)).fetchone()
+    apply_url = job.get("applyUrl") or job.get("jobUrl")
+
+    if existing is None:
+        cur = conn.execute(
+            """
+            INSERT INTO jobs (
+                dedupe_key, external_job_id, source_site, search_term,
+                title, company_name, location, description, employment_type,
+                is_remote, apply_url, posted_at_source,
+                first_seen_at, last_seen_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                dedupe_key,
+                job.get("id"),
+                job.get("site") or "everjobs",
+                search_term,
+                job.get("title") or "",
+                job.get("companyName"),
+                _flatten_location(job.get("location")),
+                job.get("description"),
+                job.get("employmentType"),
+                1 if job.get("isRemote") else 0,
+                apply_url,
+                job.get("datePosted"),
+                first_seen_at,
+                last_seen_at,
+                json.dumps(job),
+            ),
+        )
+        return cur.lastrowid
+
+    conn.execute(
+        """
+        UPDATE jobs SET
+            title = ?, company_name = ?, location = ?, description = ?,
+            employment_type = ?, is_remote = ?, apply_url = ?,
+            posted_at_source = ?, last_seen_at = ?, raw_json = ?
+        WHERE dedupe_key = ?
+        """,
+        (
+            job.get("title") or "",
+            job.get("companyName"),
+            _flatten_location(job.get("location")),
+            job.get("description"),
+            job.get("employmentType"),
+            1 if job.get("isRemote") else 0,
+            apply_url,
+            job.get("datePosted"),
+            last_seen_at,
+            json.dumps(job),
+            dedupe_key,
+        ),
+    )
+    return None
+
+
 def load_dump(conn: sqlite3.Connection, dump_path) -> list[int]:
     """Upsert every job in dump_path's {"jobs": [...]} into the jobs table.
 
@@ -46,71 +109,12 @@ def load_dump(conn: sqlite3.Connection, dump_path) -> list[int]:
     merely updated) by this call.
     """
     data = json.loads(Path(dump_path).read_text())
-    jobs = data.get("jobs", [])
     now = _now_iso()
     new_ids: list[int] = []
-
-    for job in jobs:
-        dedupe_key = _dedupe_key(job)
-        existing = conn.execute(
-            "SELECT id FROM jobs WHERE dedupe_key = ?", (dedupe_key,)
-        ).fetchone()
-
-        apply_url = job.get("applyUrl") or job.get("jobUrl")
-
-        if existing is None:
-            cur = conn.execute(
-                """
-                INSERT INTO jobs (
-                    dedupe_key, external_job_id, source_site, search_term,
-                    title, company_name, location, description, employment_type,
-                    is_remote, apply_url, posted_at_source,
-                    first_seen_at, last_seen_at, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    dedupe_key,
-                    job.get("id"),
-                    job.get("site") or "everjobs",
-                    job.get("_search_term"),
-                    job.get("title") or "",
-                    job.get("companyName"),
-                    _flatten_location(job.get("location")),
-                    job.get("description"),
-                    job.get("employmentType"),
-                    1 if job.get("isRemote") else 0,
-                    apply_url,
-                    job.get("datePosted"),
-                    now,
-                    now,
-                    json.dumps(job),
-                ),
-            )
-            new_ids.append(cur.lastrowid)
-        else:
-            conn.execute(
-                """
-                UPDATE jobs SET
-                    title = ?, company_name = ?, location = ?, description = ?,
-                    employment_type = ?, is_remote = ?, apply_url = ?,
-                    posted_at_source = ?, last_seen_at = ?, raw_json = ?
-                WHERE dedupe_key = ?
-                """,
-                (
-                    job.get("title") or "",
-                    job.get("companyName"),
-                    _flatten_location(job.get("location")),
-                    job.get("description"),
-                    job.get("employmentType"),
-                    1 if job.get("isRemote") else 0,
-                    apply_url,
-                    job.get("datePosted"),
-                    now,
-                    json.dumps(job),
-                    dedupe_key,
-                ),
-            )
-
+    for job in data.get("jobs", []):
+        inserted = upsert_job(conn, job, _dedupe_key(job), now, now, job.get("_search_term"))
+        if inserted is not None:
+            new_ids.append(inserted)
     conn.commit()
     return new_ids
 

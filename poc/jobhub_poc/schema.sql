@@ -82,3 +82,11 @@ CREATE TABLE IF NOT EXISTS job_interactions (
     created_at          TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_job_interactions_owner ON job_interactions(owner_auth_user_id);
+
+-- Small key/value state for the pipeline, e.g. "warehouse_watermark": the newest pi05
+-- warehouse updated_at already applied here (loader/load_delta.py).
+CREATE TABLE IF NOT EXISTS sync_state (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);

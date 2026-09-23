@@ -49,15 +49,42 @@ def test_new_jobs_are_inserted_with_parsed_fields_and_raw_json(conn):
     assert json.loads(row["raw_json"])["id"] == "acme-1"
 
 
-def test_seeing_a_job_again_bumps_last_seen_and_updated_at_but_not_first_seen(conn):
+def test_a_changed_job_bumps_last_seen_and_updated_at_but_not_first_seen(conn):
     ingest(conn, [_job()], max_posted_age_days=60, now=NOW)
     later = NOW + timedelta(hours=6)
     stats = ingest(conn, [_job(description="Run production. Now with on-call.")], max_posted_age_days=60, now=later)
-    assert stats == {**stats, "inserted": 0, "updated": 1}
+    assert stats == {**stats, "inserted": 0, "updated": 1, "unchanged": 0}
     [row] = _rows(conn)
     assert row["first_seen_at"] == NOW.isoformat()
     assert row["last_seen_at"] == row["updated_at"] == later.isoformat()
     assert row["description"] == "Run production. Now with on-call."
+
+
+def test_an_unchanged_job_only_bumps_last_seen(conn):
+    """So exports can send a tiny 'still seen' touch instead of the whole record."""
+    ingest(conn, [_job()], max_posted_age_days=60, now=NOW)
+    later = NOW + timedelta(hours=6)
+    stats = ingest(conn, [_job()], max_posted_age_days=60, now=later)
+    assert (stats["updated"], stats["unchanged"]) == (0, 1)
+    [row] = _rows(conn)
+    assert row["last_seen_at"] == later.isoformat()
+    assert row["updated_at"] == NOW.isoformat()
+
+
+def test_an_older_warehouse_without_content_hash_is_upgraded(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE jobs (id INTEGER PRIMARY KEY, source_id TEXT, fingerprint TEXT NOT NULL UNIQUE, "
+                "site TEXT, title TEXT NOT NULL, company_name TEXT, location TEXT, description TEXT, "
+                "employment_type TEXT, is_remote INTEGER NOT NULL DEFAULT 0, apply_url TEXT, "
+                "posted_at_source TEXT, posted_at TEXT, first_seen_at TEXT NOT NULL, "
+                "last_seen_at TEXT NOT NULL, updated_at TEXT NOT NULL, raw_json TEXT NOT NULL)")
+    old.close()
+    conn = open_warehouse(path)
+    assert "content_hash" in [r[1] for r in conn.execute("PRAGMA table_info(jobs)")]
+    ingest(conn, [_job()], max_posted_age_days=60, now=NOW)
+    assert (ingest(conn, [_job()], 60, now=NOW + timedelta(hours=6)))["unchanged"] == 1
 
 
 def test_same_job_on_two_sites_is_stored_once(conn):
@@ -104,7 +131,7 @@ def test_a_stored_job_that_has_aged_out_is_no_longer_touched(conn):
     ingest(conn, [_job(posted="2026-09-01")], max_posted_age_days=60, now=NOW)
     much_later = NOW + timedelta(days=45)
     stats = ingest(conn, [_job(posted="2026-09-01")], max_posted_age_days=60, now=much_later)
-    assert (stats["updated"], stats["rejected_old"]) == (0, 1)
+    assert (stats["updated"], stats["unchanged"], stats["rejected_old"]) == (0, 0, 1)
     assert _rows(conn)[0]["last_seen_at"] == NOW.isoformat()
 
 
