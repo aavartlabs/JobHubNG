@@ -217,7 +217,11 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   (FAIL if > 2 days old — backups stopped), checks the upload sha256, decompresses, runs
   `PRAGMA integrity_check` and checks key tables aren't empty. Results in `backup.log`
   (`PASS/FAIL host/db [date] ...`); a failure also fails the unit
-  (`systemctl --user status jobshub-restore-drill` on pi09). Nothing alerts anyone yet.
+  (`systemctl --user status jobshub-restore-drill` on pi09).
+- **Failure alerts:** the backup, restore-drill and cold-export units have
+  `OnFailure=jobshub-alert-admin@%n.service`, which runs `jobhub_poc.ops.alert_admin`: one
+  WhatsApp (via the gateway) with the unit and the tail of `backup.log`, to
+  `ADMIN_ALERT_WHATSAPP` in pi09's `.env` only — never to site users.
 - **Cold history (monthly):** `jobshub-cold-export.timer` on pi09 (1st of the month, 03:30
   IST) runs `scraper/cold_export.py` on pi05 over SSH: `jobs_archive` rows archived and
   `job_versions` spans ended more than `[archive] cold_after_days` (90) ago are uploaded as

@@ -2,6 +2,7 @@
 [Unit]
 Description=JobsHub nightly database backups to MinIO (pi06)
 After=network-online.target
+OnFailure=jobshub-alert-admin@%n.service
 
 [Service]
 Type=oneshot

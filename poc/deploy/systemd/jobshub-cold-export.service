@@ -2,6 +2,7 @@
 [Unit]
 Description=JobsHub monthly cold-history export (pi05 warehouse -> MinIO archive/history)
 After=network-online.target
+OnFailure=jobshub-alert-admin@%n.service
 
 [Service]
 Type=oneshot
