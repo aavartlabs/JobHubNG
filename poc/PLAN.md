@@ -32,9 +32,9 @@ AskUserQuestion):
    plan asks for or handles that password directly.
 
 **Hosting split** (per explicit instruction): the web app + SQLite + loader + alerts run on
-**pi09** (192.168.2.174, user `sanjayu`, Docker already installed, currently hosts the old
+**pi09** (LAN host, Docker already installed, currently hosts the old
 broken stack — leave it running, use different ports/network). **EverJobs itself runs on pi05**
-(192.168.2.116, user `rudra`, a personal Debian 13 aarch64 Pi with Python but no Docker/Node),
+(LAN host, a personal Debian 13 aarch64 Pi with Python but no Docker/Node),
 never on pi09. Both are reachable passwordlessly over SSH from the current host, **harita**
 (confirmed working). Orchestration scripts run *from* harita, since pi05↔pi09 direct trust is
 unconfirmed. Everything is env-configured (hosts, ports, keys, paths) — nothing hardcoded, since
@@ -277,7 +277,7 @@ As-built: 33 `poc/` tests + 10 `poc/scraper/` tests, all green.
    **As-built: live scraping works** (see "Resolved during implementation" above).
 2. Loader (dedup + `first_seen_at`/`last_seen_at` + the three indexes) — fully TDD'd. **Done.**
 3. Purge — TDD'd, demoable by backdating a row and re-running. **Done, verified live.**
-4. Web app on pi09:8100, login-gated, job list filterable/sortable by title/location/freshness.
+4. Web app on pi09, login-gated, job list filterable/sortable by title/location/freshness.
    **Done, verified live over HTTP.**
 5. Alert registration + matcher + `ConsoleNotifier`, demonstrably firing (and not double-firing)
    after a pipeline run. **Done, verified live (10 real matches fired, re-run confirmed no
@@ -328,7 +328,7 @@ conn.commit()
 "'
 ssh pi09 'cd ~/jobhub-poc && .venv/bin/python -m jobhub_poc.loader.purge'
 
-# 5. Browser: http://192.168.2.174:8100/jobs redirects to /login; log in; filter/sort works.
+# 5. Browser: http://<pi09>/jobs redirects to /login; log in; filter/sort works.
 
 # 6. Alert stub, with idempotency proof: register a subscription, run the pipeline twice,
 #    confirm alerts_sent grows once then stays flat.

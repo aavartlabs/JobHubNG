@@ -207,7 +207,7 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `jobshub-data/backups/daily/<local date>/<host>/<db>.gz` with a `sha256` metadata attribute,
   then size re-check; Sundays also `weekly/`, the 1st also `monthly/`. Bucket lifecycle
   expires daily/weekly/monthly after 14/84/365 days. ~44 MB per night.
-- **Access:** MinIO `http://<pi06>:9000` (plain HTTP on the LAN, **no client-side
+- **Access:** MinIO on pi06 (endpoint in each host's `~/.jobshub-minio.env`; plain HTTP on the LAN, **no client-side
   encryption** by Sanjay's choice). User `jobshub-backup` can get/put/list in
   `jobshub-data` only — no delete, no other buckets. Its keys are in `~/.jobshub-minio.env`
   (0600) on pi05/pi06/pi09 and reach `mc` only via `MC_HOST_jb`, never argv. `mc` is
