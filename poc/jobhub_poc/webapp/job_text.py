@@ -83,3 +83,15 @@ def format_description(text):
         paragraph.append(line)
     flush()
     return Markup("\n".join(out))
+
+
+def plain_text(text, limit=12000):
+    """The description as plain text (entities decoded, tags dropped, whitespace tidied),
+    for the local LLM to read."""
+    if not text:
+        return ""
+    text = _decode(str(text)).replace("\r\n", "\n").replace("\r", "\n")
+    text = _LI_TAG.sub("\n- ", _BREAK_TAGS.sub("\n", text))
+    text = _decode(_ANY_TAG.sub("", text)).replace("\xa0", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    return re.sub(r"\n\s*\n+", "\n\n", text).strip()[:limit]

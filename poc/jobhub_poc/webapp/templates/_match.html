@@ -1,0 +1,38 @@
+{# "Your match" for one job (routes_jobs._match_context). Shown to signed-in users only. #}
+{% set colours = {"strong": "border-[#16a34a] bg-[#f0fdf4] text-[#166534]", "good": "border-[#2563eb] bg-[#eff6ff] text-[#1e40af]",
+                  "stretch": "border-[#d97706] bg-[#fffbeb] text-[#92400e]", "weak": "border-line bg-surface text-muted",
+                  "unknown": "border-line bg-surface text-muted"} %}
+<section id="match-{{ job.id }}" class="match-card mt-5" aria-live="polite"
+         {% if match_state == "pending" %}data-match-pending data-match-url="{{ url_for('jobs.job_match', job_id=job.id) }}"{% endif %}>
+  {% if match_state == "no_resume" %}
+    <div class="rounded-lg border border-dashed border-line p-4 text-sm">
+      <strong>See how well you match this job.</strong>
+      <a href="{{ url_for('profile.profile') }}">Upload your resume</a> and JobsHub compares it with every job you open.
+    </div>
+  {% elif match_state == "pending" %}
+    <div class="rounded-lg border border-line bg-surface p-4 text-sm text-muted">
+      {% if ai_online is defined and not ai_online %}
+        Your match will appear here when our AI helper is back online.
+      {% else %}
+        <span class="inline-block animate-pulse">●</span> Analysing this job against your resume…
+      {% endif %}
+    </div>
+  {% elif match_state == "ready" and match %}
+    <div class="rounded-lg border-l-4 {{ colours[match.verdict] }} p-4">
+      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {% if match.score is not none %}<span class="text-3xl font-bold tabular-nums">{{ match.score }}<span class="text-base font-semibold">%</span></span>{% endif %}
+        <span class="text-lg font-semibold">{{ match.label }}</span>
+      </div>
+      <p class="my-1 text-sm">{{ match.advice }}</p>
+      {% if match.matched_required or match.missing_required or match.matched_preferred %}
+      <ul class="mt-2 mb-0 space-y-1 text-sm text-ink">
+        {% if match.matched_required %}<li>✓ <strong>You have:</strong> {{ match.matched_required | join(", ") }}</li>{% endif %}
+        {% if match.missing_required %}<li>✗ <strong>Not in your resume:</strong> {{ match.missing_required | join(", ") }}</li>{% endif %}
+        {% if match.matched_preferred %}<li>＋ <strong>Nice-to-haves you have:</strong> {{ match.matched_preferred | join(", ") }}</li>{% endif %}
+      </ul>
+      {% endif %}
+      {% for note in match.notes %}<p class="my-1 text-sm text-ink">• {{ note }}</p>{% endfor %}
+      <p class="mt-2 mb-0 text-xs text-muted">Based only on your <a href="{{ url_for('profile.profile') }}">checked resume</a> and what this posting says.</p>
+    </div>
+  {% endif %}
+</section>

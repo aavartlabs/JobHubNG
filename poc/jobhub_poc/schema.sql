@@ -143,6 +143,15 @@ CREATE TABLE IF NOT EXISTS resumes (
     updated_at          TEXT NOT NULL
 );
 
+-- What each job asks for (job_requirements.py), read by the local LLM when someone with a
+-- resume looks at the job; cached by the job's dedupe_key. Public job data, not encrypted.
+CREATE TABLE IF NOT EXISTS job_requirements (
+    job_dedupe_key  TEXT PRIMARY KEY,
+    data_json       TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    extracted_at    TEXT NOT NULL
+);
+
 -- AI work queue (ai/tasks.py, run by ai/worker.py against the local LLM).
 CREATE TABLE IF NOT EXISTS ai_tasks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,

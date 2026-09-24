@@ -20,7 +20,8 @@ from urllib.parse import quote, urlparse
 
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
-from jobhub_poc import config
+from jobhub_poc import config, crypto, job_requirements, matching
+from jobhub_poc.ai import ollama, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
 from jobhub_poc.webapp.job_text import format_description
 from jobhub_poc.webapp.jobs_listing import (
@@ -51,6 +52,34 @@ def _user_id():
     return g.current_user["id"] if access_state() == "verified" else None
 
 
+def _user_resume(conn):
+    """The signed-in, verified user's checked resume (structured), or None."""
+    user_id = _user_id()
+    if not user_id or not crypto.enabled():
+        return None
+    row = conn.execute("SELECT structured_enc FROM resumes WHERE owner_auth_user_id = ?", (user_id,)).fetchone()
+    if row is None or not row["structured_enc"]:
+        return None
+    try:
+        return crypto.decrypt_json(row["structured_enc"])
+    except crypto.CryptoUnavailable:
+        return None
+
+
+def _match_context(conn, resume, job, priority):
+    """{"match_state": "ready"|"pending"|"no_resume"|None, "match": result or None}. Queues
+    the job's analysis if it isn't cached yet (the local LLM reads it when it can)."""
+    if _user_id() is None:
+        return {"match_state": None, "match": None}
+    if resume is None:
+        return {"match_state": "no_resume", "match": None}
+    reqs = job_requirements.get_many(conn, [job["key"]]).get(job["key"])
+    if reqs is None:
+        tasks.enqueue(conn, "extract_job", ref=job["key"], priority=priority)
+        return {"match_state": "pending", "match": None}
+    return {"match_state": "ready", "match": matching.match(resume, reqs, job)}
+
+
 def _detail(conn, job_id, record_view):
     """Template context for one job (the page and the pane share _job_detail.html), or None
     if it's gone. Records a view for verified users when record_view is set."""
@@ -63,6 +92,7 @@ def _detail(conn, job_id, record_view):
     here = url_for("jobs.job_page", job_id=job_id)
     job = present_job(row)
     return {
+        **_match_context(conn, _user_resume(conn), job, priority=5),
         "job": job,
         "saved": bool(saved_keys(conn, _user_id(), [job["key"]])),
         "share_url": f"{config.WEB_ORIGIN.rstrip('/')}{here}",
@@ -89,6 +119,17 @@ def list_jobs():
     saved = saved_keys(conn, _user_id(), [j["key"] for j in jobs])
     for j in jobs:
         j["saved"] = j["key"] in saved
+    # Match badges for users with a resume; jobs not analysed yet are queued behind any job
+    # someone is looking at right now (priority 1 < 5).
+    resume = _user_resume(conn)
+    if resume is not None:
+        reqs = job_requirements.get_many(conn, [j["key"] for j in jobs])
+        for j in jobs:
+            if j["key"] in reqs:
+                fit = matching.match(resume, reqs[j["key"]], j)
+                j["match"] = {"score": fit["score"], "verdict": fit["verdict"], "label": fit["label"]}
+            else:
+                tasks.enqueue(conn, "extract_job", ref=j["key"], priority=1)
     list_qs = list_query_string(q, page=result.page)
 
     # The PC pane: the job asked for, else the first on this page. Only an explicit
@@ -225,3 +266,18 @@ def saved():
 def saved_remove():
     unsave_job(current_app.get_db(), g.current_user["id"], request.form.get("key", ""))
     return redirect(url_for("jobs.saved"))
+
+
+@bp.route("/jobs/<int:job_id>/match")
+@login_required
+def job_match(job_id):
+    """The "Your match" card alone, for app.js to refresh while the job is being analysed.
+    202 while it's still pending."""
+    conn = current_app.get_db()
+    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if row is None:
+        abort(404)
+    job = present_job(row)
+    context = _match_context(conn, _user_resume(conn), job, priority=5)
+    html = render_template("_match.html", job=job, ai_online=ollama.available(), **context)
+    return html, 202 if context["match_state"] == "pending" else 200

@@ -123,6 +123,7 @@ function initSplitView(): void {
       if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
       pane.innerHTML = await response.text(); // our own server-rendered, escaped fragment
       revealShareButtons(pane);
+      pollPendingMatches(pane);
       pane.scrollTop = 0;
     } catch (error) {
       if ((error as Error).name === "AbortError") return;
@@ -183,6 +184,31 @@ function initBackLinks(): void {
         window.history.back();
       }
     });
+  });
+}
+
+/** "Your match" while the job is being analysed: ask again every few seconds (for up to
+    three minutes) and swap in the result. Works in the PC pane after it's swapped too. */
+function pollPendingMatches(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>("[data-match-pending]").forEach((card) => {
+    const url = card.dataset.matchUrl;
+    if (!url || card.dataset.polling) return;
+    card.dataset.polling = "1";
+    const started = Date.now();
+    const check = async (): Promise<void> => {
+      if (!card.isConnected || Date.now() - started > 180_000) return;
+      try {
+        const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "text/html" } });
+        if (response.status === 200) {
+          card.outerHTML = await response.text();
+          return;
+        }
+      } catch {
+        // try again next round
+      }
+      window.setTimeout(() => void check(), 5000);
+    };
+    window.setTimeout(() => void check(), 4000);
   });
 }
 
@@ -313,4 +339,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initTaskPolling();
   initResumeUpload();
   initSuggestions();
+  pollPendingMatches(document);
 });

@@ -343,7 +343,7 @@ login. Fetch-driven pages send a per-request token as `X-Turnstile-Token`; `auth
 Better Auth endpoint that sends a message or checks a password means adding it there.
 
 **Resume features (phase 1 of 4, 2026-09-24; plan in memory `jobhubng_career_features`).**
-`/profile`: upload PDF/DOCX (≤2 MB, identified by magic bytes, consent checkbox) →
+`/profile`: upload PDF/DOCX (≤5 MB, identified by magic bytes, consent checkbox) →
 `resume_text.extract_text` → encrypted row in `resumes` (Fernet, `crypto.py`, key
 `RESUME_ENCRYPTION_KEY` in `.env`; unset = feature off) → `ai_tasks` queue → container
 `jobhub-ai` (`ai/worker.py`) calls the **local LLM** (Ollama, `OLLAMA_URL`/`OLLAMA_MODEL`,
@@ -352,6 +352,16 @@ honest (skills must appear in the text; bullets not found verbatim are flagged �
 reviews/edits it, and that edited version is the source of truth for later matching and
 tailoring. harita may be off: tasks wait, the UI says so. Delete button and admin deletion
 purge it (`routes_profile.purge_user_resume_data`).
+
+**Match score (phase 2).** When a user with a checked resume opens a job (priority 5) or sees
+it in a list (priority 1), an `extract_job` task has the LLM read the posting into
+`job_requirements` (cached per dedupe_key; `job_requirements.normalise` keeps only skills that
+appear in the posting text and years it actually states). `matching.match` then scores
+**deterministically, no LLM**: required skills 45, preferred 15, experience 20, seniority 10,
+location 10 → Strong ≥75 / Good ≥55 / Stretch ≥40 / Not a fit, with reasons. Caps: >60% of
+must-haves missing → at most Stretch; <3 requirements found → at most Good, marked rough.
+Shown as `_match.html` in the pane/page (app.js polls `/jobs/<id>/match` while it's 202) and a
+badge on list rows.
 
 **Admin console (`/admin`)** is separate from site users: an `app_users` row in `jobhub.db`,
 Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +

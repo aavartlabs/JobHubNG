@@ -5,7 +5,8 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from jobhub_poc import crypto, db, resume_parse
+from jobhub_poc import config, crypto, db, job_requirements, resume_parse
+from jobhub_poc.webapp.job_text import plain_text
 from jobhub_poc.ai import ollama, tasks
 
 log = logging.getLogger("jobhub.ai")
@@ -27,7 +28,21 @@ def parse_resume(conn, task):
     conn.commit()
 
 
-HANDLERS = {"parse_resume": parse_resume}
+def extract_job(conn, task):
+    job = conn.execute("SELECT title, description FROM jobs WHERE dedupe_key = ?", (task["ref"],)).fetchone()
+    if job is None:
+        return  # purged since it was queued
+    text = plain_text(job["description"])
+    if len(text) < 100:
+        data = {"required_skills": [], "preferred_skills": [], "min_years": None, "seniority": "unknown"}
+    else:
+        raw = ollama.generate(job_requirements.PROMPT.format(title=job["title"], text=text),
+                              job_requirements.SCHEMA, timeout=300)
+        data = job_requirements.normalise(raw, f"{job['title']}\n{text}")
+    job_requirements.store(conn, task["ref"], data, config.OLLAMA_MODEL)
+
+
+HANDLERS = {"parse_resume": parse_resume, "extract_job": extract_job}
 
 
 def run_once(conn):
