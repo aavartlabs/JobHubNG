@@ -327,3 +327,16 @@ def test_download_and_status_are_owner_only_and_delete_purges(conn, requests_moc
     mine.post("/profile/resume/delete")
     assert conn.execute("SELECT count(*) FROM resumes").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM ai_tasks").fetchone()[0] == 0
+
+
+def test_a_resume_under_a_lost_key_is_reported_not_a_500(conn, requests_mock, monkeypatch):
+    client = _client(conn, requests_mock)
+    _upload(client)
+    conn.execute("UPDATE resumes SET structured_enc = ?", (crypto.encrypt_json({"name": "x", "roles": []}),))
+    conn.commit()
+    monkeypatch.setattr(config, "RESUME_ENCRYPTION_KEY", Fernet.generate_key().decode())  # the key changed
+    page = client.get("/profile")
+    assert page.status_code == 200 and "read your stored resume any more" in page.get_data(as_text=True)
+    assert client.get("/profile/resume/file").status_code == 302
+    assert _upload(client).status_code == 302  # a fresh upload replaces it
+    assert "read your stored resume any more" not in client.get("/profile").get_data(as_text=True)

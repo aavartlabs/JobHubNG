@@ -31,8 +31,14 @@ def _page(error=None, status=200, notice=None):
     conn = current_app.get_db()
     row = _resume_row(conn)
     structured, task = None, None
-    if row is not None and row["structured_enc"]:
-        structured = crypto.decrypt_json(row["structured_enc"])
+    if row is not None and row["structured_enc"] and crypto.enabled():
+        try:
+            structured = crypto.decrypt_json(row["structured_enc"])
+        except crypto.CryptoUnavailable:
+            # Encrypted under a key the site no longer has: unreadable, but replaceable.
+            current_app.logger.error("profile: can't decrypt stored resume for %s", g.current_user["id"])
+            error = error or ("We can't read your stored resume any more (a site change). "
+                              "Please upload it again, or delete it.")
     if row is not None and row["parse_status"] == "queued":
         task = conn.execute(
             "SELECT id, status FROM ai_tasks WHERE kind = 'parse_resume' AND owner_auth_user_id = ? "
@@ -144,7 +150,10 @@ def save():
     row = _resume_row(conn)
     if row is None or not crypto.enabled():
         return redirect(url_for("profile.profile"))
-    previous = crypto.decrypt_json(row["structured_enc"]) if row["structured_enc"] else None
+    try:
+        previous = crypto.decrypt_json(row["structured_enc"]) if row["structured_enc"] else None
+    except crypto.CryptoUnavailable:
+        previous = None
     structured = structured_from_form(request.form, previous)
     now = _now()
     conn.execute("UPDATE resumes SET structured_enc = ?, parse_status = 'done', edited_at = ?, updated_at = ? "
@@ -159,7 +168,11 @@ def download():
     row = _resume_row(current_app.get_db())
     if row is None:
         return redirect(url_for("profile.profile"))
-    return Response(crypto.decrypt(row["file_enc"]), mimetype=row["mime"],
+    try:
+        data = crypto.decrypt(row["file_enc"])
+    except crypto.CryptoUnavailable:
+        return redirect(url_for("profile.profile"))
+    return Response(data, mimetype=row["mime"],
                     headers={"Content-Disposition": f'attachment; filename="{row["filename"]}"',
                              "Cache-Control": "no-store"})
 

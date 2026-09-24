@@ -2,7 +2,7 @@
    Everything works without this script; it only makes it smoother. */
 
 import { isJobsListReferrer } from "./back";
-import { fileTooLargeMessage } from "./upload";
+import { fileTooLargeMessage, uploadPercent } from "./upload";
 import { savedAction, savedLabel } from "./saving";
 import { isPlainClick, nextRowIndex, selectionUrl } from "./split";
 
@@ -206,20 +206,59 @@ function initResumeUpload(): void {
       errorEl.hidden = !problem;
     }
   });
+  const bar = document.getElementById("resume-progress") as HTMLProgressElement | null;
+  const barWrap = document.getElementById("resume-progress-wrap");
+  const barText = document.getElementById("resume-progress-text");
+  const buttonLabel = button?.textContent ?? "Upload";
+  const showError = (message: string): void => {
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+    if (barWrap) barWrap.hidden = true;
+    if (button) {
+      button.disabled = false;
+      button.textContent = buttonLabel;
+    }
+  };
+
+  // Sent with XMLHttpRequest, the one browser API that reports upload progress. The server
+  // answers as it does for the plain form: a redirect to /profile on success, the profile
+  // page with an error message otherwise.
   form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (errorEl) errorEl.hidden = true;
     const problem = tooBig();
     if (problem) {
-      event.preventDefault();
-      if (errorEl) {
-        errorEl.textContent = problem;
-        errorEl.hidden = false;
-      }
+      showError(problem);
       return;
     }
     if (button) {
       button.disabled = true;
       button.textContent = "Uploading…";
     }
+    if (bar) bar.value = 0;
+    if (barText) barText.textContent = "Uploading… 0%";
+    if (barWrap) barWrap.hidden = false;
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", form.action);
+    xhr.upload.addEventListener("progress", (e) => {
+      const percent = uploadPercent(e.loaded, e.lengthComputable ? e.total : 0);
+      if (bar) bar.value = percent;
+      if (barText) barText.textContent = percent >= 100 ? "Uploaded — checking your file…" : `Uploading… ${percent}%`;
+    });
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        window.location.href = xhr.responseURL || "/profile"; // redirect already followed: /profile
+        return;
+      }
+      const page = new DOMParser().parseFromString(xhr.responseText, "text/html");
+      const message = page.querySelector("main .error")?.textContent?.trim();
+      showError(message || `Upload failed (HTTP ${xhr.status}). Please try again.`);
+    });
+    xhr.addEventListener("error", () => showError("Upload failed — check your connection and try again."));
+    xhr.send(new FormData(form));
   });
 }
 
