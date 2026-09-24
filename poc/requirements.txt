@@ -1,6 +1,10 @@
 flask>=3.0,<4
 python-dotenv>=1.0,<2
 requests>=2.31,<3
+# Resume features (routes_profile.py): encryption at rest, PDF/DOCX text.
+cryptography>=43,<51
+pypdf>=5,<7
+python-docx>=1.1,<2
 
 # dev / test
 pytest>=8.0,<9

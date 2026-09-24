@@ -342,6 +342,17 @@ login. Fetch-driven pages send a per-request token as `X-Turnstile-Token`; `auth
 `webapp/turnstile.py` checks success + action + hostname and fails closed. Adding a new
 Better Auth endpoint that sends a message or checks a password means adding it there.
 
+**Resume features (phase 1 of 4, 2026-09-24; plan in memory `jobhubng_career_features`).**
+`/profile`: upload PDF/DOCX (≤2 MB, identified by magic bytes, consent checkbox) →
+`resume_text.extract_text` → encrypted row in `resumes` (Fernet, `crypto.py`, key
+`RESUME_ENCRYPTION_KEY` in `.env`; unset = feature off) → `ai_tasks` queue → container
+`jobhub-ai` (`ai/worker.py`) calls the **local LLM** (Ollama, `OLLAMA_URL`/`OLLAMA_MODEL`,
+gemma4:e2b on harita's GPU — resumes never leave the LAN) → `resume_parse.normalise` keeps it
+honest (skills must appear in the text; bullets not found verbatim are flagged ⚠) → the user
+reviews/edits it, and that edited version is the source of truth for later matching and
+tailoring. harita may be off: tasks wait, the UI says so. Delete button and admin deletion
+purge it (`routes_profile.purge_user_resume_data`).
+
 **Admin console (`/admin`)** is separate from site users: an `app_users` row in `jobhub.db`,
 Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +
 per-username lockout (`admin_login_attempts`). Sign-in is two-step: the password only starts a

@@ -29,6 +29,25 @@ services:
       - jobhub
     restart: unless-stopped
 
+  # Runs queued AI tasks (resume parsing now; job matching and tailoring later) against the
+  # local LLM at OLLAMA_URL (poc/.env). Same image as web; while the LLM host is off, tasks
+  # simply wait (jobhub_poc/ai/worker.py).
+  ai:
+    image: jobhub-poc-web
+    pull_policy: never
+    container_name: jobhub-ai
+    command: ["python", "-m", "jobhub_poc.ai.worker"]
+    env_file: .env
+    environment:
+      JOBHUB_SQLITE_PATH: /app/data/jobhub.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - web
+    networks:
+      - jobhub
+    restart: unless-stopped
+
   auth-service:
     build: ./auth-service
     container_name: jobhub-auth

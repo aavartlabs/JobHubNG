@@ -124,6 +124,40 @@ CREATE TABLE IF NOT EXISTS saved_jobs (
     PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
 );
 
+-- A signed-in user's resume (routes_profile.py). One per user. The file, its text and the
+-- structured (parsed, then user-edited) resume are Fernet-encrypted (crypto.py) -- this table
+-- and its backups never hold readable resume content. parse_status: queued | done | failed.
+CREATE TABLE IF NOT EXISTS resumes (
+    owner_auth_user_id  TEXT PRIMARY KEY,
+    filename            TEXT NOT NULL,
+    mime                TEXT NOT NULL,
+    size_bytes          INTEGER NOT NULL,
+    file_enc            BLOB NOT NULL,
+    text_enc            BLOB NOT NULL,
+    structured_enc      BLOB,
+    parse_status        TEXT NOT NULL,
+    parse_error         TEXT,
+    edited_at           TEXT,
+    consent_at          TEXT NOT NULL,
+    uploaded_at         TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+);
+
+-- AI work queue (ai/tasks.py, run by ai/worker.py against the local LLM).
+CREATE TABLE IF NOT EXISTS ai_tasks (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind                TEXT NOT NULL,
+    owner_auth_user_id  TEXT,
+    ref                 TEXT,
+    priority            INTEGER NOT NULL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'queued',
+    attempts            INTEGER NOT NULL DEFAULT 0,
+    error               TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_tasks_queue ON ai_tasks(status, priority DESC, id);
+
 -- Small key/value state for the pipeline, e.g. "warehouse_watermark": the newest pi05
 -- warehouse updated_at already applied here (loader/load_delta.py).
 CREATE TABLE IF NOT EXISTS sync_state (

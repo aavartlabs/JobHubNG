@@ -185,10 +185,38 @@ function initBackLinks(): void {
   });
 }
 
+/** /profile while the resume is being read: check the task every few seconds and reload
+    when it's done (or failed), so the review form appears without a manual refresh. */
+function initTaskPolling(): void {
+  const status = document.getElementById("parse-status");
+  const taskId = status?.dataset.taskId;
+  if (!status || !taskId) return;
+  const check = async (): Promise<void> => {
+    try {
+      const response = await fetch(`/ai/tasks/${taskId}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
+      if (response.ok) {
+        const task = (await response.json()) as { status: string; ai_online: boolean };
+        if (task.status === "done" || task.status === "failed") {
+          window.location.reload();
+          return;
+        }
+        if (!task.ai_online) {
+          status.textContent = "Our AI helper is offline right now. Your resume is saved and will be read as soon as it's back — you can leave this page.";
+        }
+      }
+    } catch {
+      // network blip: try again next round
+    }
+    window.setTimeout(() => void check(), 4000);
+  };
+  window.setTimeout(() => void check(), 3000);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initFilters();
   initBackLinks();
   initSplitView();
   initSaving();
   initSharing();
+  initTaskPolling();
 });

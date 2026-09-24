@@ -485,6 +485,11 @@ def test_delete_also_removes_the_users_job_interactions_and_saves(client, conn, 
     conn.execute(
         "INSERT INTO saved_jobs (owner_auth_user_id, job_dedupe_key, saved_at) VALUES ('u1', 'k', 'x'), ('u2', 'k', 'x')"
     )
+    conn.execute(
+        "INSERT INTO resumes (owner_auth_user_id, filename, mime, size_bytes, file_enc, text_enc, parse_status, "
+        "consent_at, uploaded_at, updated_at) VALUES ('u1', 'f', 'm', 1, x'00', x'00', 'queued', 'x', 'x', 'x')"
+    )
+    conn.execute("INSERT INTO ai_tasks (kind, owner_auth_user_id, created_at, updated_at) VALUES ('parse_resume', 'u1', 'x', 'x')")
     conn.commit()
     _logged_in(client, requests_mock)
     requests_mock.delete(f"{USERS_URL}/u1", json={"ok": True})
@@ -492,3 +497,5 @@ def test_delete_also_removes_the_users_job_interactions_and_saves(client, conn, 
     owners = [r["owner_auth_user_id"] for r in conn.execute("SELECT owner_auth_user_id FROM job_interactions")]
     assert owners == ["u2"]
     assert [r[0] for r in conn.execute("SELECT owner_auth_user_id FROM saved_jobs")] == ["u2"]
+    assert conn.execute("SELECT count(*) FROM resumes").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM ai_tasks").fetchone()[0] == 0

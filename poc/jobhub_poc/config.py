@@ -52,6 +52,16 @@ AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:3200")
 # this value; it exists only for Flask's own direct server-to-server call.
 WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 
+# Local LLM for resume features (jobhub_poc/ai/): an Ollama server on the LAN. Unset =
+# resume parsing / matching / tailoring stay queued ("AI offline"); nothing else depends on it.
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
+# Fernet key (base64) that encrypts uploaded resumes and everything derived from them
+# (crypto.py). Unset = resume upload is switched off. Keep a copy offline: without it the
+# encrypted rows in jobhub.db and its backups can't be read.
+RESUME_ENCRYPTION_KEY = os.environ.get("RESUME_ENCRYPTION_KEY", "")
+MAX_RESUME_BYTES = 2 * 1024 * 1024
+
 # "Popular" search chips under the jobs page's search bar: a curated, comma-separated list
 # (not derived from users' alert terms, which are private). Each searches title/company,
 # so they should be role or company words, not places.

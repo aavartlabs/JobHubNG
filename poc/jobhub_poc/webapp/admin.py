@@ -33,6 +33,7 @@ from jobhub_poc.admin_notify import notify_admin
 from jobhub_poc.alerts.senders import get_senders
 from jobhub_poc.auth_admin_client import AuthServiceError
 from jobhub_poc.webapp import turnstile
+from jobhub_poc.webapp import routes_profile
 from jobhub_poc.webapp.auth import client_ip
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -332,6 +333,7 @@ def delete_user(user_id):
     conn.execute("DELETE FROM alert_subscriptions WHERE owner_auth_user_id = ?", (user_id,))
     conn.execute("DELETE FROM job_interactions WHERE owner_auth_user_id = ?", (user_id,))
     conn.execute("DELETE FROM saved_jobs WHERE owner_auth_user_id = ?", (user_id,))
+    routes_profile.purge_user_resume_data(conn, user_id)
     conn.commit()
     current_app.logger.info("admin %s deleted user %s", session["admin_username"], user_id)
     flash("User deleted.")

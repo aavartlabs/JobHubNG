@@ -6,12 +6,14 @@ from datetime import timedelta
 from flask import Flask, g, redirect, request, url_for
 
 from jobhub_poc import config, db
-from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs, telegram_webhook
+from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs, routes_profile, telegram_webhook
 
 
 def create_app(test_conn=None):
     app = Flask(__name__)
     app.secret_key = config.WEB_SECRET_KEY
+    # Biggest legitimate request: a resume upload (routes_profile.py) plus form overhead.
+    app.config["MAX_CONTENT_LENGTH"] = config.MAX_RESUME_BYTES + 256 * 1024
     # INFO, not Flask's default WARNING outside debug: admin.py's audit trail (sign-ins,
     # user edits/deletes) is logged at INFO and must reach `docker logs jobhub-web`.
     app.logger.setLevel(logging.INFO)
@@ -92,6 +94,7 @@ def create_app(test_conn=None):
     app.register_blueprint(routes_api.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(telegram_webhook.bp)
+    app.register_blueprint(routes_profile.bp)
 
     @app.route("/")
     def index():
