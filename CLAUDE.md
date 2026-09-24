@@ -63,7 +63,7 @@ remain only for the rollback path.
   version goes to `job_versions` (zlib-compressed raw JSON + the span it was current), and
   retention *moves* jobs unseen for `warehouse_retention_days` into `jobs_archive` instead of
   deleting them (~1,200 changed jobs/day → a few MB/day compressed; pi05 has ~47 GB free). pi05 runs only the stdlib files
-  `jobhub_poc/{__init__,dates,pipeline_config}.py` + `config/pipeline.ini`, not the app.
+  `jobhub_poc/{__init__,dates,pipeline_config,job_links}.py` + `config/pipeline.ini`, not the app.
 - **Export → serving**: `scraper/export.py --since <watermark>` writes a gzip JSONL delta of
   warehouse rows whose title matches `[serving] search_terms` (and `locations` if set): full
   records for new/changed jobs, tiny `touch` records for jobs merely seen again. pi09's
@@ -80,6 +80,16 @@ remain only for the rollback path.
   `google,naukri,linkedin,indeed,glassdoor`), not by the client. `query`/`results` are **not
   honored** — every call returns the whole sweep (2026-09-23: 15,203 jobs, ~3 min;
   ingest peak RSS ~570 MB; ~11k distinct fresh jobs ≈ 129 MB warehouse).
+- **SmartRecruiters jobs (≈1 in 5, 2026-09-24)** arrive from EverJobs with **no description** and
+  the public Posting API URL (`api.smartrecruiters.com/v1/companies/<C>/postings/<ID>`, a JSON
+  page) as their link. `jobhub_poc/job_links.human_url` rewrites it to
+  `jobs.smartrecruiters.com/<C>/<ID>` everywhere a link is stored or served (warehouse,
+  loader, `/jobs/<id>/apply`, `/api/jobs`). `scraper/enrich.py` runs on pi05 between ingest
+  and export (pipeline step 1b, best effort): it fetches each posting once from that public
+  API (`[enrich]` in pipeline.ini: 600/run, 500 ms apart, errors retried after 7 days, a 429
+  ends the run) into the warehouse's `enrichments` table, and `warehouse.overlay` lays it over
+  every later sweep *before* hashing, so the bare EverJobs record never counts as a change.
+  pi09's `upsert_job` drops a job's cached match analysis when its description changes.
 - **Posted dates** (`datePosted`) are unreliable — ISO, bare dates, epoch seconds, "Sep 23,
   2026", years-stale values. Never key retention on them; `dates.normalize_posted` only feeds
   the age filter and (T8) the "posted within" filter, falling back to first_seen.
@@ -216,7 +226,7 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `Restart=always`, boot-enabled), the scraper venv (`dump_jobs.py` old path;
   `ingest.py`/`export.py` warehouse path) and the SQLite **warehouse** at
   `~/jobhub-poc/scraper/data/warehouse.db`. It never runs the web app. Deploy there = rsync of
-  `poc/scraper/*.py`, `poc/jobhub_poc/{__init__,dates,pipeline_config}.py` and
+  `poc/scraper/*.py`, `poc/jobhub_poc/{__init__,dates,pipeline_config,job_links}.py` and
   `poc/config/pipeline.ini` into `~/jobhub-poc/` on pi05.
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
   `~/jobhub-poc/data/jobhub.db`, plus Docker containers from `poc/docker-compose.yml`:

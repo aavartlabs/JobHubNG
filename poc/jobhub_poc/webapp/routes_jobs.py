@@ -21,6 +21,7 @@ from urllib.parse import quote, urlparse
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
 from jobhub_poc import config, crypto, job_requirements, matching
+from jobhub_poc.job_links import human_url
 from jobhub_poc.ai import ollama, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
 from jobhub_poc.webapp.job_text import format_description
@@ -200,7 +201,7 @@ def apply(job_id):
     if job is None or not _apply_url_ok(job["apply_url"]):
         abort(404)
     record(conn, job, "click_apply")
-    return redirect(job["apply_url"])
+    return redirect(human_url(job["apply_url"]))
 
 
 # ---- saved jobs ----

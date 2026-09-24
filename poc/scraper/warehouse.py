@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from jobhub_poc.dates import normalize_posted  # noqa: E402
+from jobhub_poc.job_links import human_url  # noqa: E402
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -63,6 +64,20 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
     rejected_old  INTEGER NOT NULL,
     skipped       INTEGER NOT NULL,
     unchanged     INTEGER NOT NULL DEFAULT 0
+);
+
+-- What enrich.py fetched to fill a gap in EverJobs' record (today: SmartRecruiters jobs,
+-- which arrive with no description and an API URL as their link). Kept apart from jobs and
+-- laid over each sighting by ingest() *before* hashing, so the next sweep's bare record
+-- doesn't count as a change. status: ok | gone (posting removed) | error (retry later).
+CREATE TABLE IF NOT EXISTS enrichments (
+    source_id    TEXT PRIMARY KEY,
+    source       TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    description  TEXT,
+    apply_url    TEXT,
+    error        TEXT,
+    fetched_at   TEXT NOT NULL
 );
 """
 
@@ -153,7 +168,7 @@ def _fields(job, posted_at):
         "description": job.get("description"),
         "employment_type": job.get("employmentType"),
         "is_remote": 1 if job.get("isRemote") else 0,
-        "apply_url": job.get("applyUrl") or job.get("jobUrl"),
+        "apply_url": human_url(job.get("applyUrl") or job.get("jobUrl")),
         "posted_at_source": None if job.get("datePosted") is None else str(job.get("datePosted")),
         "posted_at": posted_at,
         "raw_json": json.dumps(job, separators=(",", ":")),
@@ -171,6 +186,42 @@ def _save_version(conn, job_id, now_stamp):
         "INSERT INTO job_versions (job_id, content_hash, raw_json_z, valid_from, valid_to) VALUES (?, ?, ?, ?, ?)",
         (job_id, old["content_hash"], zlib.compress(old["raw_json"].encode(), 9), old["updated_at"], now_stamp),
     )
+
+
+def overlay(conn, job):
+    """`job` with what enrich.py found filled in -- only where EverJobs left a gap (no
+    description), so a record that later arrives complete wins. Same job back if nothing
+    applies. The result is stable for a given enrichment, which keeps content_hash stable."""
+    if job.get("description") or job.get("id") is None:
+        return job
+    found = conn.execute("SELECT source, description, apply_url FROM enrichments "
+                         "WHERE source_id = ? AND status = 'ok'", (str(job["id"]),)).fetchone()
+    if found is None or not found["description"]:
+        return job
+    return {**job, "description": found["description"], "applyUrl": found["apply_url"] or job.get("applyUrl"),
+            "_enriched": found["source"]}
+
+
+def refresh_enriched(conn, source_id, now=None):
+    """Apply a new enrichment to the stored job now (a normal content change: the old
+    version goes to job_versions and updated_at moves, so export.py sends it in full).
+    True if the row changed. Doesn't commit."""
+    row = conn.execute("SELECT * FROM jobs WHERE source_id = ?", (source_id,)).fetchone()
+    if row is None:
+        return False
+    job = json.loads(row["raw_json"])
+    enriched = overlay(conn, job)
+    if enriched is job:
+        return False
+    fields = _fields(enriched, row["posted_at"])
+    content_hash = _content_hash(fields)
+    if content_hash == row["content_hash"]:
+        return False
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    _save_version(conn, row["id"], stamp)
+    conn.execute(f"UPDATE jobs SET {', '.join(f'{k} = ?' for k in fields)}, updated_at = ?, content_hash = ? WHERE id = ?",
+                 (*fields.values(), stamp, content_hash, row["id"]))
+    return True
 
 
 def _content_hash(fields):
@@ -194,6 +245,7 @@ def ingest(conn, jobs, max_posted_age_days, now=None):
             if not isinstance(job, dict) or not (job.get("title") or "").strip():
                 stats["skipped"] += 1
                 continue
+            job = overlay(conn, job)
             fp = fingerprint(job)
             source_id = None if job.get("id") is None else str(job["id"])
             row = None

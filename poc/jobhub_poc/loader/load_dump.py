@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from jobhub_poc.dates import normalize_posted
+from jobhub_poc.job_links import human_url
 
 
 def _now_iso() -> str:
@@ -46,8 +47,9 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
     """Insert or refresh one EverJobs-shaped job keyed by dedupe_key. Returns the new
     jobs.id if it was inserted, None if an existing row was updated. Doesn't commit.
     Shared by load_dump (old dump files) and load_delta (pi05 warehouse deltas)."""
-    existing = conn.execute("SELECT id, first_seen_at FROM jobs WHERE dedupe_key = ?", (dedupe_key,)).fetchone()
-    apply_url = job.get("applyUrl") or job.get("jobUrl")
+    existing = conn.execute("SELECT id, first_seen_at, description FROM jobs WHERE dedupe_key = ?",
+                            (dedupe_key,)).fetchone()
+    apply_url = human_url(job.get("applyUrl") or job.get("jobUrl"))
     posted_at = normalize_posted(job.get("datePosted"), existing[1] if existing else first_seen_at)
 
     if existing is None:
@@ -81,6 +83,10 @@ def upsert_job(conn: sqlite3.Connection, job: dict, dedupe_key: str, first_seen_
         )
         return cur.lastrowid
 
+    if (existing[2] or "") != (job.get("description") or ""):
+        # The match analysis (job_requirements.py) was read from the old text -- e.g. an
+        # empty one before pi05's enrich.py found the real description. Read it again.
+        conn.execute("DELETE FROM job_requirements WHERE job_dedupe_key = ?", (dedupe_key,))
     conn.execute(
         """
         UPDATE jobs SET

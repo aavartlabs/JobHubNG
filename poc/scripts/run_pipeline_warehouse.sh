@@ -3,6 +3,8 @@
 # place, unchanged, as the rollback until the cutover is confirmed.
 #
 # 1. ingest on pi05   -> full EverJobs sweep upserted into pi05's warehouse.db (no dump)
+#    + enrich on pi05 -> fill what EverJobs leaves out (SmartRecruiters descriptions and
+#                        links, scraper/enrich.py); best effort, never stops the run
 # 2. export on pi05   -> gzip delta of rows updated since pi09's watermark that pass the
 #                        serving filter in config/pipeline.ini
 # 3. pull + load      -> scp the delta, upsert into jobhub.db, advance the watermark
@@ -20,6 +22,8 @@ cd "${APP_DIR}"
 
 echo "== 1/4: warehouse ingest on pi05 =="
 ssh pi05 "cd ${PI05_DIR}/scraper && .venv/bin/python ingest.py"
+echo "== 1b/4: enrich on pi05 =="
+ssh pi05 "cd ${PI05_DIR}/scraper && .venv/bin/python enrich.py" || echo "enrich failed (continuing without it)"
 
 echo "== 2/4: export delta on pi05 =="
 SINCE=$(.venv/bin/python -m jobhub_poc.loader.load_delta --print-watermark)

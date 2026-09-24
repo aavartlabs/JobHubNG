@@ -1,5 +1,6 @@
 from flask import Blueprint, current_app, jsonify, request
 
+from jobhub_poc.job_links import human_url
 from jobhub_poc.webapp.auth import access_state, login_url, verify_url
 from jobhub_poc.webapp.jobs_listing import parse_list_args, query_jobs, record
 
@@ -65,7 +66,7 @@ def job_details(job_id):
         "is_remote": bool(job["is_remote"]),
         "first_seen_at": job["first_seen_at"],
         "description": job["description"],
-        "apply_url": job["apply_url"],
+        "apply_url": human_url(job["apply_url"]),
     })
 
 
@@ -80,4 +81,4 @@ def apply_click(job_id):
     if job is None or not job["apply_url"]:
         return jsonify({"code": "NOT_FOUND"}), 404
     record(conn, job, "click_apply")
-    return jsonify({"apply_url": job["apply_url"]})
+    return jsonify({"apply_url": human_url(job["apply_url"])})

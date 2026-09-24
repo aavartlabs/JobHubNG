@@ -36,6 +36,11 @@ _SCHEMA = {
     },
     "sync": {"max_alert_terms": ("count", "200")},
     "archive": {"cold_after_days": ("days", "90")},
+    "enrich": {
+        "max_per_run": ("count", "600"),
+        "retry_after_days": ("days", "7"),
+        "delay_ms": ("count", "500"),
+    },
 }
 
 
@@ -69,12 +74,20 @@ class ArchiveConfig:
 
 
 @dataclass(frozen=True)
+class EnrichConfig:
+    max_per_run: int       # postings fetched per pipeline run (scraper/enrich.py); 0 = off
+    retry_after_days: int  # a failed fetch is tried again after this long
+    delay_ms: int          # pause between fetches, to be polite to the ATS
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     ingest: IngestConfig
     retention: RetentionConfig
     serving: ServingConfig
     sync: SyncConfig
     archive: ArchiveConfig
+    enrich: EnrichConfig
 
 
 def _split(raw):
@@ -134,4 +147,5 @@ def load_pipeline_config(path=None, env=None):
         serving=ServingConfig(**values["serving"]),
         sync=SyncConfig(**values["sync"]),
         archive=ArchiveConfig(**values["archive"]),
+        enrich=EnrichConfig(**values["enrich"]),
     )

@@ -136,3 +136,17 @@ def test_gated_page_redirect_to_login_carries_next(conn):
 def test_jobs_pages_themselves_stay_public(conn, path):
     _seed_job(conn)
     assert _client(conn).get(path).status_code == 200
+
+
+SR_API = "https://api.smartrecruiters.com/v1/companies/TurnerTownsend/postings/744000151582544"
+SR_PAGE = "https://jobs.smartrecruiters.com/TurnerTownsend/744000151582544"
+
+
+def test_smartrecruiters_api_links_open_the_posting_page_not_json(conn, requests_mock):
+    """EverJobs gives SmartRecruiters jobs their API URL, which shows raw JSON."""
+    _seed_job(conn, apply_url=SR_API)
+    client = _client(conn, requests_mock, _user())
+    resp = client.get("/jobs/1/apply")
+    assert resp.status_code == 302 and resp.headers["Location"] == SR_PAGE
+    assert client.post("/api/jobs/1/apply-click").get_json() == {"apply_url": SR_PAGE}
+    assert client.get("/api/jobs/1").get_json()["apply_url"] == SR_PAGE
