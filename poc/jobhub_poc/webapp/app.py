@@ -1,12 +1,40 @@
 import hashlib
 import logging
 import os
+import re
 from datetime import timedelta
+from logging.handlers import RotatingFileHandler
 
 from flask import Flask, g, redirect, request, url_for
 
 from jobhub_poc import config, db
 from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs, routes_profile, telegram_webhook
+
+
+class _PlainFormatter(logging.Formatter):
+    """Werkzeug colours its request lines with ANSI codes; a file doesn't want them."""
+
+    def format(self, record):
+        return re.sub(r"\x1b\[[0-9;]*m", "", super().format(record))
+
+
+def _log_to_file(app):
+    """Also write the app's and werkzeug's logs to JOBHUB_LOG_FILE (rotated, 5 x 5 MB), so
+    they outlive the container: `docker compose up` after a build replaces it, and its
+    `docker logs` with it. Unset (tests, local dev) = stderr only."""
+    path = os.environ.get("JOBHUB_LOG_FILE")
+    if not path:
+        return
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    handler = RotatingFileHandler(path, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    handler.setFormatter(_PlainFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    # werkzeug adds its own stderr handler only when it finds none, so give it one here
+    # too, or `docker logs` would lose the request lines.
+    werkzeug = logging.getLogger("werkzeug")
+    werkzeug.setLevel(logging.INFO)
+    werkzeug.addHandler(logging.StreamHandler())
+    for logger in (app.logger, werkzeug):
+        logger.addHandler(handler)
 
 
 def create_app(test_conn=None):
@@ -17,6 +45,7 @@ def create_app(test_conn=None):
     # INFO, not Flask's default WARNING outside debug: admin.py's audit trail (sign-ins,
     # user edits/deletes) is logged at INFO and must reach `docker logs jobhub-web`.
     app.logger.setLevel(logging.INFO)
+    _log_to_file(app)
     # Flask's own session cookie carries only the admin console login (admin.py); site
     # users' sessions are auth-service's cookie, never this one.
     app.config.update(

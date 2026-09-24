@@ -9,7 +9,7 @@
   <h2>Email code</h2>
   <p>We've sent a code to your email -- enter it below. (Delivery isn't guaranteed to be
      instant; if nothing arrives, a resend option appears below after a short wait.)</p>
-  <p id="email-error" class="error" hidden></p>
+  <p id="email-error" class="error" role="alert" hidden></p>
   <p id="email-verified-msg" hidden>Email verified.</p>
   <form id="email-otp-form">
     <label>Code <input type="text" id="email-otp-code" inputmode="numeric" autocomplete="one-time-code" required></label>
@@ -23,7 +23,7 @@
   <p>Connect Telegram to get job alerts there. Click the button, open the link in Telegram
      (on this device or your phone), press <strong>Start</strong>, and the bot will send you
      a code to enter here. You can skip this and connect it later from your alerts.</p>
-  <p id="telegram-error" class="error" hidden></p>
+  <p id="telegram-error" class="error" role="alert" hidden></p>
   <p id="telegram-verified-msg" hidden>Telegram connected.</p>
   <button type="button" id="telegram-connect">Connect Telegram</button>
   <p><a id="telegram-open" class="btn btn-secondary" target="_blank" rel="noopener" hidden>Open the JobsHub bot in Telegram &rarr;</a></p>

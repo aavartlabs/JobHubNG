@@ -341,6 +341,11 @@ login. Fetch-driven pages send a per-request token as `X-Turnstile-Token`; `auth
 `_TURNSTILE_ACTIONS` maps each protected Better Auth path to its action, and
 `webapp/turnstile.py` checks success + action + hostname and fails closed. Adding a new
 Better Auth endpoint that sends a message or checks a password means adding it there.
+Every such call is logged by `auth_proxy._log_outcome` as one line — `auth signup: FAILED
+422 USER_ALREADY_EXISTS… (email=so•••@gmail.com ip=…)` or `ok 200` — for support questions
+("never got my email"). The web container also writes its logs to
+`~/jobhub-poc/data/logs/web.log` on pi09 (`JOBHUB_LOG_FILE`, 5 × 5 MB), because `docker
+logs` is lost whenever a deploy recreates the container.
 
 **Resume features (phase 1 of 4, 2026-09-24; plan in memory `jobhubng_career_features`).**
 `/profile`: upload PDF/DOCX (≤5 MB, identified by magic bytes, consent checkbox) →

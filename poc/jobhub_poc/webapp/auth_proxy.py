@@ -9,8 +9,10 @@ this just relays whatever bytes came in and whatever bytes come back, including
 Set-Cookie (so sign-in/sign-up/sign-out cookies reach the browser as if talking to
 Better Auth directly).
 """
+import json
+
 import requests
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
 from jobhub_poc import config
 from jobhub_poc.webapp import turnstile
@@ -38,6 +40,33 @@ _HOP_BY_HOP_HEADERS = {
 # Must outlast the slowest upstream call (an OTP email send through Resend) and stay
 # under Cloudflare's 100s origin timeout.
 _PROXY_TIMEOUT_SECONDS = 60
+
+
+def _masked_email():
+    """The request body's email as "so•••@gmail.com", for support logs; "-" if none."""
+    try:
+        email = json.loads(request.get_data() or b"{}").get("email")
+    except (ValueError, AttributeError):
+        return "-"
+    if not isinstance(email, str) or "@" not in email:
+        return "-"
+    local, _, domain = email.strip().lower().rpartition("@")
+    return f"{local[:2]}•••@{domain[:60]}"
+
+
+def _log_outcome(action, status, body=b""):
+    """One line per sign-up / login / code send, so a "never got my email" report can be
+    traced: which step failed and why (Better Auth's error code), never the password."""
+    code = "-"
+    if status >= 400:
+        try:
+            parsed = json.loads(body or b"{}")
+            code = str(parsed.get("code") or parsed.get("message") or "-")[:80]
+        except (ValueError, AttributeError):
+            pass
+    outcome = f"ok {status}" if status < 400 else f"FAILED {status} {code}"
+    current_app.logger.info("auth %s: %s (email=%s ip=%s)", action, outcome, _masked_email(), client_ip())
+
 
 # Forwarding headers a caller can set themselves. The auth-service rate-limits by client
 # IP (see poc/auth-service/src/auth.js) and reads that IP from X-Forwarded-For, so
@@ -95,6 +124,7 @@ def proxy(subpath):
 
     action = _turnstile_action(subpath) if request.method not in ("GET", "HEAD", "OPTIONS") else None
     if action and not turnstile.verify(request.headers.get(TURNSTILE_HEADER), action):
+        _log_outcome(action, 403, b'{"code": "TURNSTILE_FAILED"}')
         return jsonify({
             "code": "TURNSTILE_FAILED",
             "message": "Bot check failed or expired. Please try again.",
@@ -125,6 +155,8 @@ def proxy(subpath):
             allow_redirects=False,
         )
     except requests.RequestException as exc:
+        if action:
+            _log_outcome(action, 502, b'{"code": "AUTH_SERVICE_UNREACHABLE"}')
         return jsonify({"error": f"auth-service unreachable: {exc}"}), 502
 
     # upstream.raw.headers (a urllib3 HTTPHeaderDict) preserves repeated header names --
@@ -135,4 +167,6 @@ def proxy(subpath):
         for key, value in upstream.raw.headers.items()
         if key.lower() not in _HOP_BY_HOP_HEADERS
     ]
+    if action:
+        _log_outcome(action, upstream.status_code, upstream.content)
     return Response(upstream.content, status=upstream.status_code, headers=response_headers)

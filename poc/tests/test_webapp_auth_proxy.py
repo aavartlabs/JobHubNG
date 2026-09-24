@@ -262,3 +262,60 @@ def test_request_email_change_is_turnstile_gated(conn, requests_mock, turnstile_
         "/auth/email-otp/request-email-change", json={}, headers={"X-Turnstile-Token": "good-token"}
     ).status_code == 200
     assert turnstile_calls[-1] == ("good-token", "send_email_otp")
+
+
+# ---- support log: one line per sign-up / login / code send ----
+
+def test_a_failed_sign_up_is_logged_with_its_reason_and_a_masked_email(conn, requests_mock, turnstile_calls, caplog):
+    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/sign-up/email", status_code=422,
+                       json={"code": "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", "message": "User already exists"})
+    caplog.set_level("INFO")
+    _client(conn).post("/auth/sign-up/email", json={"email": "Soumen.X@Gmail.com", "password": "hunter22", "name": "S"},
+                       headers={"X-Turnstile-Token": "good-token"})
+
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("auth ")]
+    assert lines == ["auth signup: FAILED 422 USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL (email=so•••@gmail.com ip=127.0.0.1)"]
+    assert "hunter22" not in caplog.text and "soumen.x" not in caplog.text.lower()
+
+
+def test_a_failed_bot_check_and_a_success_are_logged_too(conn, requests_mock, turnstile_calls, caplog):
+    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/sign-up/email", json={"token": "t"})
+    caplog.set_level("INFO")
+    client = _client(conn)
+    body = {"email": "ab@example.org", "password": "hunter22", "name": "A"}
+    client.post("/auth/sign-up/email", json=body, headers={"X-Turnstile-Token": "bad"})
+    client.post("/auth/sign-up/email", json=body, headers={"X-Turnstile-Token": "good-token"})
+
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("auth ")]
+    assert lines == ["auth signup: FAILED 403 TURNSTILE_FAILED (email=ab•••@example.org ip=127.0.0.1)",
+                     "auth signup: ok 200 (email=ab•••@example.org ip=127.0.0.1)"]
+
+
+def test_unprotected_calls_are_not_logged(conn, requests_mock, caplog):
+    requests_mock.get(f"{config.AUTH_SERVICE_URL}/auth/get-session", json=None)
+    caplog.set_level("INFO")
+    _client(conn).get("/auth/get-session")
+    assert not [r for r in caplog.records if r.getMessage().startswith("auth ")]
+
+
+def test_logs_also_go_to_a_file_that_outlives_the_container(conn, tmp_path, monkeypatch, requests_mock, turnstile_calls):
+    import logging
+    log_file = tmp_path / "logs" / "web.log"
+    monkeypatch.setenv("JOBHUB_LOG_FILE", str(log_file))
+    werkzeug = logging.getLogger("werkzeug")
+    before = list(werkzeug.handlers)
+    app = create_app(test_conn=conn)
+    try:
+        requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/sign-in/email", status_code=401, json={"code": "INVALID_EMAIL_OR_PASSWORD"})
+        app.test_client().post("/auth/sign-in/email", json={"email": "ab@example.org", "password": "x"},
+                               headers={"X-Turnstile-Token": "good-token"})
+        werkzeug.info('\x1b[33m"GET /jobs HTTP/1.1" 200 -\x1b[0m')
+        for h in app.logger.handlers + werkzeug.handlers:
+            h.flush()
+        text = log_file.read_text()
+        assert "auth login: FAILED 401 INVALID_EMAIL_OR_PASSWORD (email=ab•••@example.org" in text
+        assert '"GET /jobs HTTP/1.1" 200 -' in text and "\x1b[" not in text
+    finally:
+        for h in set(app.logger.handlers + werkzeug.handlers) - set(before):
+            app.logger.removeHandler(h); werkzeug.removeHandler(h); h.close()
+        werkzeug.setLevel(logging.NOTSET)

@@ -59,6 +59,12 @@ export async function getTurnstileToken(action: string): Promise<string> {
           window.clearTimeout(timer);
           resolve(token);
         },
+        // Cloudflare wants a click: close the phone keyboard and bring the widget into
+        // view, or it sits below the fold while the button says "Creating…".
+        "before-interactive-callback": () => {
+          (document.activeElement as HTMLElement | null)?.blur();
+          slot.scrollIntoView({ block: "center", behavior: "smooth" });
+        },
         "error-callback": fail,
         "expired-callback": () => fail("expired"),
       });

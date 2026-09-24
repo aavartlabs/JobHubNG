@@ -82,6 +82,27 @@ function showError(el: HTMLElement | null, message: string): void {
   if (!el) return;
   el.textContent = message;
   el.hidden = false;
+  // On a phone the message (above the form) is often off-screen by now.
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+/** Disables the form's submit button and shows `label` on it while a request runs, so a
+    tap visibly did something (the bot check + sign-up can take several seconds). Returns
+    a function that puts the button back. */
+function busy(form: HTMLFormElement, label: string): (next?: string) => void {
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (!button) return () => {};
+  const original = button.textContent ?? "";
+  button.disabled = true;
+  button.textContent = label;
+  return (next?: string) => {
+    if (next !== undefined) {
+      button.textContent = next;
+      return;
+    }
+    button.disabled = false;
+    button.textContent = original;
+  };
 }
 
 function errorMessage(data: any, fallback: string): string {
@@ -119,8 +140,10 @@ function initLogin(): void {
     const email = (document.getElementById("login-email") as HTMLInputElement | null)?.value.trim() ?? "";
     const password = (document.getElementById("login-password") as HTMLInputElement | null)?.value ?? "";
 
+    const done = busy(form, "Logging in…");
     const { ok, data } = await postJson("/auth/sign-in/email", { email, password }, "login");
     if (!ok) {
+      done();
       showError(errorEl, errorMessage(data, "Could not log in. Check your email and password."));
       return;
     }
@@ -144,11 +167,14 @@ function initRegister(): void {
 
     // Sign-up leaves an active session (autoSignIn), which the email code and the
     // Telegram link on /verify both need.
+    const done = busy(form, "Creating your account…");
     const signUp = await postJson("/auth/sign-up/email", { name, email, password }, "signup");
     if (!signUp.ok) {
+      done();
       showError(errorEl, errorMessage(signUp.data, "Could not create your account."));
       return;
     }
+    done("Emailing your code…");
     // Best-effort: /verify re-derives status from get-session and offers a resend.
     await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" }, "send_email_otp");
     window.location.href = withNext("/verify", currentNext());
@@ -234,7 +260,9 @@ function initVerify(): void {
     if (emailError) emailError.hidden = true;
     const code = (document.getElementById("email-otp-code") as HTMLInputElement | null)?.value.trim() ?? "";
 
+    const done = busy(emailForm, "Checking…");
     const { ok, data } = await postJson("/auth/email-otp/verify-email", { email, otp: code });
+    done();
     if (!ok) {
       showError(emailError, errorMessage(data, "That code didn't work. Check it and try again."));
       return;
@@ -286,7 +314,9 @@ function initVerify(): void {
     e.preventDefault();
     if (telegramError) telegramError.hidden = true;
     const code = (document.getElementById("telegram-otp-code") as HTMLInputElement | null)?.value.trim() ?? "";
+    const done = busy(telegramForm, "Checking…");
     const { ok, data } = await postJson("/auth/telegram/verify", { code });
+    done();
     if (!ok) {
       showError(telegramError, errorMessage(data, "That code didn't work. Check it and try again."));
       return;

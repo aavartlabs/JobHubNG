@@ -3,16 +3,16 @@
 {% block content %}
 <div class="mx-auto max-w-md"><div class="card p-5 sm:p-7">
 <h1>Create an account</h1>
-<p id="register-error" class="error" hidden></p>
+<p id="register-error" class="error" role="alert" hidden></p>
 <form id="register-form">
   <label>Name <input type="text" id="register-name" name="name" required></label>
   <label>Email <input type="email" id="register-email" name="email" required></label>
   <label>Password <input type="password" id="register-password" name="password" required minlength="8"></label>
   <button type="submit">Create account</button>
 </form>
+{{ turnstile.explicit() }}
 <p>Next you'll verify your email. Connecting Telegram for job alerts is optional.</p>
 <p>Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
-{{ turnstile.explicit() }}
 <script src="{{ url_for('static', filename='auth.js') }}"></script>
 </div></div>
 {% endblock %}
