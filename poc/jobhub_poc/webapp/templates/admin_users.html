@@ -14,10 +14,7 @@
       <td>{{ u.email }} {{ "✓" if u.emailVerified else "✗" }}</td>
       <td>{{ ("@" ~ u.telegramUsername) if u.telegramUsername else "—" }} {{ "✓" if u.telegramVerified else "✗" }}</td>
       <td>
-        {% if u.emailVerified and u.telegramVerified %}Verified
-        {% elif not u.emailVerified and not u.telegramVerified %}Pending email + Telegram
-        {% elif not u.emailVerified %}Pending email
-        {% else %}Pending Telegram{% endif %}
+        {% if u.emailVerified %}Verified{% else %}Pending email{% endif %}
       </td>
       <td>{{ u.activeSessions }}</td>
       <td>{{ u.subscriptions }}</td>

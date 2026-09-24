@@ -325,7 +325,7 @@ def test_users_page_lists_users_state_and_subscription_counts(client, conn, requ
     assert requests_mock.last_request.headers["x-admin-api-key"] == "admin-key"
     assert "ada@example.com" in html and "bob@example.com" in html
     assert "1 active / 2" in html
-    assert "Pending email + Telegram" in html
+    assert "Pending email" in html
     assert "Verified" in html and "@ada" in html
 
 

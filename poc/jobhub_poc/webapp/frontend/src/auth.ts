@@ -175,10 +175,10 @@ function initVerify(): void {
 
   let email = "";
   let emailDone = false;
-  let telegramDone = false;
 
+  // Only the email is required; Telegram is optional (it unlocks Telegram alerts).
   function maybeShowContinue(): void {
-    if (!(emailDone && telegramDone && continueEl)) return;
+    if (!(emailDone && continueEl)) return;
     const link = continueEl.querySelector("a");
     if (link) link.href = safeNext(currentNext());
     continueEl.hidden = false;
@@ -193,7 +193,6 @@ function initVerify(): void {
   }
 
   function markTelegramVerified(username?: string | null): void {
-    telegramDone = true;
     for (const el of [connectBtn, openLink, telegramForm]) if (el) el.hidden = true;
     if (telegramVerifiedMsg) {
       telegramVerifiedMsg.textContent = username ? `Telegram connected (@${username}).` : "Telegram connected.";
@@ -214,7 +213,7 @@ function initVerify(): void {
     }
 
     email = sessionData.user.email;
-    statusEl.textContent = "Verify your email and connect Telegram to finish setting up your account.";
+    statusEl.textContent = "Verify your email to finish setting up your account. Telegram is optional.";
     emailSection.hidden = false;
     telegramSection.hidden = false;
 

@@ -124,7 +124,7 @@ def test_signed_out_sees_the_basics_and_a_sign_in_prompt_only(conn):
 
 def test_unverified_is_pointed_at_verification(conn, requests_mock):
     _seed(conn, n=1)
-    user = {**_verified(), "telegramVerified": None}
+    user = {**_verified(), "emailVerified": False}
     html = _client(conn, requests_mock, user).get("/jobs/1").get_data(as_text=True)
     assert "Run prod." not in html and 'href="/verify?next=/jobs/1"' in html
 

@@ -59,16 +59,13 @@ def test_gated_route_with_unauthenticated_get_session_redirects_to_login(conn, r
     assert "/login" in resp.headers["Location"]
 
 
-def test_gated_route_without_telegram_redirects_to_verify(conn, requests_mock):
-    """Test /alerts/register (gated route) without a linked Telegram redirects to /verify.
-    telegramVerified is `null` until linked, not `false` -- confirm the login_required
-    `and` check treats that correctly."""
+def test_telegram_is_optional_for_gated_pages(conn, requests_mock):
+    """A verified email is enough (since 2026-09-24): no Telegram (`null` until linked)
+    still gets /alerts/register."""
     requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _user(telegram_verified=None)})
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    resp = client.get("/alerts/register")
-    assert resp.status_code == 302
-    assert "/verify" in resp.headers["Location"]
+    assert client.get("/alerts/register").status_code == 200
 
 
 def test_gated_route_with_unverified_email_redirects_to_verify(conn, requests_mock):
@@ -200,12 +197,3 @@ def test_every_page_carries_the_jobshub_brand_and_favicons(conn):
     assert "/static/brand/mark-64.png" in html
     assert "/static/brand/favicon.ico" in html and "/static/brand/apple-touch-icon.png" in html
     assert "POC" not in html
-
-
-def test_whatsapp_verified_account_without_telegram_must_link_it(conn, requests_mock):
-    """Accounts verified by WhatsApp before the switch to Telegram go to /verify once."""
-    user = {**_user(telegram_verified=None), "phoneNumberVerified": True}
-    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": user})
-    _app, client = _app_and_client(conn)
-    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
-    assert "/verify" in client.get("/alerts").headers["Location"]

@@ -104,10 +104,9 @@ def access_state():
     user = getattr(g, "current_user", None)
     if user is None:
         return "anonymous"
-    # telegramVerified is `null` (not `false`) until Telegram is linked -- Python's
-    # `and` already treats None as falsy here. Accounts verified by WhatsApp before the
-    # 2026-09-24 switch have no Telegram yet, so they land on /verify once to link it.
-    if not (user.get("emailVerified") and user.get("telegramVerified")):
+    # A verified email is all an account needs. Telegram is optional: linking it only
+    # unlocks Telegram alerts (routes_alerts.py checks telegramVerified for those).
+    if not user.get("emailVerified"):
         return "unverified"
     return "verified"
 

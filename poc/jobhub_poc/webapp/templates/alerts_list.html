@@ -13,6 +13,7 @@
       <p class="my-0 font-semibold break-words">{{ alert.summary }}</p>
       <p class="my-0 mt-1 text-sm text-muted">
         {{ ["Email" if sub['notify_email'], "Telegram" if sub['notify_telegram']] | select | join(" + ") }}
+        {% if sub['notify_telegram'] and not telegram_linked %}· <a href="{{ url_for('auth.verify') }}?next={{ url_for('alerts.list_alerts') | urlencode }}">Connect Telegram</a> to receive these{% endif %}
         · <span class="{{ 'text-brand-dark' if sub['is_active'] else '' }} font-medium">{{ 'Active' if sub['is_active'] else 'Paused' }}</span>
       </p>
     </div>

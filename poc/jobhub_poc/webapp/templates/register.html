@@ -10,7 +10,7 @@
   <label>Password <input type="password" id="register-password" name="password" required minlength="8"></label>
   <button type="submit">Create account</button>
 </form>
-<p>Next you'll verify your email and connect Telegram, where your job alerts arrive.</p>
+<p>Next you'll verify your email. Connecting Telegram for job alerts is optional.</p>
 <p>Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a></p>
 {{ turnstile.explicit() }}
 <script src="{{ url_for('static', filename='auth.js') }}"></script>

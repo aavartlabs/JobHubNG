@@ -135,3 +135,27 @@ def test_actions_reject_get(conn, requests_mock):
     client = _client(conn, requests_mock)
     for action in ("pause", "resume", "delete"):
         assert client.get(f"/alerts/1/{action}").status_code == 405
+
+
+def _client_without_telegram(conn, requests_mock):
+    user = {**_user(), "telegramVerified": None, "telegramChatId": None, "telegramUsername": None}
+    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": user})
+    app = create_app(test_conn=conn)
+    app.config["TESTING"] = True
+    client = app.test_client()
+    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
+    return client
+
+
+def test_without_telegram_the_option_is_disabled_with_a_connect_link(conn, requests_mock):
+    html = _client_without_telegram(conn, requests_mock).get("/alerts/register").get_data(as_text=True)
+    assert 'name="notify_telegram" disabled' in html and "Connect Telegram" in html
+
+
+def test_telegram_alerts_need_telegram_linked(conn, requests_mock, turnstile_calls):
+    client = _client_without_telegram(conn, requests_mock)
+    resp = client.post("/alerts/register", data=_form(notify_email="", notify_telegram="on"))
+    assert resp.status_code == 400 and "Connect Telegram first" in resp.get_data(as_text=True)
+    assert conn.execute("SELECT count(*) FROM alert_subscriptions").fetchone()[0] == 0
+    # Email-only alerts are fine without Telegram.
+    assert client.post("/alerts/register", data=_form(notify_telegram="")).status_code == 302

@@ -37,8 +37,9 @@ def _split(raw):
     return values
 
 
-def parse_alert_form(form):
-    """Validated column values for a new alert, or InvalidAlert with a reason."""
+def parse_alert_form(form, telegram_linked=False):
+    """Validated column values for a new alert, or InvalidAlert with a reason. Telegram
+    delivery needs the owner's Telegram linked (auth-service's telegramVerified)."""
     lists = {field: _split(form.get(field)) for field in LIST_FIELDS}
     mode_raw = (form.get("work_mode") or "").strip().lower()
     if mode_raw not in WORK_MODES:
@@ -48,6 +49,8 @@ def parse_alert_form(form):
         raise InvalidAlert("Pick at least one job title, location, company, keyword or a work mode.")
     notify_email = form.get("notify_email") == "on"
     notify_telegram = form.get("notify_telegram") == "on"
+    if notify_telegram and not telegram_linked:
+        raise InvalidAlert("Connect Telegram first to get alerts there -- or choose email.")
     if not (notify_email or notify_telegram):
         raise InvalidAlert("Choose email or Telegram (or both) for this alert.")
     return {**{k: json.dumps(v) for k, v in lists.items()}, "work_mode": work_mode,
@@ -64,9 +67,14 @@ def _telegram_label(user):
     return f"@{username}" if username else "your linked account"
 
 
+def _telegram_linked():
+    return bool(g.current_user.get("telegramVerified"))
+
+
 def _form_context():
     user = g.current_user
-    return {"masked_email": _mask_email(user.get("email")), "telegram_label": _telegram_label(user)}
+    return {"masked_email": _mask_email(user.get("email")), "telegram_label": _telegram_label(user),
+            "telegram_linked": _telegram_linked()}
 
 
 @bp.route("/alerts/register", methods=["GET", "POST"])
@@ -80,7 +88,7 @@ def register():
         return render_template("alerts_register.html", form=request.form,
                                error="Bot check failed or expired. Please try again.", **_form_context()), 403
     try:
-        values = parse_alert_form(request.form)
+        values = parse_alert_form(request.form, telegram_linked=_telegram_linked())
     except InvalidAlert as exc:
         return render_template("alerts_register.html", form=request.form, error=str(exc), **_form_context()), 400
 
@@ -108,7 +116,7 @@ def list_alerts():
             (g.current_user["id"],),
         )
     ]
-    return render_template("alerts_list.html", alerts=alerts)
+    return render_template("alerts_list.html", alerts=alerts, telegram_linked=_telegram_linked())
 
 
 def _owned_update(sub_id, sql):
