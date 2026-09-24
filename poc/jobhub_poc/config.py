@@ -60,7 +60,8 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
 # (crypto.py). Unset = resume upload is switched off. Keep a copy offline: without it the
 # encrypted rows in jobhub.db and its backups can't be read.
 RESUME_ENCRYPTION_KEY = os.environ.get("RESUME_ENCRYPTION_KEY", "")
-MAX_RESUME_BYTES = 2 * 1024 * 1024
+# PDFs with embedded fonts/images are often 2-5 MB; 2 MB turned real resumes away.
+MAX_RESUME_BYTES = 5 * 1024 * 1024
 
 # "Popular" search chips under the jobs page's search bar: a curated, comma-separated list
 # (not derived from users' alert terms, which are private). Each searches title/company,

@@ -2,6 +2,7 @@
    Everything works without this script; it only makes it smoother. */
 
 import { isJobsListReferrer } from "./back";
+import { fileTooLargeMessage } from "./upload";
 import { savedAction, savedLabel } from "./saving";
 import { isPlainClick, nextRowIndex, selectionUrl } from "./split";
 
@@ -185,6 +186,43 @@ function initBackLinks(): void {
   });
 }
 
+/** /profile upload: refuse an oversized file before sending it (it would travel all the way
+    to the server only to be turned away), and show progress while a real upload is sent. */
+function initResumeUpload(): void {
+  const form = document.getElementById("resume-form") as HTMLFormElement | null;
+  if (!form) return;
+  const input = form.querySelector<HTMLInputElement>('input[type="file"]');
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const errorEl = document.getElementById("resume-client-error");
+  const maxBytes = Number(form.dataset.maxBytes) || 0;
+  const tooBig = (): string | null => {
+    const file = input?.files?.[0];
+    return file && maxBytes && file.size > maxBytes ? fileTooLargeMessage(file.size, maxBytes) : null;
+  };
+  input?.addEventListener("change", () => {
+    const problem = tooBig();
+    if (errorEl) {
+      errorEl.textContent = problem ?? "";
+      errorEl.hidden = !problem;
+    }
+  });
+  form.addEventListener("submit", (event) => {
+    const problem = tooBig();
+    if (problem) {
+      event.preventDefault();
+      if (errorEl) {
+        errorEl.textContent = problem;
+        errorEl.hidden = false;
+      }
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Uploading…";
+    }
+  });
+}
+
 /** /profile while the resume is being read: check the task every few seconds and reload
     when it's done (or failed), so the review form appears without a manual refresh. */
 function initTaskPolling(): void {
@@ -219,4 +257,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initSaving();
   initSharing();
   initTaskPolling();
+  initResumeUpload();
 });

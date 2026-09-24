@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timezone
 
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from jobhub_poc import config, crypto
 from jobhub_poc.ai import ollama, tasks
@@ -39,8 +40,18 @@ def _page(error=None, status=200, notice=None):
     return render_template(
         "profile.html", resume=row, structured=structured, task=task, error=error, notice=notice,
         enabled=crypto.enabled(), ai_online=ollama.available() if task else True,
-        max_mb=config.MAX_RESUME_BYTES // (1024 * 1024),
+        max_mb=config.MAX_RESUME_BYTES // (1024 * 1024), max_bytes=config.MAX_RESUME_BYTES,
     ), status
+
+
+@bp.app_errorhandler(RequestEntityTooLarge)
+def too_large(_error):
+    """Over Flask's MAX_CONTENT_LENGTH: say so on the profile page, not a bare 413.
+    (app.js checks the size before uploading, so this is only the no-JS fallback.)"""
+    message = f"That file is over {config.MAX_RESUME_BYTES // (1024 * 1024)} MB. Try a smaller PDF or a DOCX."
+    if request.path == url_for("profile.upload") and getattr(g, "current_user", None):
+        return _page(message, 413)
+    return message, 413
 
 
 @bp.route("/profile")

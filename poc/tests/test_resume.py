@@ -268,6 +268,19 @@ def test_oversized_upload_is_refused(conn, requests_mock, monkeypatch):
     assert conn.execute("SELECT count(*) FROM resumes").fetchone()[0] == 0
 
 
+def test_over_the_request_limit_gets_the_profile_page_not_a_bare_413(conn, requests_mock):
+    client = _client(conn, requests_mock)
+    client.application.config["MAX_CONTENT_LENGTH"] = 2000
+    resp = _upload(client, data=b"%PDF-" + b"x" * 5000, name="big.pdf")
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 413 and "Your resume" in body and "is over" in body
+
+
+def test_limit_is_5_mb_and_the_form_carries_it(conn, requests_mock):
+    assert config.MAX_RESUME_BYTES == 5 * 1024 * 1024
+    assert f'data-max-bytes="{5 * 1024 * 1024}"' in _client(conn, requests_mock).get("/profile").get_data(as_text=True)
+
+
 def test_upload_is_off_without_a_key(conn, requests_mock, monkeypatch):
     monkeypatch.setattr(config, "RESUME_ENCRYPTION_KEY", "")
     client = _client(conn, requests_mock)
