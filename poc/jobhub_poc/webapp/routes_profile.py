@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from jobhub_poc import config, crypto
+from jobhub_poc import config, crypto, resume_review
 from jobhub_poc.ai import ollama, tasks
 from jobhub_poc.resume_text import MIME, ResumeUnreadable, detect_kind, extract_text
 from jobhub_poc.webapp.auth import login_required
@@ -45,6 +45,9 @@ def _page(error=None, status=200, notice=None):
             "ORDER BY id DESC LIMIT 1", (g.current_user["id"],)).fetchone()
     return render_template(
         "profile.html", resume=row, structured=structured, task=task, error=error, notice=notice,
+        notes=resume_review.review(structured) if structured else {},
+        section_titles={"basics": "Basics", "summary": "Summary", "skills": "Skills",
+                        "experience": "Experience", "education": "Education", "links": "Links"},
         enabled=crypto.enabled(), ai_online=ollama.available() if task else True,
         max_mb=config.MAX_RESUME_BYTES // (1024 * 1024), max_bytes=config.MAX_RESUME_BYTES,
     ), status
@@ -71,7 +74,10 @@ def profile():
 def upload():
     if not crypto.enabled():
         return _page("Resume upload isn't switched on yet.", 503)
-    if request.form.get("consent") != "on":
+    conn = current_app.get_db()
+    previous = _resume_row(conn)
+    # Consent is asked once; replacing the file relies on the consent already given.
+    if request.form.get("consent") != "on" and not (previous and previous["consent_at"]):
         return _page("Please confirm you agree to how we use your resume.", 400)
     file = request.files.get("resume")
     data = file.read(config.MAX_RESUME_BYTES + 1) if file else b""
@@ -87,8 +93,8 @@ def upload():
     except ResumeUnreadable as exc:
         return _page(str(exc), 400)
 
-    conn = current_app.get_db()
     now = _now()
+    consent_at = previous["consent_at"] if previous and previous["consent_at"] else now
     filename = re.sub(r"[^\w.\- ]", "_", (file.filename or f"resume.{kind}"))[:120]
     conn.execute(
         """INSERT INTO resumes (owner_auth_user_id, filename, mime, size_bytes, file_enc, text_enc,
@@ -99,7 +105,7 @@ def upload():
              structured_enc = NULL, parse_status = 'queued', parse_error = NULL, edited_at = NULL,
              consent_at = excluded.consent_at, uploaded_at = excluded.uploaded_at, updated_at = excluded.updated_at""",
         (g.current_user["id"], filename, MIME[kind], len(data), crypto.encrypt(data),
-         crypto.encrypt(text.encode()), now, now, now))
+         crypto.encrypt(text.encode()), consent_at, now, now))
     conn.commit()
     tasks.enqueue(conn, "parse_resume", owner=g.current_user["id"], priority=10)
     return redirect(url_for("profile.profile"))

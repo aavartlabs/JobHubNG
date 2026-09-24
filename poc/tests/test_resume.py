@@ -297,7 +297,8 @@ def test_review_form_saves_edits_and_keeps_flags_honest(conn, requests_mock, mon
                    "bullets": ["Ran Kubernetes clusters serving 40 microservices.", "Invented bullet."]}]})
     worker.run_once(conn)
     page = client.get("/profile").get_data(as_text=True)
-    assert "Check your details" in page and "⚠ Please check" in page
+    assert "Check your details" in page and "found word-for-word in your file" in page
+    assert "to check" in page and 'id="sec-role-0"' in page
     resp = client.post("/profile/resume/save", data={
         "name": "Asha Rao", "headline": "Senior SRE", "location": "", "summary": "", "skills": "AWS, Kubernetes, aws",
         "role_count": "1",
@@ -340,3 +341,13 @@ def test_a_resume_under_a_lost_key_is_reported_not_a_500(conn, requests_mock, mo
     assert client.get("/profile/resume/file").status_code == 302
     assert _upload(client).status_code == 302  # a fresh upload replaces it
     assert "read your stored resume any more" not in client.get("/profile").get_data(as_text=True)
+
+
+def test_consent_is_asked_once(conn, requests_mock):
+    client = _client(conn, requests_mock)
+    _upload(client)
+    first = conn.execute("SELECT consent_at FROM resumes").fetchone()[0]
+    page = client.get("/profile").get_data(as_text=True)
+    assert 'name="consent" value="on"' in page and "You agreed to how we use your resume" in page
+    assert _upload(client, consent=False).status_code == 302  # a new version needs no new tick
+    assert conn.execute("SELECT consent_at FROM resumes").fetchone()[0] == first

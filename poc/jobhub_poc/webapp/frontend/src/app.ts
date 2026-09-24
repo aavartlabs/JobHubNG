@@ -186,6 +186,21 @@ function initBackLinks(): void {
   });
 }
 
+/** /profile review form: "Use: <value>" buttons fill in a suggested value that already
+    exists elsewhere in the resume (e.g. the latest job title as the headline). */
+function initSuggestions(): void {
+  document.querySelectorAll<HTMLButtonElement>("button.suggest-fill").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${button.dataset.field}"]`);
+      if (!field) return;
+      field.value = button.dataset.value ?? "";
+      field.focus();
+      button.textContent = "✓ Filled in — save to keep it";
+      button.disabled = true;
+    });
+  });
+}
+
 /** /profile upload: refuse an oversized file before sending it (it would travel all the way
     to the server only to be turned away), and show progress while a real upload is sent. */
 function initResumeUpload(): void {
@@ -297,4 +312,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initSharing();
   initTaskPolling();
   initResumeUpload();
+  initSuggestions();
 });
