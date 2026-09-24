@@ -19,8 +19,14 @@ WEB_SECRET_KEY = os.environ.get("WEB_SECRET_KEY", "dev-only-change-me")
 NOTIFIER_BACKEND = os.environ.get("NOTIFIER_BACKEND", "console")
 WHATSAPP_GATEWAY_URL = os.environ.get("WHATSAPP_GATEWAY_URL", "")
 WHATSAPP_GATEWAY_API_KEY = os.environ.get("WHATSAPP_GATEWAY_API_KEY", "")
-# The one number (E.164, e.g. +91...) that gets ops alerts when a backup, restore drill or
-# cold export fails (ops/alert_admin.py). Admin only -- never a site user's number.
+# Where admin-only messages go -- ops alerts when a backup, restore drill or cold export
+# fails, and admin sign-in codes (admin_notify.py). Telegram first when set, WhatsApp as the
+# fallback. Admin only -- never a site user's chat or number.
+# TELEGRAM_BOT_TOKEN is the bot's token from @BotFather; ADMIN_TELEGRAM_CHAT_ID is the
+# admin's chat with that bot (scripts/telegram_chat_id.py prints it after they press Start).
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+ADMIN_TELEGRAM_CHAT_ID = os.environ.get("ADMIN_TELEGRAM_CHAT_ID", "")
+# The fallback admin number (E.164, e.g. +91...).
 ADMIN_ALERT_WHATSAPP = os.environ.get("ADMIN_ALERT_WHATSAPP", "")
 # Resend, for alert digests sent by email (alerts/senders.py). The same Resend account as
 # auth-service's OTP emails; RESEND_FROM_EMAIL must be on a Resend-verified domain.

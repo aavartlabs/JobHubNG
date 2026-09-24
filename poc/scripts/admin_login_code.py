@@ -1,6 +1,6 @@
-"""Break-glass for the admin console's WhatsApp sign-in step: prints a fresh code for
-<username>'s pending sign-in, for when the WhatsApp didn't arrive (gateway down, number
-unset). Enter the password on /admin/login first, then run this within 5 minutes:
+"""Break-glass for the admin console's sign-in code step: prints a fresh code for
+<username>'s pending sign-in, for when the Telegram/WhatsApp message didn't arrive (both
+channels down or unset). Enter the password on /admin/login first, then run this within 5 minutes:
 
     .venv/bin/python scripts/admin_login_code.py <username>
 

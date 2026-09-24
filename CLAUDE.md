@@ -83,7 +83,7 @@ remain only for the rollback path.
   2026", years-stale values. Never key retention on them; `dates.normalize_posted` only feeds
   the age filter and (T8) the "posted within" filter, falling back to first_seen.
 - **Web app (pi09, Docker container `jobhub-web`)**: `poc/jobhub_poc/webapp/` is a Flask
-  app (blueprints: `auth`, `auth_proxy`, `routes_jobs`, `routes_alerts`, `routes_api`); it
+  app (blueprints: `auth`, `auth_proxy`, `routes_jobs`, `routes_alerts`, `routes_api`, `admin`); it
   holds no identity of its own — see [Accounts](#accounts-poc-web-app). `GET /api/jobs`
   (`routes_api.py`) returns paginated/filterable/sortable JSON; `poc/jobhub_poc/webapp/frontend/`
   is a small esbuild-bundled TypeScript client (no framework) that renders it —
@@ -130,7 +130,7 @@ remain only for the rollback path.
 cd poc
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env                       # edit as needed
-.venv/bin/pytest -v                        # or: make test  (75 tests as of last count)
+.venv/bin/pytest -v                        # or: make test  (288 tests on 2026-09-24)
 
 cd scraper
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -160,7 +160,9 @@ cd poc
 
 `poc/Makefile` shortcuts: `make venv`, `make test`, `make test-scraper`,
 `make seed-demo-data`, `make web`, `make dump`, `make load DUMP=<path>`, `make purge`,
-`make alerts`, `make pipeline`.
+`make alerts`, `make pipeline`. Note `make pipeline` (and `dump`/`load`) still drive the
+**old** `scripts/run_pipeline.sh` rollback path, not the live warehouse path
+(`scripts/run_pipeline_warehouse.sh`).
 
 **No CI job runs any `poc/` test.** `.github/workflows/ci.yml` only builds `apps/web`
 (`npm run build`) and tests `apps/platform-api` (`mvn test`) — both parts of the retired
@@ -183,7 +185,8 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `auth-service/data/`) followed by `docker compose build && docker compose up -d`. The
   auth stack went live 2026-09-23; the Resend sender is `noreply@alerts.aavartlabs.com`
   (`alerts.aavartlabs.com` is the Resend-verified domain). Never runs EverJobs.
-  **Also the orchestration host**, as of 2026-09-22 — `poc/scripts/run_pipeline.sh` runs locally on pi09 (`ssh pi05 ...` to scrape, direct `scp` back, then load/purge/alert
+  **Also the orchestration host**, as of 2026-09-22 — `poc/scripts/run_pipeline_warehouse.sh` (since the
+  2026-09-23 cutover; `run_pipeline.sh` before it) runs locally on pi09 (`ssh pi05 ...` to scrape, direct `scp` back, then load/purge/alert
   with no further SSH hop) and is scheduled every 6 hours via a systemd **user** timer on
   pi09 itself (`~/.config/systemd/user/jobhub-pipeline.{service,timer}` — host config, not
   checked into this repo; `Linger=yes` so it runs unattended). Logs append to
@@ -220,8 +223,12 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   (`systemctl --user status jobshub-restore-drill` on pi09).
 - **Failure alerts:** the backup, restore-drill and cold-export units have
   `OnFailure=jobshub-alert-admin@%n.service`, which runs `jobhub_poc.ops.alert_admin`: one
-  WhatsApp (via the gateway) with the unit and the tail of `backup.log`, to
-  `ADMIN_ALERT_WHATSAPP` in pi09's `.env` only — never to site users.
+  message with the unit and the tail of `backup.log`, to the admin only — never to site
+  users. Admin messages (these and admin sign-in codes) go through `jobhub_poc/admin_notify.py`:
+  Telegram (`TELEGRAM_BOT_TOKEN` + `ADMIN_TELEGRAM_CHAT_ID`, Bot API) first, then
+  `ADMIN_ALERT_WHATSAPP` via the gateway as fallback, all in pi09's `.env`. Set up / check
+  with `python -m jobhub_poc.ops.telegram_setup chats|test`. The Telegram sender never lets
+  a `requests` error through, since the bot token is in the URL.
 - **Cold history (monthly):** `jobshub-cold-export.timer` on pi09 (1st of the month, 03:30
   IST) runs `scraper/cold_export.py` on pi05 over SSH: `jobs_archive` rows archived and
   `job_versions` spans ended more than `[archive] cold_after_days` (90) ago are uploaded as
@@ -251,7 +258,7 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   it's unset, so it is the single place the public origin is configured. `poc/auth-service/.env`
   has its own set (`BETTER_AUTH_SECRET`, `RESEND_*`, `WHATSAPP_GATEWAY_*`) — read that
   file's comments, several of its defaults are correct only for non-Docker local dev
-- `NOTIFIER_BACKEND` (`console` | `whatsapp`) / `WHATSAPP_GATEWAY_URL` /
+- `NOTIFIER_BACKEND` (`console` | `live`; `whatsapp` is a legacy alias for `live`) / `WHATSAPP_GATEWAY_URL` /
   `WHATSAPP_GATEWAY_API_KEY` — alert delivery backend
 
 ## Accounts (`poc` web app)
@@ -274,8 +281,9 @@ Better Auth endpoint that sends a message or checks a password means adding it t
 Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +
 per-username lockout (`admin_login_attempts`). Sign-in is two-step: the password only starts a
 pending sign-in; a 6-digit code (5 min, 5 tries, `admin_codes.py` / `admin_login_codes`)
-is WhatsApped to `ADMIN_ALERT_WHATSAPP`. If it can't be sent, a shell on pi09 gets one with
-`scripts/admin_login_code.py <username>`. It edits users through auth-service's
+goes to the admin via `admin_notify.py` (Telegram, else WhatsApp). If it can't be sent, a shell on pi09 gets one with
+`scripts/admin_login_code.py <username>`; a forgotten password or a lockout is reset with
+`scripts/set_admin_password.py <username>`. It edits users through auth-service's
 `/internal/admin/*` API (`auth-service/src/admin.js`, key `AUTH_ADMIN_API_KEY`), which lives
 outside `/auth/*` so the public proxy can never reach it. See `docs/rbac.md` and `poc/auth-service/README.md`.
 
@@ -330,5 +338,5 @@ If resuming this stack: `docker compose up --build` from repo root (web on :3001
 - `tasks_all.md` / `tasks_sanjay.md` are task boards for the original stack, not the `poc/`
   pivot.
 - `memory/` holds session memory files for continuity across Claude sessions.
-- `docs/data-flow.md`, `docs/rbac.md`, `docs/runbook.md` describe the retired `apps/` stack
-  in more depth than this file.
+- `docs/data-flow.md`, `docs/rbac.md`, `docs/runbook.md` lead with the live `poc/` system
+  and keep the retired `apps/` design further down, for context only.

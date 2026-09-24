@@ -24,11 +24,11 @@ def admin_config(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def sent_codes(monkeypatch):
-    """The WhatsApp second step: records each code instead of sending it."""
+    """The second step: records each code instead of sending it (as if by Telegram)."""
     from jobhub_poc.webapp import admin
 
     codes = []
-    monkeypatch.setattr(admin, "_send_code", lambda code, ip: codes.append(code))
+    monkeypatch.setattr(admin, "_send_code", lambda code, ip: codes.append(code) or "Telegram")
     return codes
 
 
@@ -118,7 +118,7 @@ def test_login_page_renders_turnstile_widget(client, monkeypatch):
     assert 'data-action="admin_login"' in html
 
 
-def test_password_then_whatsapp_code_signs_in(client, requests_mock, turnstile_calls, sent_codes):
+def test_password_then_code_signs_in(client, requests_mock, turnstile_calls, sent_codes):
     requests_mock.get(USERS_URL, json={"users": []})
     resp = _login(client)
     assert resp.status_code == 302
@@ -128,6 +128,7 @@ def test_password_then_whatsapp_code_signs_in(client, requests_mock, turnstile_c
     assert client.get("/admin/users").status_code == 302
     [code] = sent_codes
     assert re.fullmatch(r"[0-9]{6}", code)
+    assert "sent a 6-digit code to the admin's Telegram" in client.get("/admin/login/code").get_data(as_text=True)
 
     resp = _enter_code(client, code)
     assert resp.status_code == 302 and resp.headers["Location"].endswith("/admin/users")
@@ -198,24 +199,25 @@ def test_unsent_code_says_so_and_break_glass_code_works(client, conn, monkeypatc
     assert client.get("/admin/users").status_code == 200
 
 
-def test_send_code_refuses_without_admin_number(monkeypatch):
+def test_send_code_refuses_without_any_admin_channel(monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_TELEGRAM_CHAT_ID", "")
     monkeypatch.setattr(config, "ADMIN_ALERT_WHATSAPP", "")
     with pytest.raises(RuntimeError, match="ADMIN_ALERT_WHATSAPP"):
         _REAL_SEND_CODE("123456", "198.51.100.1")
 
 
-def test_send_code_whatsapps_only_the_admin_number(monkeypatch):
+def test_send_code_goes_only_to_the_admin_channel(monkeypatch):
     sent = []
 
     class Sender:
-        def whatsapp(self, phone, text):
-            sent.append((phone, text))
+        def telegram(self, chat_id, text):
+            sent.append((chat_id, text))
 
-    monkeypatch.setattr(config, "ADMIN_ALERT_WHATSAPP", "+91 90000 00001")
+    monkeypatch.setattr(config, "ADMIN_TELEGRAM_CHAT_ID", "4242")
     monkeypatch.setattr(admin_module, "get_senders", lambda backend: Sender())
-    _REAL_SEND_CODE("123456", "198.51.100.1")
-    [(phone, text)] = sent
-    assert phone == "+919000000001"
+    assert _REAL_SEND_CODE("123456", "198.51.100.1") == "Telegram"
+    [(chat_id, text)] = sent
+    assert chat_id == "4242"
     assert "123456" in text and "198.51.100.1" in text
 
 

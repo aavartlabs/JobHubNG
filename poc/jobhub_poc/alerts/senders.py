@@ -1,5 +1,6 @@
-"""How a digest actually leaves: WhatsApp via the whatsapp-sender gateway, email via
-Resend, or -- NOTIFIER_BACKEND=console -- printed instead of sent (dev and dry runs).
+"""How a message actually leaves: WhatsApp via the whatsapp-sender gateway, email via
+Resend, Telegram via the Bot API (admin messages only, for now -- admin_notify.py), or --
+NOTIFIER_BACKEND=console -- printed instead of sent (dev and dry runs).
 
 Every send raises on failure, so the caller records it as FAILED rather than SENT.
 """
@@ -8,10 +9,12 @@ import requests
 from jobhub_poc import config
 
 RESEND_URL = "https://api.resend.com/emails"
+TELEGRAM_API = "https://api.telegram.org"
 # Above whatsapp-sender's own ACK_TIMEOUT_MS (45s on pi09) so its timeout reaches us as a
 # clean HTTP error rather than us giving up on the connection first.
 _WHATSAPP_TIMEOUT_SECONDS = 55
 _EMAIL_TIMEOUT_SECONDS = 20
+_TELEGRAM_TIMEOUT_SECONDS = 20
 
 
 class ConsoleSender:
@@ -20,6 +23,9 @@ class ConsoleSender:
 
     def email(self, to, subject, text, html):
         print(f"[console email] -> {to}: {subject}\n{text}\n")
+
+    def telegram(self, chat_id, text):
+        print(f"[console telegram] -> {chat_id}\n{text}\n")
 
 
 class LiveSender:
@@ -57,6 +63,26 @@ class LiveSender:
         )
         if resp.status_code >= 300:
             raise RuntimeError(f"Resend returned HTTP {resp.status_code}: {resp.text[:300]}")
+
+    def telegram(self, chat_id, text):
+        if not config.TELEGRAM_BOT_TOKEN:
+            raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
+        # The token is part of the URL, so no requests error (which quotes the URL) is let
+        # through: it would land in backup.log and the app log.
+        try:
+            resp = requests.post(
+                f"{TELEGRAM_API}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+                timeout=_TELEGRAM_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Telegram unreachable ({type(exc).__name__})") from None
+        if resp.status_code >= 300:
+            try:
+                reason = resp.json().get("description", "")
+            except ValueError:
+                reason = ""
+            raise RuntimeError(f"Telegram returned HTTP {resp.status_code}: {reason[:300]}")
 
 
 def get_senders(backend):

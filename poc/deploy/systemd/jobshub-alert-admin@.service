@@ -1,7 +1,7 @@
 # Installed on pi09 as ~/.config/systemd/user/jobshub-alert-admin@.service.
 # Started by OnFailure= in the backup, restore-drill and cold-export units; %i is the failed unit.
 [Unit]
-Description=WhatsApp the JobsHub admin that %i failed
+Description=Tell the JobsHub admin (Telegram, else WhatsApp) that %i failed
 
 [Service]
 Type=oneshot

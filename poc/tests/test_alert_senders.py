@@ -64,3 +64,46 @@ def test_console_sender_prints_and_sends_nothing(capsys, requests_mock):
     out = capsys.readouterr().out
     assert "+15550000001" in out and "wa text" in out and "a@x.com" in out and "subj" in out
     assert requests_mock.call_count == 0
+
+
+TELEGRAM_SEND = "https://api.telegram.org/bot123:secret-token/sendMessage"
+
+
+def test_telegram_goes_through_the_bot_api(requests_mock, monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123:secret-token")
+    requests_mock.post(TELEGRAM_SEND, json={"ok": True, "result": {"message_id": 1}})
+    LiveSender().telegram("4242", "hello")
+    body = requests_mock.last_request.json()
+    assert body["chat_id"] == "4242" and body["text"] == "hello"
+    assert "parse_mode" not in body  # plain text: no escaping rules to get wrong
+
+
+def test_telegram_errors_raise_without_the_token(requests_mock, monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123:secret-token")
+    requests_mock.post(TELEGRAM_SEND, status_code=403,
+                       json={"ok": False, "description": "Forbidden: bot was blocked by the user"})
+    with pytest.raises(RuntimeError, match="blocked by the user") as err:
+        LiveSender().telegram("4242", "hello")
+    assert "secret-token" not in str(err.value)
+
+
+def test_telegram_connection_errors_never_leak_the_token(requests_mock, monkeypatch):
+    import requests
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123:secret-token")
+    requests_mock.post(TELEGRAM_SEND, exc=requests.ConnectionError(f"cannot reach {TELEGRAM_SEND}"))
+    with pytest.raises(RuntimeError) as err:
+        LiveSender().telegram("4242", "hello")
+    assert "secret-token" not in str(err.value)
+    assert err.value.__cause__ is None and err.value.__suppress_context__
+
+
+def test_telegram_needs_a_token(monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "")
+    with pytest.raises(RuntimeError, match="TELEGRAM_BOT_TOKEN"):
+        LiveSender().telegram("4242", "hello")
+
+
+def test_console_sender_prints_telegram(capsys):
+    ConsoleSender().telegram("4242", "tg text")
+    out = capsys.readouterr().out
+    assert "4242" in out and "tg text" in out

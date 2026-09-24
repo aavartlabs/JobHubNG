@@ -14,9 +14,9 @@ ADMIN_LOCKOUT_MINUTES, doubling on each further lockout up to ADMIN_LOCKOUT_MAX_
 A locked key is refused before the password is even checked.
 
 Two-step sign-in: a correct password only starts a pending sign-in; the admin is in once
-they enter the 6-digit code WhatsApped to ADMIN_ALERT_WHATSAPP (admin_codes.py). Wrong
-codes count toward the IP lockout. If the WhatsApp can't be sent, whoever has a shell on
-the server can get a code with scripts/admin_login_code.py -- the page never shows one.
+they enter the 6-digit code sent to the admin's Telegram, else WhatsApp (admin_notify.py,
+admin_codes.py). Wrong codes count toward the IP lockout. If it can't be sent, whoever has a
+shell on the server can get a code with scripts/admin_login_code.py -- the page never shows one.
 """
 import functools
 import hmac
@@ -29,6 +29,7 @@ from flask import (
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from jobhub_poc import admin_codes, auth_admin_client, config
+from jobhub_poc.admin_notify import notify_admin
 from jobhub_poc.alerts.senders import get_senders
 from jobhub_poc.auth_admin_client import AuthServiceError
 from jobhub_poc.phone import normalize_e164
@@ -173,8 +174,11 @@ def login():
     session.clear()  # no fixation: a fresh session, and a fresh CSRF token with it
     session["admin_pending"] = nonce
     try:
-        _send_code(code, ip)
-        current_app.logger.info("admin login: password ok, code sent (user=%r ip=%s)", username, ip)
+        session["admin_code_channel"] = _send_code(code, ip)
+        current_app.logger.info(
+            "admin login: password ok, code sent by %s (user=%r ip=%s)",
+            session["admin_code_channel"], username, ip,
+        )
     except Exception as exc:  # noqa: BLE001 -- any send failure means "use the break-glass CLI"
         session["admin_code_unsent"] = True
         current_app.logger.error("admin login: code NOT sent (user=%r ip=%s): %s", username, ip, exc)
@@ -182,14 +186,12 @@ def login():
 
 
 def _send_code(code, ip):
-    number = normalize_e164(config.ADMIN_ALERT_WHATSAPP)
-    if not number:
-        raise RuntimeError("ADMIN_ALERT_WHATSAPP is not set")
-    get_senders(config.NOTIFIER_BACKEND).whatsapp(
-        number,
+    """Returns the channel the code went by ("Telegram" / "WhatsApp")."""
+    return notify_admin(
         f"JobsHub admin sign-in code: {code}\n"
         f"Valid {admin_codes.CODE_TTL_MINUTES} minutes. Requested from IP {ip}.\n"
         "If this wasn't you, someone has the admin password: change it now.",
+        get_senders(config.NOTIFIER_BACKEND),
     )
 
 
@@ -198,8 +200,9 @@ def login_code():
     if "admin_pending" not in session:
         return redirect(url_for("admin.login"))
     unsent = session.get("admin_code_unsent", False)
+    channel = session.get("admin_code_channel")
     if request.method == "GET":
-        return render_template("admin_login_code.html", unsent=unsent)
+        return render_template("admin_login_code.html", unsent=unsent, channel=channel)
 
     _check_csrf()
     conn = current_app.get_db()
@@ -214,7 +217,7 @@ def login_code():
         conn.commit()
         current_app.logger.warning("admin login: wrong code (ip=%s)", ip)
         return render_template(
-            "admin_login_code.html", unsent=unsent, error=f"Wrong code. {value} tries left."
+            "admin_login_code.html", unsent=unsent, channel=channel, error=f"Wrong code. {value} tries left."
         ), 401
     if status == "expired":
         session.clear()
