@@ -1,13 +1,12 @@
-# node:22-slim, not node:20-slim (whatsapp-sender's base) -- better-sqlite3
-# 13.0.3 declares engines.node >=22.
-FROM node:22-slim
+# node:24-slim (the current Node LTS) -- better-sqlite3 13.0.3 declares engines.node >=22.
+FROM node:24-slim
 WORKDIR /app
 COPY package.json package-lock.json* ./
 # --ignore-scripts: better-sqlite3 ships a prebuilt binary for linux-x64 and
 # linux-arm64 (node_modules/better-sqlite3/prebuilds/*.node) that it loads
 # directly at require() time, but npm's default auto-behavior for a package
 # with a binding.gyp (which better-sqlite3 has) is to still run
-# `node-gyp rebuild` on install regardless -- and node:22-slim has no
+# `node-gyp rebuild` on install regardless -- and node:24-slim has no
 # python3/build toolchain for that to succeed. Skipping install scripts
 # avoids the unnecessary compile and uses the bundled prebuild instead.
 # Confirmed by building this image without the flag first: npm install fails

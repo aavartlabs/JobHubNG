@@ -1,6 +1,6 @@
 # Stage 1: build the TypeScript bundles and the Tailwind stylesheet (Node needed only at
 # build time, not runtime)
-FROM node:22-slim AS frontend-build
+FROM node:24-slim AS frontend-build
 WORKDIR /src/jobhub_poc/webapp/frontend
 COPY jobhub_poc/webapp/frontend/package.json jobhub_poc/webapp/frontend/package-lock.json* ./
 RUN npm install
@@ -11,7 +11,7 @@ RUN npm run build
 # npm run build writes ../static/{app.js,auth.js,app.css}, i.e. /src/jobhub_poc/webapp/static/
 
 # Stage 2: the actual runtime image -- Python only, no Node
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

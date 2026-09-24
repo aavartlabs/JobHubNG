@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:24-slim
 WORKDIR /app
 # No npm dependencies: Node 22's fetch and http are all this needs.
 COPY package.json ./
