@@ -1,37 +1,64 @@
 {% extends "base.html" %}
+{% block title %}Jobs · JobsHub{% endblock %}
 {% block content %}
-<div id="jobs-app" data-access="{{ access_state() }}"></div>
-<div class="jobs-toolbar">
-  <form id="filter-form" class="filters">
-    <input type="text" id="title-input" placeholder="Title contains...">
-    <input type="text" id="location-input" placeholder="Location contains...">
-    <select id="posted-within-select" aria-label="Posted within"></select>
-    <select id="sort-select" aria-label="Sort">
-      <option value="freshness">Newest on JobsHub</option>
-      <option value="posted">Recently posted</option>
-      <option value="title">Title A-Z</option>
-    </select>
-    <select id="page-size-select">
-      <option value="10">10 / page</option>
-      <option value="25">25 / page</option>
-      <option value="50">50 / page</option>
-      <option value="100">100 / page</option>
-    </select>
-    <button type="submit">Filter</button>
-  </form>
+{# A plain GET form: the URL holds the whole list state (see routes_jobs.py). #}
+<form method="get" action="{{ url_for('jobs.list_jobs') }}" id="filter-form"
+      class="mb-4 grid grid-cols-2 gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-4 sm:items-center lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]">
+  {# Phone: searches full width, then two per row. Tablet: searches share a row, then the
+     rest. PC (lg): everything on one row. #}
+  <input type="search" name="title" value="{{ q.title }}" placeholder="Title contains…" aria-label="Title contains"
+         class="col-span-2 mt-0 sm:max-w-none lg:col-span-1">
+  <input type="search" name="location" value="{{ q.location }}" placeholder="Location contains…" aria-label="Location contains"
+         class="col-span-2 mt-0 sm:max-w-none lg:col-span-1">
+  <select name="posted_within" aria-label="Posted within" class="mt-0 sm:max-w-none">
+    {% for days, label in posted_within_options %}<option value="{{ days }}" {{ 'selected' if q.posted_within == days }}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="sort" aria-label="Sort" class="mt-0 sm:max-w-none">
+    <option value="freshness" {{ 'selected' if q.sort == 'freshness' }}>Newest</option>
+    <option value="posted" {{ 'selected' if q.sort == 'posted' }}>Recently posted</option>
+    <option value="title" {{ 'selected' if q.sort == 'title' }}>Title A–Z</option>
+  </select>
+  <select name="page_size" aria-label="Jobs per page" class="mt-0 sm:max-w-none">
+    {% for n in page_sizes %}<option value="{{ n }}" {{ 'selected' if q.page_size == n }}>{{ n }} / page</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn">Filter</button>
+</form>
+
+<p class="my-2 text-sm text-muted">
+  {% if total %}Showing {{ first }}–{{ last }} of {{ '{:,}'.format(total) }} jobs{% else %}No jobs match these filters.{% endif %}
+</p>
+
+{% if jobs %}
+<div class="card overflow-hidden">
+  {# Column heads, PC only; on a phone each job is a two-line entry. #}
+  <div class="hidden grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_6.5rem] gap-4 border-b border-line bg-surface px-4 py-2 text-xs font-semibold tracking-wider text-muted uppercase sm:grid">
+    <span>Title</span><span>Company</span><span>Location</span><span>Posted</span>
+  </div>
+  <ul class="divide-y divide-line">
+    {% for job in jobs %}
+    <li>
+      <a id="job-{{ job.id }}" href="{{ url_for('jobs.job_page', job_id=job.id) }}{% if list_qs %}?back={{ list_qs | urlencode }}{% endif %}"
+         class="block scroll-mt-4 px-4 py-3 text-ink no-underline transition-colors hover:bg-brand-soft/50 hover:text-ink target:bg-brand-soft sm:grid sm:grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_6.5rem] sm:items-baseline sm:gap-4">
+        <span class="block font-semibold text-brand-dark sm:font-medium sm:text-ink">{{ job.title }}</span>
+        {# Phone: company · location · posted on one muted line. PC: three columns. #}
+        <span class="mt-0.5 block text-sm text-muted sm:mt-0 sm:text-[0.92rem] sm:text-ink">
+          {{ job.company }}<span class="sm:hidden">{% if job.company and job.location %} · {% endif %}{{ job.location }}{% if job.posted %} · {{ job.posted }}{% endif %}</span>
+        </span>
+        <span class="hidden text-[0.92rem] sm:block">{{ job.location }}</span>
+        <span class="hidden text-sm whitespace-nowrap text-muted tabular-nums sm:block" title="{{ job.posted_on }}">{{ job.posted }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
 </div>
-<section id="job-detail" class="job-detail" hidden></section>
-<p id="jobs-count" class="jobs-count">Loading...</p>
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr><th class="serial">#</th><th>Title</th><th>Company</th><th>Location</th><th>Posted</th><th></th></tr>
-    </thead>
-    <tbody id="jobs-body">
-      <tr><td colspan="6" class="empty">Loading...</td></tr>
-    </tbody>
-  </table>
-</div>
-<nav id="pagination" class="pagination"></nav>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endif %}
+
+{% if total_pages > 1 %}
+<nav class="my-6 flex items-center justify-center gap-3" aria-label="Pages">
+  {% if prev_qs is not none %}<a class="btn btn-secondary" href="{{ url_for('jobs.list_jobs') }}{% if prev_qs %}?{{ prev_qs }}{% endif %}">← Prev</a>{% endif %}
+  <span class="text-sm text-muted tabular-nums">Page {{ page }} of {{ '{:,}'.format(total_pages) }}</span>
+  {% if next_qs %}<a class="btn btn-secondary" href="{{ url_for('jobs.list_jobs') }}?{{ next_qs }}">Next →</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

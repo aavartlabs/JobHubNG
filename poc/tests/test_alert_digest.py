@@ -16,7 +16,7 @@ def test_describe_rule_is_short_and_readable():
 def test_telegram_digest_lists_jobs_with_links_back_to_jobhub():
     text = build_telegram(Rule(titles=("sre",)), _jobs(2), ORIGIN)
     assert text.startswith('JobsHub: 2 new jobs for "sre"\n')
-    assert "1. SRE 1 — Acme — Bengaluru\n   https://jobhubs.example/jobs?job=1" in text
+    assert "1. SRE 1 — Acme — Bengaluru\n   https://jobhubs.example/jobs/1" in text
     assert text.rstrip().endswith("Manage alerts: https://jobhubs.example/alerts")
 
 
@@ -37,5 +37,5 @@ def test_email_has_subject_text_and_escaped_html():
     assert subject == 'JobsHub: 1 new job for "sre"'
     assert "SRE <script> — A&B" in text
     assert "&lt;script&gt;" in html and "A&amp;B" in html and "<script>" not in html
-    assert 'href="https://jobhubs.example/jobs?job=7"' in html
+    assert 'href="https://jobhubs.example/jobs/7"' in html
     assert "https://jobhubs.example/alerts" in html

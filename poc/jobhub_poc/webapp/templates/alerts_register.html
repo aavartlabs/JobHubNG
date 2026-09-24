@@ -6,7 +6,7 @@
    field and <em>every</em> field you fill in. You'll get one message per update listing the new
    matches — never one per job.</p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post" class="alert-form">
+<form method="post" class="card max-w-xl p-5 sm:p-7">
   <label>Job titles <input type="text" name="titles" value="{{ form.get('titles', '') }}" placeholder="SRE, DevOps, CloudOps"></label>
   <label>Locations <input type="text" name="locations" value="{{ form.get('locations', '') }}" placeholder="Bangalore, Kolkata, Remote"></label>
   <label>Companies <input type="text" name="companies" value="{{ form.get('companies', '') }}" placeholder="(optional)"></label>

@@ -15,7 +15,7 @@ def test_static_urls_carry_a_content_version(conn):
     deploy (2026-09-23: a pre-Turnstile auth.js sent no token, every signup got 403)."""
     html = _html(conn, "/register")
     assert re.search(r'/static/auth\.js\?v=[0-9a-f]{12}"', html)
-    assert re.search(r'/static/style\.css\?v=[0-9a-f]{12}"', html)
+    assert re.search(r'/static/app\.css\?v=[0-9a-f]{12}"', html)
 
 
 def test_version_changes_when_the_file_changes(conn, tmp_path, monkeypatch):

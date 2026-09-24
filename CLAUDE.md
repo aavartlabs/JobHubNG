@@ -85,14 +85,27 @@ remain only for the rollback path.
   the age filter and (T8) the "posted within" filter, falling back to first_seen.
 - **Web app (pi09, Docker container `jobhub-web`)**: `poc/jobhub_poc/webapp/` is a Flask
   app (blueprints: `auth`, `auth_proxy`, `routes_jobs`, `routes_alerts`, `routes_api`, `admin`); it
-  holds no identity of its own — see [Accounts](#accounts-poc-web-app). `GET /api/jobs`
-  (`routes_api.py`) returns paginated/filterable/sortable JSON; `poc/jobhub_poc/webapp/frontend/`
-  is a small esbuild-bundled TypeScript client (no framework) that renders it —
-  `templates/jobs.html` is just a shell that loads the compiled `static/app.js` (plus
-  `static/auth.js` for the auth pages). The `Dockerfile` is a two-stage build: Node only at
-  build time, Python-only at runtime. **The compiled `static/app.js` / `static/auth.js` are
-  also committed to git** and are what the non-Docker `make web` path serves — after editing
-  `frontend/src/*.ts`, run `npm run build` there and commit the regenerated bundles too.
+  holds no identity of its own — see [Accounts](#accounts-poc-web-app). **Pages are
+  server-rendered Jinja + Tailwind CSS v4 (since 2026-09-24), phone-first** (unprefixed
+  classes = phone, `sm:`/`lg:` add wider layouts). The jobs flow (`routes_jobs.py`): `/jobs`
+  is the list (title, company, location, posted; each row an `<a id="job-<id>">`), its
+  filters/sort/page are plain GET params so the URL is the list state; `/jobs/<id>` is one
+  job (anyone sees the basics; description + Apply need a verified account; Back returns to
+  `/jobs?<same params>#job-<id>`, or `history.back()` when the list is the referrer, so the
+  same row comes back); `/jobs/<id>/apply` records `click_apply` then 302s to the employer
+  (http/https only), opened in a new tab. Old `/jobs?job=<id>` links redirect. The list
+  query, param whitelist and "posted" label live in `webapp/jobs_listing.py`, shared with
+  `GET /api/jobs` (`routes_api.py`, JSON, kept for API callers). Styling:
+  `frontend/src/styles.css` (theme tokens = the plum/magenta palette; `@layer base` styles
+  bare elements, `@layer components` has `.btn`, `.btn-secondary`, `.btn-danger`, `.card`,
+  `.table-card`, `.nav-link`, …) → `static/app.css`; Tailwind only emits classes it finds
+  in `templates/` and `frontend/src/`, so a class built from string pieces won't exist.
+  `frontend/src/*.ts` is now only small enhancements (`app.ts`) and the auth pages
+  (`auth.ts`). The `Dockerfile` is a two-stage build: Node only at build time (it copies
+  `templates/` into the build stage for Tailwind), Python-only at runtime. **The compiled
+  `static/app.js`, `static/auth.js` and `static/app.css` are also committed to git** and are
+  what the non-Docker `make web` path serves — after editing `frontend/src/*` *or any
+  template's classes*, run `npm run build` there and commit the regenerated files too.
 - **Alerts (v2, 2026-09-23)**: an alert is its owner's filters — JSON lists `titles`,
   `locations`, `companies`, `keywords` (OR within a list, AND across; whole-word, with
   location aliases like Bangalore/Bengaluru, `alerts/rules.py`) plus `work_mode` — and which
@@ -103,7 +116,7 @@ remain only for the rollback path.
   `/internal/admin/users` at send time (the host reaches it on
   `127.0.0.1:3200`, published loopback-only by compose). `run_alerts` groups new-job matches
   per alert and `alerts/delivery.py` sends **one digest per alert per channel per run**
-  (`alerts/digest.py`, ≤10 jobs linking to `/jobs?job=<id>` + "N more") via
+  (`alerts/digest.py`, ≤10 jobs linking to `/jobs/<id>` + "N more") via
   `alerts/senders.py` (the Telegram gateway, or Resend email with `RESEND_FROM_EMAIL`).
   `alerts_sent` has `UNIQUE(subscription_id, job_id, channel)` and records SENT / FAILED /
   SKIPPED (unverified channel), so re-runs never resend; alerts of deleted users are
@@ -164,7 +177,7 @@ npm test                                   # no deps; fake Bot API and fake auth
 
 cd ../jobhub_poc/webapp/frontend
 npm install && npm test                    # pure-logic TS helpers only (node --test, no DOM)
-npm run build                              # typecheck + esbuild -> ../static/{app,auth}.js
+npm run build                              # typecheck + esbuild + Tailwind -> ../static/{app,auth}.js, app.css
 ```
 
 Single test: `.venv/bin/pytest tests/test_matcher.py -v` or

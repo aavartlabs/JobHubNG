@@ -1,6 +1,6 @@
 """One digest message per alert per channel per pipeline run. Pure; no I/O.
 
-Links go to the job on JobsHub (/jobs?job=<id>), not straight to the employer: details
+Links go to the job on JobsHub (/jobs/<id>), not straight to the employer: details
 and Apply are behind sign-in there, and each view/apply is recorded as signal for the
 future tracker and recommendations. At most MAX_LISTED jobs are listed; the rest are
 summarised, so a big run is still one short message rather than a burst.
@@ -34,7 +34,7 @@ def _line(job):
 
 
 def _job_url(origin, job):
-    return f"{origin}/jobs?job={job['id']}"
+    return f"{origin}/jobs/{job['id']}"
 
 
 def build_telegram(rule, jobs, origin):

@@ -1,0 +1,99 @@
+/* JobsHub styles: Tailwind v4, built by `npm run build` into ../static/app.css.
+
+   Phone-first: unprefixed utilities are the phone layout, `sm:` (>= 640px) and up add the
+   wider one. Three layers:
+   - base:       plain elements (headings, labels, inputs, buttons, links) look right with
+                 no classes, so simple pages stay simple;
+   - components: the few named pieces pages share (.btn, .card, ...);
+   - utilities:  page layout, written in the templates.
+
+   "Midnight plum" palette from the aavartlabs logo gradient (plum -> magenta -> orange ->
+   yellow); every text/background pair used meets WCAG AA. System fonts on purpose: no
+   web-font round trip on a phone. */
+
+@import "tailwindcss";
+
+/* Tailwind only generates classes it finds in these files. */
+@source "../../templates";
+@source "./";
+
+@theme {
+  --color-plum: #2a1238;        /* header bar; white text on it is 16.9:1 */
+  --color-plum-muted: #cdbfd8;  /* header links */
+  --color-brand: #c8175d;       /* actions; white text 5.6:1 */
+  --color-brand-dark: #a3134f;  /* hover, links (7.6:1 on white) */
+  --color-brand-soft: #fbe7ef;
+  --color-ink: #1f1a24;         /* body text, 17.1:1 */
+  --color-muted: #6b6475;       /* secondary text, 5.7:1 */
+  --color-line: #ece6f0;        /* borders */
+  --color-surface: #f8f6fa;     /* panels, table heads */
+  --color-danger: #b3261e;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --shadow-card: 0 1px 2px rgb(42 18 56 / 0.06), 0 1px 8px rgb(42 18 56 / 0.04);
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-1 rounded-md border
+      border-transparent bg-brand px-4 py-2 text-sm font-semibold text-white no-underline
+      transition-colors hover:bg-brand-dark hover:text-white disabled:cursor-not-allowed
+      disabled:bg-line disabled:text-muted sm:min-h-9;
+  }
+  .btn-secondary {
+    @apply border-line bg-white text-brand-dark hover:bg-brand-soft hover:text-brand-dark;
+  }
+  .btn-danger { @apply bg-danger hover:bg-danger/90; }
+
+  .card { @apply rounded-lg border border-line bg-white shadow-card; }
+  .error { @apply font-medium text-danger; }
+  .hint { @apply max-w-prose text-muted; }
+  .flash { @apply rounded-lg bg-brand-soft px-4 py-2.5 font-medium text-brand-dark; }
+
+  /* Header nav: roomy tap targets, plum-muted until hovered. */
+  .nav-link {
+    @apply inline-block cursor-pointer border-0 bg-transparent py-2 text-sm font-medium
+      text-plum-muted no-underline hover:text-white sm:text-base;
+  }
+
+  /* Small data tables (admin): scroll sideways inside their card, never the page. */
+  .table-card { @apply overflow-x-auto rounded-lg border border-line bg-white shadow-card; }
+  .table-card table { @apply w-full border-collapse text-sm; }
+  .table-card th {
+    @apply border-b border-line bg-surface px-3 py-2 text-left text-xs font-semibold tracking-wider
+      text-muted uppercase;
+  }
+  .table-card td { @apply border-b border-line px-3 py-2.5 align-top; }
+  .table-card tr:last-child td { @apply border-b-0; }
+}
+
+@layer base {
+  body { @apply bg-white font-sans text-ink antialiased; line-height: 1.5; }
+  a { @apply text-brand-dark underline-offset-2 hover:text-brand; }
+  h1 { @apply mb-3 text-xl font-bold text-balance sm:text-2xl; }
+  h2 { @apply mb-2 text-lg font-semibold text-balance; }
+  main p { @apply my-3; }
+  code { @apply rounded bg-surface px-1 text-sm; }
+  :focus-visible { @apply rounded outline-none ring-3 ring-brand/25; }
+
+  /* Forms. 16px text: iOS Safari zooms into smaller fields on focus and stays zoomed. */
+  label { @apply mb-3 block font-medium; }
+  input:not([type="checkbox"]):not([type="hidden"]), select {
+    @apply mt-1 block w-full rounded-md border border-line bg-white px-3 py-2 text-base text-ink
+      sm:max-w-sm;
+  }
+  input:not([type="checkbox"]):focus, select:focus {
+    @apply border-brand ring-3 ring-brand/25 outline-none;
+  }
+  input[type="checkbox"] { @apply mr-2 inline-block size-4 align-middle accent-brand; }
+  fieldset { @apply mb-3 min-w-0 border-0 p-0; }
+  legend { @apply mb-1 p-0 font-semibold; }
+  fieldset label { @apply mb-1 font-normal; }
+
+  /* A bare <button> is the primary action, 44px tall on phones (thumb-sized). */
+  button:not([class]) {
+    @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-md bg-brand px-4
+      py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-dark
+      disabled:cursor-not-allowed disabled:bg-line disabled:text-muted sm:min-h-9;
+  }
+}

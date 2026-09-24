@@ -30,13 +30,14 @@ https://jobshub.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
   discovery timestamp) -- real EverJobs data has posted-dates ranging from
   same-day to multiple years stale, so the source's own date can't drive
   purging.
-- **Web frontend**: `webapp/routes_api.py` exposes `GET /api/jobs`
-  (title/location filter, freshness/title sort) as JSON. `webapp/frontend/`
-  is a small TypeScript client (no framework, built with esbuild) that
-  fetches from it and renders the table -- `webapp/templates/jobs.html` is
-  just a shell (filter form + empty `<tbody>`) that loads the compiled
-  `static/app.js`. Both the JSON API and the page shell are **public** --
-  browsing jobs needs no account. Only `/alerts/*` is gated.
+- **Web frontend**: server-rendered pages styled with Tailwind CSS v4,
+  phone-first (`webapp/frontend/src/styles.css` -> `static/app.css`). `/jobs`
+  lists jobs (title, company, location, posted; filters are plain GET
+  parameters), each row opens `/jobs/<id>`, whose Back link returns to the
+  same list and row; Apply opens the employer's page in a new tab via
+  `/jobs/<id>/apply`, which records the click. `GET /api/jobs` still serves
+  the same list as JSON. Browsing is **public**; a job's description and
+  Apply need a verified account, and `/alerts/*` is gated.
 - **Production**: `jobshub.aavartlabs.com` (Cloudflare Tunnel, already
   running on pi09) has a **fixed** target of `http://jobhub-web:3000` on the
   `jobhub` Docker network -- set remotely in Cloudflare's dashboard, not

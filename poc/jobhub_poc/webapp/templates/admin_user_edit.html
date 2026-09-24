@@ -4,7 +4,7 @@
 <h1>{{ user.name }}</h1>
 <p>Joined {{ user.createdAt[:10] }} &middot; {{ user.activeSessions }} active session(s) &middot; id <code>{{ user.id }}</code></p>
 
-<form method="post" action="{{ url_for('admin.edit_user', user_id=user.id) }}">
+<form method="post" action="{{ url_for('admin.edit_user', user_id=user.id) }}" class="card mb-4 max-w-xl p-5 sm:p-7">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>Name <input type="text" name="name" value="{{ user.name }}" required></label>
   <label>Email <input type="email" name="email" value="{{ user.email }}" required></label>
@@ -21,7 +21,7 @@
 
 <form method="post" action="{{ url_for('admin.revoke_sessions', user_id=user.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <button type="submit">Sign out everywhere</button>
+  <button type="submit" class="btn btn-secondary">Sign out everywhere</button>
 </form>
 
 <p><a href="{{ url_for('admin.delete_user', user_id=user.id) }}">Delete user&hellip;</a></p>

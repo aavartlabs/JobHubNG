@@ -49,7 +49,7 @@ def test_details_signed_out_is_401_with_login_url_carrying_next(conn):
     assert resp.status_code == 401
     body = resp.get_json()
     assert body["code"] == "LOGIN_REQUIRED"
-    assert body["login_url"] == "/login?next=/jobs?job%3D1"
+    assert body["login_url"] == "/login?next=/jobs/1"
     assert "description" not in body and "apply_url" not in body
     assert _interactions(conn) == []
 
@@ -93,7 +93,7 @@ def test_apply_click_signed_out_is_401(conn):
     _seed_job(conn)
     resp = _client(conn).post("/api/jobs/1/apply-click")
     assert resp.status_code == 401
-    assert resp.get_json()["login_url"] == "/login?next=/jobs?job%3D1"
+    assert resp.get_json()["login_url"] == "/login?next=/jobs/1"
 
 
 def test_apply_click_logs_and_returns_the_employer_url(conn, requests_mock):
@@ -132,6 +132,7 @@ def test_gated_page_redirect_to_login_carries_next(conn):
     assert resp.headers["Location"].endswith("/login?next=/alerts")
 
 
-@pytest.mark.parametrize("path", ["/jobs", "/jobs?job=1"])
-def test_jobs_page_itself_stays_public(conn, path):
+@pytest.mark.parametrize("path", ["/jobs", "/jobs/1"])
+def test_jobs_pages_themselves_stay_public(conn, path):
+    _seed_job(conn)
     assert _client(conn).get(path).status_code == 200

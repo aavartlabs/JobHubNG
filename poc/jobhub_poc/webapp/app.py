@@ -57,7 +57,7 @@ def create_app(test_conn=None):
     app.before_request(auth.load_current_user)
 
     # Cloudflare overrides the origin's Cache-Control and has browsers keep /static/*
-    # for 4 hours, so a deploy's new auth.js/app.js/style.css wouldn't reach anyone who
+    # for 4 hours, so a deploy's new auth.js/app.js/app.css wouldn't reach anyone who
     # visited recently. A content hash in the URL makes every change a new URL.
     static_versions = {}
 

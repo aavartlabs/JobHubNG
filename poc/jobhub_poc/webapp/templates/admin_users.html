@@ -3,7 +3,7 @@
 <h1>Registered users</h1>
 <p>{{ users|length }} user{{ "" if users|length == 1 else "s" }}.</p>
 {% if users %}
-<table>
+<div class="table-card"><table>
   <thead>
     <tr><th>Name</th><th>Email</th><th>Telegram</th><th>State</th><th>Sessions</th><th>Alerts</th><th>Joined</th><th></th></tr>
   </thead>
@@ -26,6 +26,6 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% endif %}
 {% endblock %}

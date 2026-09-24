@@ -6,10 +6,13 @@
   "scripts": {
     "test": "node --test",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && esbuild src/app.ts --bundle --minify --outfile=../static/app.js && esbuild src/auth.ts --bundle --minify --outfile=../static/auth.js"
+    "build": "npm run typecheck && esbuild src/app.ts --bundle --minify --outfile=../static/app.js && esbuild src/auth.ts --bundle --minify --outfile=../static/auth.js && npm run build:css",
+    "build:css": "tailwindcss -i src/styles.css -o ../static/app.css --minify"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
     "esbuild": "^0.24.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0"
   }
 }

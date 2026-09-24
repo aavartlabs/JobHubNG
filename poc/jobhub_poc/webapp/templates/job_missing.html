@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Job not found · JobsHub{% endblock %}
+{% block content %}
+<h1>This job is no longer listed</h1>
+<p class="hint">Jobs leave JobsHub a while after they stop appearing on the job sites.</p>
+<a href="{{ url_for('jobs.list_jobs') }}" class="btn">Browse current jobs</a>
+{% endblock %}
