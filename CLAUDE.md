@@ -221,10 +221,11 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
   `~/jobhub-poc/data/jobhub.db`, plus Docker containers from `poc/docker-compose.yml`:
   `jobhub-web` (the Flask app), `jobhub-auth` (Better Auth), `jobhub-telegram` (the
-  Telegram gateway) and `jobhub-whatsapp` (admin fallback), all `restart: unless-stopped`. `jobhub-cloudflare-tunnel` also runs there but
-  is not defined in this repo. `~/jobhub-poc` on pi09 is **not a git checkout** — deploys are
+  Telegram gateway), `jobhub-whatsapp` (admin fallback) and `jobhub-cloudflare-tunnel` (service
+  `tunnel`; token from the file `~/jobhub-poc/secrets/cloudflare-tunnel.token` via
+  `TUNNEL_TOKEN_FILE`, never env/args), all `restart: unless-stopped`. `~/jobhub-poc` on pi09 is **not a git checkout** — deploys are
   an rsync of `poc/` (excluding `.env`, `data/`, `dumps/`, `.venv/`, `whatsapp-sender/auth_info/`,
-  `auth-service/data/`) followed by `docker compose build && docker compose up -d`. The
+  `auth-service/data/`, `secrets/`) followed by `docker compose build && docker compose up -d`. The
   auth stack went live 2026-09-23; the Resend sender is `noreply@alerts.aavartlabs.com`
   (`alerts.aavartlabs.com` is the Resend-verified domain). Never runs EverJobs.
   **Also the orchestration host**, as of 2026-09-22 — `poc/scripts/run_pipeline_warehouse.sh` (since the

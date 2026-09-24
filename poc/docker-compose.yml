@@ -91,6 +91,27 @@ services:
       - jobhub
     restart: unless-stopped
 
+  # The Cloudflare Tunnel connector: the only way the public reaches the site. Its ingress
+  # (set in the Cloudflare dashboard) targets http://jobhub-web:3000 on this network.
+  # The token is read from a file, never from env/args, so `docker inspect` can't show it.
+  # On pi09: ~/jobhub-poc/secrets/ (0700) holds cloudflare-tunnel.token (0644 so the
+  # container's nonroot user can read it). Rotate it in the dashboard (Networking >
+  # Tunnels > jobhub-aavartlabs-com > Rotate token), replace the file, then
+  # `docker compose up -d --force-recreate tunnel`.
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.1
+    container_name: jobhub-cloudflare-tunnel
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN_FILE: /run/secrets/tunnel-token
+    volumes:
+      - ./secrets/cloudflare-tunnel.token:/run/secrets/tunnel-token:ro
+    depends_on:
+      - web
+    networks:
+      - jobhub
+    restart: unless-stopped
+
   whatsapp:
     build:
       context: ./whatsapp-sender

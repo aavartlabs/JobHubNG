@@ -13,3 +13,5 @@ __pycache__/
 *.log
 .DS_Store
 auth_info/
+# Deployment secrets on the hosts (e.g. the Cloudflare tunnel token); never in git.
+poc/secrets/
