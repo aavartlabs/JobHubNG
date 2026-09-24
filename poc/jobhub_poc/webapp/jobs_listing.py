@@ -19,7 +19,7 @@ SORTS = {
     "title": "title ASC",
 }
 POSTED_WITHIN_OPTIONS = [
-    (0, "Posted: any time"),
+    (0, "Any time"),
     (1, "Last 24 hours"),
     (3, "Last 3 days"),
     (7, "Last week"),
