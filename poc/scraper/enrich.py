@@ -73,25 +73,29 @@ def fetch_posting(company, posting, session=None, timeout=15):
     return "ok", description, page
 
 
-def candidates(conn, retry_after_days, now):
+def candidates(conn, retry_after_days, now, first_terms=()):
     """(source_id, company, posting id) for SmartRecruiters jobs in the latest sweep that
-    have no description and no enrichment worth keeping (ok / gone / a recent error)."""
+    have no description and no enrichment worth keeping (ok / gone / a recent error).
+    Jobs whose title contains one of `first_terms` (the site's [serving] search terms --
+    what export.py sends to pi09) come first, newest first: the per-run cap is spent on
+    jobs people can actually see."""
     latest = conn.execute("SELECT max(last_seen_at) FROM jobs").fetchone()[0]
     if latest is None:
         return []
     retry_before = (now - timedelta(days=retry_after_days)).isoformat()
     rows = conn.execute(
-        """SELECT j.source_id, j.raw_json FROM jobs j LEFT JOIN enrichments e ON e.source_id = j.source_id
+        """SELECT j.source_id, j.title, j.raw_json FROM jobs j LEFT JOIN enrichments e ON e.source_id = j.source_id
            WHERE j.last_seen_at = ? AND j.source_id IS NOT NULL AND COALESCE(TRIM(j.description), '') = ''
              AND (e.source_id IS NULL OR (e.status = 'error' AND e.fetched_at < ?))
            ORDER BY j.first_seen_at DESC""", (latest, retry_before)).fetchall()
-    out = []
+    shown, rest = [], []
     for row in rows:
         raw = json.loads(row["raw_json"])
         parts = smartrecruiters_api(raw.get("jobUrl")) or smartrecruiters_api(raw.get("applyUrl"))
         if parts:
-            out.append((row["source_id"], *parts))
-    return out
+            title = (row["title"] or "").lower()
+            (shown if any(t in title for t in first_terms) else rest).append((row["source_id"], *parts))
+    return shown + rest
 
 
 def _record(conn, source_id, status, description=None, apply_url=None, error=None, now=None):
@@ -103,9 +107,10 @@ def _record(conn, source_id, status, description=None, apply_url=None, error=Non
         (source_id, status, description, apply_url, (error or "")[:300] or None, now.isoformat()))
 
 
-def enrich(conn, max_per_run, retry_after_days, delay_ms, now=None, fetch=fetch_posting, sleep=time.sleep):
+def enrich(conn, max_per_run, retry_after_days, delay_ms, now=None, fetch=fetch_posting, sleep=time.sleep,
+           first_terms=()):
     now = now or datetime.now(timezone.utc)
-    todo = candidates(conn, retry_after_days, now)
+    todo = candidates(conn, retry_after_days, now, first_terms)
     stats = {"candidates": len(todo), "fetched": 0, "ok": 0, "gone": 0, "errors": 0, "updated": 0,
              "rate_limited": False}
     session = requests.Session()
@@ -132,10 +137,11 @@ def enrich(conn, max_per_run, retry_after_days, delay_ms, now=None, fetch=fetch_
 
 
 def main():
-    cfg = load_pipeline_config().enrich
+    cfg = load_pipeline_config()
     conn = open_warehouse(os.environ.get("WAREHOUSE_DB_PATH", DEFAULT_DB_PATH))
     try:
-        stats = enrich(conn, cfg.max_per_run, cfg.retry_after_days, cfg.delay_ms)
+        stats = enrich(conn, cfg.enrich.max_per_run, cfg.enrich.retry_after_days, cfg.enrich.delay_ms,
+                       first_terms=cfg.serving.search_terms)
     finally:
         conn.close()
     print(json.dumps(stats))

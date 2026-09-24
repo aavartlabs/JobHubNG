@@ -125,3 +125,12 @@ def test_fetch_posting_reads_the_api(requests_mock):
     requests_mock.get(API_URL, status_code=429)
     with pytest.raises(enrich.RateLimited):
         enrich.fetch_posting("TurnerTownsend", "744000151582544")
+
+
+def test_jobs_the_site_shows_are_fetched_first(conn):
+    jobs = [_sr_job("sr-a", url="https://api.smartrecruiters.com/v1/companies/C/postings/1", title="Warehouse Picker"),
+            _sr_job("sr-b", url="https://api.smartrecruiters.com/v1/companies/C/postings/2", title="Data Engineer")]
+    ingest(conn, jobs, max_posted_age_days=60, now=NOW)
+    fetch = _fake(("gone", None, None))
+    enrich.enrich(conn, 1, 7, 0, now=NOW, fetch=fetch, first_terms=("engineer",))
+    assert fetch.calls == [("C", "2")]
