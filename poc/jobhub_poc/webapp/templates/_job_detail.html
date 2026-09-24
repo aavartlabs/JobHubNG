@@ -1,13 +1,22 @@
 {% from "_icons.html" import icon %}
+{% from "_job_row.html" import save_button %}
 {# One job's details: the full page (job.html, in_panel false) and the PC pane
    (_job_panel.html, in_panel true). Description + Apply only for verified accounts. #}
-<header class="flex gap-4">
+<header class="flex items-start gap-4">
   <span class="monogram {{ job.monogram_class }} size-12 text-base sm:size-14 sm:text-lg" aria-hidden="true">{{ job.monogram }}</span>
   <div class="min-w-0">
     {% if in_panel %}<h2 class="mb-1 text-xl leading-snug">{{ job.title }}</h2>{% else %}<h1 class="mb-1 leading-snug">{{ job.title }}</h1>{% endif %}
     <p class="my-0 text-muted">{{ job.company }}</p>
   </div>
+  <div class="ml-auto flex shrink-0 items-center gap-1">
+    {% with job = dict(job, saved=saved) %}{{ save_button(job, url_for('jobs.job_page', job_id=job.id)) }}{% endwith %}
+    {# Hidden until app.js shows it: sharing needs JS (share sheet or clipboard). #}
+    <button type="button" class="save-btn share-btn" data-share-url="{{ share_url }}"
+            data-share-title="{{ job.title }}{% if job.company %} at {{ job.company }}{% endif %}"
+            aria-label="Share this job" title="Share" hidden>{{ icon("share", "size-5") }}</button>
+  </div>
 </header>
+<p class="share-status mt-2 mb-0 text-right text-sm text-brand-dark" role="status" hidden></p>
 
 <div class="mt-4 flex flex-wrap gap-2">
   {% if job.location %}<span class="badge">{{ icon("pin") }}{{ job.location }}</span>{% endif %}

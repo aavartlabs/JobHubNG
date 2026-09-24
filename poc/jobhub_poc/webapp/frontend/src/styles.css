@@ -70,6 +70,14 @@
       font-medium text-ink no-underline hover:border-brand/40 hover:bg-brand-soft hover:text-brand-dark;
   }
 
+  /* Round icon buttons (save, share). Saved = filled bookmark. */
+  .save-btn {
+    @apply inline-flex size-11 cursor-pointer items-center justify-center rounded-full border-0
+      bg-transparent text-muted transition-colors hover:bg-brand-soft hover:text-brand-dark sm:size-9;
+  }
+  .save-btn[aria-pressed="true"] { @apply text-brand; }
+  .save-btn[aria-pressed="true"] svg { fill: currentColor; }
+
   /* Company initials in a coloured tile (no logos in the data). White text on each colour
      is WCAG AA. The class comes from jobs_listing.monogram(). */
   .monogram {

@@ -477,10 +477,13 @@ def test_failed_auth_service_delete_keeps_subscriptions(client, conn, requests_m
     assert conn.execute("SELECT count(*) AS n FROM alert_subscriptions").fetchone()["n"] == 1
 
 
-def test_delete_also_removes_the_users_job_interactions(client, conn, requests_mock):
+def test_delete_also_removes_the_users_job_interactions_and_saves(client, conn, requests_mock):
     conn.execute(
         "INSERT INTO job_interactions (owner_auth_user_id, job_dedupe_key, action, created_at) "
         "VALUES ('u1', 'k', 'view_details', 'x'), ('u2', 'k', 'view_details', 'x')"
+    )
+    conn.execute(
+        "INSERT INTO saved_jobs (owner_auth_user_id, job_dedupe_key, saved_at) VALUES ('u1', 'k', 'x'), ('u2', 'k', 'x')"
     )
     conn.commit()
     _logged_in(client, requests_mock)
@@ -488,3 +491,4 @@ def test_delete_also_removes_the_users_job_interactions(client, conn, requests_m
     client.post("/admin/users/u1/delete", data={"csrf_token": _csrf(client)})
     owners = [r["owner_auth_user_id"] for r in conn.execute("SELECT owner_auth_user_id FROM job_interactions")]
     assert owners == ["u2"]
+    assert [r[0] for r in conn.execute("SELECT owner_auth_user_id FROM saved_jobs")] == ["u2"]

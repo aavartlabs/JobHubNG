@@ -2,7 +2,95 @@
    Everything works without this script; it only makes it smoother. */
 
 import { isJobsListReferrer } from "./back";
+import { savedAction, savedLabel } from "./saving";
 import { isPlainClick, nextRowIndex, selectionUrl } from "./split";
+
+/** Save buttons are plain POST forms; this toggles them in place instead of reloading.
+    Every button for the same job (list row + pane) is updated together. */
+function setSaved(jobId: string, saved: boolean): void {
+  document.querySelectorAll<HTMLFormElement>(`form.save-form[data-job-id="${jobId}"]`).forEach((form) => {
+    form.action = savedAction(form.action, saved);
+    const button = form.querySelector("button");
+    if (!button) return;
+    button.disabled = false;
+    button.setAttribute("aria-pressed", String(saved));
+    button.setAttribute("aria-label", savedLabel(button.getAttribute("aria-label") ?? "", saved));
+    button.title = saved ? "Saved" : "Save job";
+  });
+}
+
+function initSaving(): void {
+  document.addEventListener("submit", async (event) => {
+    const form = event.target as HTMLFormElement;
+    if (!form.classList?.contains("save-form")) return;
+    event.preventDefault();
+    const button = form.querySelector("button");
+    if (button) button.disabled = true;
+    let response: Response;
+    try {
+      response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+    } catch {
+      form.submit(); // network trouble: fall back to the plain form post
+      return;
+    }
+    if (response.status === 401 || response.status === 403) {
+      const body = (await response.json().catch(() => null)) as { url?: string } | null;
+      window.location.href = body?.url ?? "/login"; // sign in / verify, then back to the job
+      return;
+    }
+    if (!response.ok) {
+      if (button) button.disabled = false;
+      return;
+    }
+    const { saved } = (await response.json()) as { saved: boolean };
+    setSaved(form.dataset.jobId ?? "", saved);
+  });
+}
+
+/** Share: the phone's share sheet where there is one, else copy the link. The buttons are
+    rendered hidden and shown here, since neither works without JS. */
+function revealShareButtons(root: ParentNode): void {
+  root.querySelectorAll<HTMLButtonElement>(".share-btn").forEach((button) => {
+    button.hidden = false;
+  });
+}
+
+function initSharing(): void {
+  revealShareButtons(document);
+  document.addEventListener("click", async (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>(".share-btn");
+    if (!button) return;
+    const url = button.dataset.shareUrl ?? window.location.href;
+    const title = button.dataset.shareTitle ?? document.title;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title, text: `${title} — JobsHub`, url });
+      } catch {
+        // cancelled by the user: nothing to do
+      }
+      return;
+    }
+    const status = button.closest("header")?.parentElement?.querySelector<HTMLElement>(".share-status");
+    if (!status) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      status.textContent = "Link copied";
+      status.hidden = false;
+      window.setTimeout(() => {
+        status.hidden = true;
+      }, 2500);
+    } catch {
+      // No clipboard access: show the link to copy by hand, and leave it there.
+      status.textContent = url;
+      status.hidden = false;
+    }
+  });
+}
 
 /** PC split view (Tailwind `lg`, >= 1024px): clicking a job loads it into the pane beside
     the list instead of opening its page. The URL gets ?sel=<id> via replaceState -- not a
@@ -33,6 +121,7 @@ function initSplitView(): void {
       });
       if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
       pane.innerHTML = await response.text(); // our own server-rendered, escaped fragment
+      revealShareButtons(pane);
       pane.scrollTop = 0;
     } catch (error) {
       if ((error as Error).name === "AbortError") return;
@@ -100,4 +189,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initFilters();
   initBackLinks();
   initSplitView();
+  initSaving();
+  initSharing();
 });

@@ -252,6 +252,7 @@ def present_job(row, now=None):
     department = raw.get("department") or raw.get("team")
     return {
         "id": row["id"],
+        "key": row["dedupe_key"],
         "title": row["title"],
         "company": row["company_name"] or "",
         "location": row["location"] or "",
@@ -316,3 +317,47 @@ def record(conn, job, action):
         (user_id, job["dedupe_key"], job["title"], job["company_name"], job["apply_url"], action, now.isoformat()),
     )
     conn.commit()
+
+
+# ---- saved jobs (per signed-in user) ----
+
+def saved_keys(conn, user_id, keys):
+    """Which of these dedupe_keys the user has saved."""
+    keys = list(keys)
+    if not user_id or not keys:
+        return set()
+    marks = ",".join("?" * len(keys))
+    return {r[0] for r in conn.execute(
+        f"SELECT job_dedupe_key FROM saved_jobs WHERE owner_auth_user_id = ? AND job_dedupe_key IN ({marks})",
+        [user_id, *keys])}
+
+
+def save_job(conn, user_id, job):
+    conn.execute(
+        """INSERT OR IGNORE INTO saved_jobs (owner_auth_user_id, job_dedupe_key, job_title, job_company,
+                                             job_location, job_apply_url, saved_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, job["dedupe_key"], job["title"], job["company_name"], job["location"], job["apply_url"],
+         datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+
+
+def unsave_job(conn, user_id, dedupe_key):
+    conn.execute("DELETE FROM saved_jobs WHERE owner_auth_user_id = ? AND job_dedupe_key = ?", (user_id, dedupe_key))
+    conn.commit()
+
+
+def saved_jobs(conn, user_id):
+    """The user's saved jobs, newest first: (saved row, jobs row or None if no longer listed)."""
+    rows = conn.execute(
+        """SELECT s.*, j.id AS listed_id FROM saved_jobs s
+           LEFT JOIN jobs j ON j.dedupe_key = s.job_dedupe_key
+           WHERE s.owner_auth_user_id = ? ORDER BY s.saved_at DESC""",
+        (user_id,)).fetchall()
+    listed = {r["listed_id"] for r in rows if r["listed_id"] is not None}
+    jobs = {}
+    if listed:
+        marks = ",".join("?" * len(listed))
+        jobs = {r["id"]: r for r in conn.execute(f"SELECT * FROM jobs WHERE id IN ({marks})", list(listed))}
+    return [(r, jobs.get(r["listed_id"])) for r in rows]

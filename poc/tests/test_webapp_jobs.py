@@ -292,3 +292,89 @@ def test_row_helpers():
     assert employment_label("FULL_TIME") == employment_label("Full-Time") == employment_label(["fulltime"]) == "Full-time"
     assert employment_label("contractor") == "Contract" and employment_label(None) is None and employment_label([]) is None
     assert employment_label("EOR Mexico") is None  # free text, not a job type
+
+
+# ---- save & share ----
+
+def _saved(conn):
+    return [tuple(r) for r in conn.execute("SELECT owner_auth_user_id, job_dedupe_key, job_title FROM saved_jobs")]
+
+
+def test_signed_out_save_goes_to_login_and_back_to_the_job(conn):
+    _seed(conn, n=1)
+    resp = _client(conn).post("/jobs/1/save")
+    assert resp.status_code == 302 and resp.headers["Location"].endswith("/login?next=/jobs/1")
+    json_resp = _client(conn).post("/jobs/1/save", headers={"Accept": "application/json"})
+    assert json_resp.status_code == 401 and json_resp.get_json()["url"] == "/login?next=/jobs/1"
+    assert _saved(conn) == []
+
+
+def test_unverified_email_cannot_save(conn, requests_mock):
+    _seed(conn, n=1)
+    resp = _client(conn, requests_mock, {**_verified(), "emailVerified": False}).post("/jobs/1/save")
+    assert resp.status_code == 302 and "/verify?next=/jobs/1" in resp.headers["Location"]
+
+
+def test_save_and_unsave_as_forms_and_json(conn, requests_mock):
+    _seed(conn, n=2)
+    client = _client(conn, requests_mock, _verified())
+    resp = client.post("/jobs/1/save", data={"next": "/jobs?q=sre#job-1"})
+    assert resp.status_code == 302 and resp.headers["Location"].endswith("/jobs?q=sre#job-1")
+    client.post("/jobs/1/save")  # twice is still once
+    assert _saved(conn) == [("u1", "k1", "SRE 1")]
+    assert client.post("/jobs/2/save", headers={"Accept": "application/json"}).get_json() == {"saved": True}
+    assert client.post("/jobs/1/unsave", headers={"Accept": "application/json"}).get_json() == {"saved": False}
+    assert [k for _, k, _ in _saved(conn)] == ["k2"]
+    assert client.post("/jobs/99/save").status_code == 404
+
+
+def test_save_never_redirects_off_site(conn, requests_mock):
+    _seed(conn, n=1)
+    client = _client(conn, requests_mock, _verified())
+    for bad in ("https://evil.example/", "//evil.example/x", "/\\evil.example"):
+        resp = client.post("/jobs/1/save", data={"next": bad})
+        assert resp.headers["Location"].endswith("/jobs/1"), bad
+
+
+def test_list_and_job_page_show_saved_state(conn, requests_mock):
+    _seed(conn, n=2)
+    client = _client(conn, requests_mock, _verified())
+    client.post("/jobs/2/save")
+    html = client.get("/jobs").get_data(as_text=True)
+    assert re.search(r'action="/jobs/2/unsave"[^>]*data-job-id="2"', html)
+    assert re.search(r'action="/jobs/1/save"[^>]*data-job-id="1"', html)
+    page = client.get("/jobs/2").get_data(as_text=True)
+    assert 'aria-pressed="true"' in page and 'action="/jobs/2/unsave"' in page
+
+
+def test_saved_page_lists_saves_including_jobs_no_longer_listed(conn, requests_mock):
+    _seed(conn, n=2)
+    client = _client(conn, requests_mock, _verified())
+    client.post("/jobs/1/save")
+    client.post("/jobs/2/save")
+    conn.execute("DELETE FROM jobs WHERE id = 1")  # purged after it was saved
+    conn.commit()
+    html = client.get("/saved").get_data(as_text=True)
+    assert "SRE 1" in html and "No longer listed" in html
+    assert 'href="/jobs/2"' in html and 'href="/jobs/1"' not in html
+    client.post("/saved/remove", data={"key": "k1"})
+    assert [k for _, k, _ in _saved(conn)] == ["k2"]
+    assert _client(conn).get("/saved").status_code == 302  # signed out: to login
+
+
+def test_saves_are_per_user(conn, requests_mock):
+    _seed(conn, n=1)
+    _client(conn, requests_mock, _verified("u1")).post("/jobs/1/save")
+    other = _client(conn, requests_mock, _verified("u2"))
+    assert "SRE 1" not in other.get("/saved").get_data(as_text=True)
+    other.post("/saved/remove", data={"key": "k1"})  # can't remove someone else's
+    assert _saved(conn) == [("u1", "k1", "SRE 1")]
+
+
+def test_share_button_carries_the_public_job_url(conn, monkeypatch):
+    monkeypatch.setattr(config, "WEB_ORIGIN", "https://jobs.example")
+    _seed(conn, n=1)
+    html = _client(conn).get("/jobs/1").get_data(as_text=True)
+    assert 'data-share-url="https://jobs.example/jobs/1"' in html
+    assert 'data-share-title="SRE 1 at Acme"' in html
+    assert re.search(r'class="save-btn share-btn"[^>]*hidden', html)  # shown by app.js

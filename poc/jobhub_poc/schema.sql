@@ -110,6 +110,20 @@ CREATE TABLE IF NOT EXISTS job_interactions (
 );
 CREATE INDEX IF NOT EXISTS idx_job_interactions_owner ON job_interactions(owner_auth_user_id);
 
+-- Jobs a signed-in user saved (/saved). Keyed by the job's dedupe_key with a snapshot of
+-- what it was, so a saved job still shows ("no longer listed") after purge removes it
+-- from jobs. owner_auth_user_id is auth-service's user id, like job_interactions.
+CREATE TABLE IF NOT EXISTS saved_jobs (
+    owner_auth_user_id  TEXT NOT NULL,
+    job_dedupe_key      TEXT NOT NULL,
+    job_title           TEXT,
+    job_company         TEXT,
+    job_location        TEXT,
+    job_apply_url       TEXT,
+    saved_at            TEXT NOT NULL,
+    PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
+);
+
 -- Small key/value state for the pipeline, e.g. "warehouse_watermark": the newest pi05
 -- warehouse updated_at already applied here (loader/load_delta.py).
 CREATE TABLE IF NOT EXISTS sync_state (

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Saved jobs · JobsHub{% endblock %}
+{% block content %}
+<h1>Saved jobs</h1>
+{% if items %}
+<ul class="card divide-y divide-line overflow-hidden">
+  {% for job in items %}
+  <li class="flex items-start gap-3 px-4 py-3.5">
+    <div class="min-w-0 flex-1">
+      {% if job.id %}
+        <a href="{{ url_for('jobs.job_page', job_id=job.id) }}" class="font-semibold text-ink no-underline hover:text-brand-dark">{{ job.title }}</a>
+      {% else %}
+        <span class="font-semibold text-muted">{{ job.title }}</span>
+      {% endif %}
+      <p class="my-0 mt-0.5 text-sm text-muted">{{ [job.company, job.location] | select | join(" · ") }}</p>
+      <p class="my-0 mt-1.5 flex flex-wrap gap-1.5">
+        {% if not job.id %}<span class="badge">No longer listed</span>{% endif %}
+        {% if job.salary %}<span class="badge badge-strong">{{ icon("money") }}{{ job.salary }}</span>{% endif %}
+        {% if job.posted %}<span class="badge badge-plain">{{ icon("clock") }}{{ job.posted }}</span>{% endif %}
+        <span class="badge badge-plain">Saved {{ job.saved_on }}</span>
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('jobs.saved_remove') }}">
+      <input type="hidden" name="key" value="{{ job.key }}">
+      <button type="submit" class="btn btn-secondary">Remove</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card p-6 text-center">
+  <p class="mt-0">You haven't saved any jobs yet. Use the {{ icon("bookmark", "inline size-4 align-text-bottom") }} on a job to keep it here.</p>
+  <a class="btn" href="{{ url_for('jobs.list_jobs') }}">Browse jobs</a>
+</div>
+{% endif %}
+{% endblock %}

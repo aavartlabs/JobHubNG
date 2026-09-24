@@ -315,9 +315,10 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 Real self-service accounts, live since 2026-09-23. Identity lives in `poc/auth-service/`, a
 second container (`jobhub-auth`) running Better Auth over its own `auth.db`; Flask
 reverse-proxies `/auth/*` to it and issues no site-user session of its own. Signup is
-email + password, then the email verified by a Resend OTP and **Telegram linked** before
-the account can do anything (since 2026-09-24; it was a WhatsApp mobile OTP before, and
-accounts verified that way are sent to /verify once to link Telegram). Linking
+email + password, then the email verified by a Resend OTP before the account can do
+anything. **Telegram is optional** (Sanjay, 2026-09-24): linking it on /verify (any time)
+only unlocks Telegram alerts — the alert form disables that option and the server refuses
+`notify_telegram` without `telegramVerified`. Linking
 (`auth-service/src/telegram.js`): signed in, `POST /auth/telegram/link` gives a one-time
 `t.me/<bot>?start=<token>`; pressing Start makes the gateway call auth-service's
 `/internal/telegram/start` (key `TELEGRAM_INTERNAL_API_KEY`), which replies with a 6-digit
@@ -328,8 +329,12 @@ attach someone else's Telegram. One chat links to one account: a chat already on
 account gets no code at `/start`, only that account's masked email ("sign in with that
 account instead"); verify re-checks, and auth-service's startup builds a partial unique
 index `user_telegram_chat_unique` (skipped with an error log if duplicates already exist). `/jobs` and
-`/api/jobs` are public; `/alerts/*` requires a fully verified account and is scoped to
-`alert_subscriptions.owner_auth_user_id`.
+`/api/jobs` are public; `/alerts/*` and `/saved` require a verified email and are scoped to
+the owner. **Saved jobs** (`saved_jobs`, keyed by owner + job `dedupe_key` with a title/company
+snapshot, so a purged job still shows "No longer listed"): `POST /jobs/<id>/save|unsave`
+(plain forms; JSON when `Accept: application/json`, which app.ts uses to toggle in place),
+`/saved`, `POST /saved/remove`. **Share** on the job details: the phone's share sheet, else
+copy `WEB_ORIGIN/jobs/<id>` (public page).
 
 **Cloudflare Turnstile** gates signup, login, every OTP send, the alert form and the admin
 login. Fetch-driven pages send a per-request token as `X-Turnstile-Token`; `auth_proxy.py`'s
