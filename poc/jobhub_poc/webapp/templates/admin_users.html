@@ -5,19 +5,19 @@
 {% if users %}
 <table>
   <thead>
-    <tr><th>Name</th><th>Email</th><th>Mobile</th><th>State</th><th>Sessions</th><th>Alerts</th><th>Joined</th><th></th></tr>
+    <tr><th>Name</th><th>Email</th><th>Telegram</th><th>State</th><th>Sessions</th><th>Alerts</th><th>Joined</th><th></th></tr>
   </thead>
   <tbody>
   {% for u in users %}
     <tr>
       <td>{{ u.name }}</td>
       <td>{{ u.email }} {{ "✓" if u.emailVerified else "✗" }}</td>
-      <td>{{ u.phoneNumber or "—" }} {{ "✓" if u.phoneNumberVerified else "✗" }}</td>
+      <td>{{ ("@" ~ u.telegramUsername) if u.telegramUsername else "—" }} {{ "✓" if u.telegramVerified else "✗" }}</td>
       <td>
-        {% if u.emailVerified and u.phoneNumberVerified %}Verified
-        {% elif not u.emailVerified and not u.phoneNumberVerified %}Pending email + phone
+        {% if u.emailVerified and u.telegramVerified %}Verified
+        {% elif not u.emailVerified and not u.telegramVerified %}Pending email + Telegram
         {% elif not u.emailVerified %}Pending email
-        {% else %}Pending phone{% endif %}
+        {% else %}Pending Telegram{% endif %}
       </td>
       <td>{{ u.activeSessions }}</td>
       <td>{{ u.subscriptions }}</td>

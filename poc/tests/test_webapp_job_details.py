@@ -32,9 +32,9 @@ def _client(conn, requests_mock=None, user=None):
     return client
 
 
-def _user(user_id="u1", email_verified=True, phone_verified=True):
+def _user(user_id="u1", email_verified=True, telegram_verified=True):
     return {"id": user_id, "email": "a@example.com", "emailVerified": email_verified,
-            "phoneNumberVerified": phone_verified}
+            "telegramVerified": telegram_verified}
 
 
 def _interactions(conn):
@@ -56,7 +56,7 @@ def test_details_signed_out_is_401_with_login_url_carrying_next(conn):
 
 def test_details_unverified_is_403_pointing_at_verify(conn, requests_mock):
     _seed_job(conn)
-    resp = _client(conn, requests_mock, _user(phone_verified=None)).get("/api/jobs/1")
+    resp = _client(conn, requests_mock, _user(telegram_verified=None)).get("/api/jobs/1")
     assert resp.status_code == 403
     assert resp.get_json()["code"] == "VERIFY_REQUIRED"
     assert resp.get_json()["verify_url"].startswith("/verify?next=")

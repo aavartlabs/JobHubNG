@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import Database from "better-sqlite3";
 import { createAdminHandler } from "../src/admin.js";
+import { createTelegramStore } from "../src/telegram.js";
 
 const KEY = "admin-test-key";
 
 // Same DDL Better Auth's own migrate produced on the real deployment (user, session,
 // account, verification) -- copied from pi09's auth.db, not hand-invented.
 const SCHEMA = `
-CREATE TABLE "user" ("id" text not null primary key, "name" text not null, "email" text not null unique, "emailVerified" integer not null, "image" text, "createdAt" date not null, "updatedAt" date not null, "phoneNumber" text unique, "phoneNumberVerified" integer);
+CREATE TABLE "user" ("id" text not null primary key, "name" text not null, "email" text not null unique, "emailVerified" integer not null, "image" text, "createdAt" date not null, "updatedAt" date not null, "phoneNumber" text unique, "phoneNumberVerified" integer, "telegramChatId" text, "telegramUsername" text, "telegramVerified" integer);
 CREATE TABLE "session" ("id" text not null primary key, "expiresAt" date not null, "token" text not null unique, "createdAt" date not null, "updatedAt" date not null, "ipAddress" text, "userAgent" text, "userId" text not null references "user" ("id") on delete cascade);
 CREATE TABLE "account" ("id" text not null primary key, "accountId" text not null, "providerId" text not null, "userId" text not null references "user" ("id") on delete cascade, "accessToken" text, "refreshToken" text, "idToken" text, "accessTokenExpiresAt" date, "refreshTokenExpiresAt" date, "scope" text, "password" text, "createdAt" date not null, "updatedAt" date not null);
 CREATE TABLE "verification" ("id" text not null primary key, "identifier" text not null, "value" text not null, "expiresAt" date not null, "createdAt" date not null, "updatedAt" date not null);
@@ -23,11 +24,13 @@ function seededDb() {
   const db = new Database(":memory:");
   db.exec(SCHEMA);
   const addUser = db.prepare(
-    `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, phoneNumber, phoneNumberVerified)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, telegramChatId, telegramUsername, telegramVerified)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  addUser.run("u1", "Ada", "ada@example.com", 1, NOW, NOW, "+15550000001", 1);
-  addUser.run("u2", "Bob", "bob@example.com", 0, NOW, NOW, null, null);
+  addUser.run("u1", "Ada", "ada@example.com", 1, NOW, NOW, "4242", "ada", 1);
+  addUser.run("u2", "Bob", "bob@example.com", 0, NOW, NOW, null, null, null);
+  // Creates telegram_verification, as auth.js does at startup; a pending link for Bob.
+  createTelegramStore({ db, botUsername: "JobsBot" }).createLink("u2");
   const addSession = db.prepare(
     `INSERT INTO "session" (id, expiresAt, token, createdAt, updatedAt, userId) VALUES (?, ?, ?, ?, ?, ?)`,
   );
@@ -105,8 +108,9 @@ test("lists users with booleans and a live-session count", async () => {
         name: "Ada",
         email: "ada@example.com",
         emailVerified: true,
-        phoneNumber: "+15550000001",
-        phoneNumberVerified: true,
+        telegramChatId: "4242",
+        telegramUsername: "ada",
+        telegramVerified: true,
         activeSessions: 1,
         createdAt: undefined,
         updatedAt: undefined,
@@ -114,7 +118,7 @@ test("lists users with booleans and a live-session count", async () => {
     );
     const bob = users.find((u) => u.id === "u2");
     assert.equal(bob.emailVerified, false);
-    assert.equal(bob.phoneNumberVerified, false);
+    assert.equal(bob.telegramVerified, false);
   });
 });
 
@@ -122,42 +126,38 @@ test("updates only the provided fields", async () => {
   const db = seededDb();
   await withServer(db, async (base) => {
     const res = await call(base, "PATCH", "/internal/admin/users/u2", {
-      body: { name: "Robert", phoneNumber: "+15550000002", phoneNumberVerified: true },
+      body: { name: "Robert", emailVerified: true },
     });
     assert.equal(res.status, 200);
     const row = db.prepare(`SELECT * FROM "user" WHERE id = 'u2'`).get();
     assert.equal(row.name, "Robert");
     assert.equal(row.email, "bob@example.com");
-    assert.equal(row.phoneNumber, "+15550000002");
-    assert.equal(row.phoneNumberVerified, 1);
-    assert.equal(row.emailVerified, 0);
+    assert.equal(row.emailVerified, 1);
     assert.notEqual(row.updatedAt, NOW);
   });
 });
 
-test("an empty phone number clears it", async () => {
+test("telegramVerified:false unlinks Telegram; it can't be set true", async () => {
   const db = seededDb();
   await withServer(db, async (base) => {
-    await call(base, "PATCH", "/internal/admin/users/u1", { body: { phoneNumber: "" } });
-    assert.equal(db.prepare(`SELECT phoneNumber FROM "user" WHERE id = 'u1'`).get().phoneNumber, null);
+    assert.equal((await call(base, "PATCH", "/internal/admin/users/u1", { body: { telegramVerified: false } })).status, 200);
+    const row = db.prepare(`SELECT * FROM "user" WHERE id = 'u1'`).get();
+    assert.deepEqual([row.telegramChatId, row.telegramUsername, row.telegramVerified], [null, null, 0]);
+    assert.equal((await call(base, "PATCH", "/internal/admin/users/u2", { body: { telegramVerified: true } })).status, 400);
   });
 });
 
 test("rejects invalid field values with 400", async () => {
   await withServer(seededDb(), async (base) => {
-    for (const body of [{ email: "not-an-email" }, { name: "" }, { phoneNumber: "12ab" }, { phoneNumber: "+019902065845" }, { phoneNumber: "9902065845" }, { emailVerified: "yes" }, {}]) {
+    for (const body of [{ email: "not-an-email" }, { name: "" }, { emailVerified: "yes" }, { phoneNumber: "+15550000002" }, {}]) {
       assert.equal((await call(base, "PATCH", "/internal/admin/users/u1", { body })).status, 400, JSON.stringify(body));
     }
   });
 });
 
-test("a duplicate email or phone is a 409, not a 500", async () => {
+test("a duplicate email is a 409, not a 500", async () => {
   await withServer(seededDb(), async (base) => {
     assert.equal((await call(base, "PATCH", "/internal/admin/users/u2", { body: { email: "ada@example.com" } })).status, 409);
-    assert.equal(
-      (await call(base, "PATCH", "/internal/admin/users/u2", { body: { phoneNumber: "+15550000001" } })).status,
-      409,
-    );
   });
 });
 
@@ -178,6 +178,7 @@ test("delete removes the user, its sessions, accounts and pending codes", async 
     assert.equal(db.prepare(`SELECT count(*) AS n FROM "session" WHERE userId = 'u2'`).get().n, 0);
     assert.equal(db.prepare(`SELECT count(*) AS n FROM "account" WHERE userId = 'u2'`).get().n, 0);
     assert.equal(db.prepare(`SELECT count(*) AS n FROM "verification" WHERE id = 'v1'`).get().n, 0);
+    assert.equal(db.prepare(`SELECT count(*) AS n FROM telegram_verification WHERE user_id = 'u2'`).get().n, 0);
     // Someone else's pending code is untouched.
     assert.equal(db.prepare(`SELECT count(*) AS n FROM "verification" WHERE id = 'v2'`).get().n, 1);
     assert.equal(db.prepare(`SELECT count(*) AS n FROM "user"`).get().n, 1);

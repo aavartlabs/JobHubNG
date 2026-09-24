@@ -2,23 +2,26 @@
 
 A small Node service (no framework, just `node:http`) that wraps
 [Better Auth](https://www.better-auth.com) to provide real self-service
-accounts -- email + password, with both email and mobile verified via OTP --
-for JobHubNG. This replaces the single shared demo login. It's a sibling of
-`poc/whatsapp-sender/`, not part of the Flask app: Better Auth is
+accounts -- email + password, with the email verified via OTP and Telegram
+linked by a code the bot sends -- for JobHubNG. This replaces the single shared
+demo login. It's a sibling of `poc/telegram-gateway/`, not part of the Flask app: Better Auth is
 TypeScript-only, so this had to be its own Node service, called over HTTP by
 the Flask app (a separate task) rather than embedded.
 
 Own SQLite database (`auth.db`), separate from the Flask app's `jobhub.db`.
-Own user table with `phoneNumber`/`phoneNumberVerified` columns (added by
-Better Auth's `phoneNumber` plugin); the Flask app's own user/session
-concepts are untouched by this service.
+Own user table with `telegramChatId`/`telegramUsername`/`telegramVerified`
+columns (added by this service's own Better Auth plugin, `src/telegram.js`).
+Databases from before 2026-09-24 also still have `phoneNumber` /
+`phoneNumberVerified` from the removed `phoneNumber` plugin (WhatsApp OTP);
+nothing reads them. The Flask app's own user/session concepts are untouched
+by this service.
 
-## Where "both email *and* phone must be verified" is enforced
+## Where "email verified *and* Telegram linked" is enforced
 
 **Not here.** This service will happily issue a session to a user who has
 verified neither. The single enforcement point is the Flask app's
 `login_required` (`poc/jobhub_poc/webapp/auth.py`), which checks
-`emailVerified` **and** `phoneNumberVerified` on the `get-session` response
+`emailVerified` **and** `telegramVerified` on the `get-session` response
 of every gated request and redirects to `/verify` if either is false --
 regardless of session state, so there is no window it misses.
 
@@ -42,11 +45,11 @@ own equivalent check.
 
 `src/auth.js` sets `rateLimit.enabled: true` explicitly rather than relying
 on Better Auth's default (`enabled: isProduction`), because these endpoints
-send real WhatsApp messages and real emails to unauthenticated,
-caller-supplied recipients -- "on unless NODE_ENV says otherwise" is not a
-safe default to inherit. Limits are per (client IP, path) over a rolling
-window: 5/60s on each of the two OTP-*send* endpoints, 10/60s on the verify
-endpoints and sign-in, 5/60s on sign-up, and a deliberately generous 120/60s
+send real emails to unauthenticated, caller-supplied recipients -- "on
+unless NODE_ENV says otherwise" is not a safe default to inherit. Limits are
+per (client IP, path) over a rolling window: 5/60s on the email OTP *send*
+endpoint and on `/telegram/link`, 10/60s on the verify endpoints and
+sign-in, 5/60s on sign-up, and a deliberately generous 120/60s
 global fallback (`/get-session` is hit once per gated Flask request, so a
 tight global limit would throttle ordinary logged-in browsing rather than
 abuse).
@@ -65,8 +68,7 @@ Auth's.
 
 - `GET /health` -> `{"ready": true}`
 - `POST /auth/sign-up/email` `{email, password, name, ...}` -> `200` with a
-  session cookie set and `{token, user}` in the body. **Don't pass
-  `phoneNumber` here** -- see the "phone verification" note below.
+  session cookie set and `{token, user}` in the body.
 - `POST /auth/sign-in/email` `{email, password}` -> `200` with a session
   cookie, whether or not the user is verified (see above -- Flask, not this
   service, is the verification gate).
@@ -79,41 +81,33 @@ Auth's.
   `src/email.js`'s `sendEmailOTP`.
 - `POST /auth/email-otp/verify-email` `{email, otp}` -> `200` with the
   updated user (`emailVerified: true`) on success.
-- `POST /auth/phone-number/send-otp` `{phoneNumber}` -> `200 {"message":
-  "code sent"}`. Triggers `src/phone.js`'s `sendPhoneOTP`. **This does not
-  write `phoneNumber` to the user's row** -- it only stores a verification
-  record keyed by the number itself. So `get-session` still reports
-  `phoneNumber: null` afterwards, and the caller must remember the number it
-  sent a code to in order to verify it (the web app does this in
-  `sessionStorage` plus an editable field on `/verify`; see
-  `poc/jobhub_poc/webapp/frontend/src/pending_phone.ts`).
-- `POST /auth/phone-number/verify` `{phoneNumber, code, updatePhoneNumber:
-  true}` -> `200` with the updated user (`phoneNumberVerified: true`) on
-  success. **`updatePhoneNumber: true` and an active (cookie-bearing)
-  session are both required** -- see below.
+- `POST /auth/telegram/link` (session) -> `200 {"url":
+  "https://t.me/<bot>?start=<token>"}`, a one-time link valid 15 minutes;
+  only the newest one works. `TELEGRAM_BOT_USERNAME` names the bot.
+- `POST /auth/telegram/verify` (session) `{code}` -> `200 {"status": true}`
+  and the user's `telegramChatId`/`telegramUsername`/`telegramVerified` set;
+  `400` with `code` `INVALID_CODE`, `CODE_EXPIRED`, `TOO_MANY_ATTEMPTS` (5) or
+  `TELEGRAM_IN_USE` (that chat already belongs to another account).
+- `POST /internal/telegram/start` -- **not** under `/auth/*`, so Flask's
+  proxy can't reach it; only `telegram-gateway` calls it, with header
+  `x-telegram-internal-key` = `TELEGRAM_INTERNAL_API_KEY`. `{token, chatId,
+  username}` -> `200 {"reply": "..."}`: the text the bot sends back -- a
+  6-digit code (10 minutes) bound to the link's user and that chat, or "that
+  link expired". The code has to be typed back into the site under the same
+  session, so forwarding someone a link can't attach their Telegram to your
+  account.
 
 The full session cookie name and `get-session` shape actually observed
 during this task's manual verification are in the task report, not
 duplicated here since they depend on `advanced.cookiePrefix` in
 `src/auth.js`, which is the source of truth if it ever changes.
 
-### Phone verification only works if `phoneNumber` was *not* set at sign-up
-
-`POST /auth/phone-number/verify` with `updatePhoneNumber: true` refuses to
-attach a phone number that "already exists" on *any* user -- including the
-current session's own user. If `phoneNumber` was already passed at
-`/sign-up/email` time (Better Auth accepts it there, since the plugin adds
-it as an unverified additional field), verification for that same number
-will always fail with `400 PHONE_NUMBER_EXIST`, confirmed while testing this
-service. Collect the phone number as a separate step after sign-up, then
-verify it with `send-otp` + `verify`.
-
 ### Cookie-bearing `POST` requests need a matching `Origin` header
 
 Better Auth's CSRF protection requires a valid `Origin` (or `Referer`)
 header, checked against `TRUSTED_ORIGINS`, on any `POST` request that
 carries the session cookie (confirmed for `/sign-out` and
-`/phone-number/verify` during this task's manual verification; `GET`
+`/telegram/verify`; `GET`
 requests and cookie-less `POST`s like `/sign-up/email` are exempt). Browsers
 send `Origin` automatically; a server-to-server caller (e.g. the Flask app)
 must set it explicitly to a value listed in `TRUSTED_ORIGINS`, or these
@@ -137,17 +131,13 @@ both names.
 ## Awaiting OTP sends is intentional
 
 Better Auth's own docs recommend firing OTP emails without awaiting them, to
-avoid timing attacks that could reveal whether an email/phone number is
-registered. `src/email.js`'s `sendEmailOTP` and `src/phone.js`'s
-`sendPhoneOTP` deliberately do the opposite -- they await the send and throw
-on failure. This project has a demonstrated real OTP-delivery failure mode
-on the sibling WhatsApp gateway (see `tasks_all.md`'s T8): a failed send
-must surface as a clear error, not a silent stuck state. Note that Better
-Auth's own `email-otp` plugin still swallows (logs, doesn't propagate) a
-thrown error from `send-verification-otp`'s HTTP response either way (its
-`runInBackgroundOrAwait` always catches); the `phone-number` plugin's
-`send-otp` does propagate a thrown error as an HTTP failure. See the task
-report for the exact behavior confirmed for each.
+avoid timing attacks that could reveal whether an email is registered.
+`src/email.js`'s `sendEmailOTP` deliberately does the opposite -- it awaits
+the send and throws on failure, so a failed send is a clear error, not a
+silent stuck state. Note that Better Auth's own `email-otp` plugin still
+swallows (logs, doesn't propagate) a thrown error from
+`send-verification-otp`'s HTTP response either way (its
+`runInBackgroundOrAwait` always catches).
 
 ## One-time setup: Resend domain verification
 
@@ -163,14 +153,14 @@ local dev and automated tests never make a real Resend call (see below).
 
 ```bash
 npm install
-npm test          # unit tests -- mocked Resend client, a local http stub standing in for whatsapp-sender; no real network sends
+npm test          # unit tests -- mocked Resend client, Telegram linking against in-memory SQLite; no real network sends
 npm start          # boots the real service on $PORT (default 3200)
 ```
 
-`npm test` never sends a real email or WhatsApp message: `test/email.test.js`
+`npm test` never sends a real email or Telegram message: `test/email.test.js`
 injects a fake Resend client via `createEmailOTPSender`, and
-`test/phone.test.js` points `createPhoneOTPSender` at a local
-`http.createServer` stub standing in for `whatsapp-sender`'s `/send`.
+`test/telegram.test.js` drives the linking store and the internal endpoint
+against an in-memory SQLite database.
 
 Before `npm start` will work against a fresh `AUTH_DB_PATH`, apply Better
 Auth's schema migrations once:

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 JobHubNG is a job intelligence pipeline: it scrapes jobs from an external service
 (EverJobs), stores them in SQLite, serves them through a small public web app, and
-sends WhatsApp alerts when new jobs match a saved subscription. It is deployed at
+sends Telegram (and email) alerts when new jobs match a saved subscription. It is deployed at
 `jobshub.aavartlabs.com` via a Cloudflare Tunnel, as **JobsHub** (renamed 2026-09-24 from
 "JobHub POC" on `jobhubs.aavartlabs.com`; that old hostname is still routed by the tunnel
 and 301/308-redirected by the app to the same path on the new one, via `LEGACY_HOSTS`).
@@ -14,7 +14,7 @@ and 301/308-redirected by the app to the same path on the new one, via `LEGACY_H
 **This repo contains two generations of the project. Only one is live.**
 
 1. **`poc/` — the current, live system.** A minimal Python pipeline (scraper → SQLite →
-   Flask+TS web app → WhatsApp alerts), built 2026-09-16/17 as a 3-day pivot. This is what
+   Flask+TS web app → Telegram/email alerts), built 2026-09-16/17 as a 3-day pivot. This is what
    actually runs in production and what most work in this repo should target.
 2. **`apps/` — the original, now-retired stack.** Spring Boot 3.3 + Next.js 16 +
    Postgres/pgvector + Ollama. It was scrapped as the active runtime surface because it was
@@ -39,8 +39,9 @@ pi05: scraper/ + warehouse.db                 pi09: jobhub_poc/  (Docker contain
 
 https://jobshub.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:3000)--> pi09
                                                                     |
-                                                     pi09: jobhub-whatsapp container
-                                                       (baileys WhatsApp Web session)
+                  pi09 containers: jobhub-auth (Better Auth), jobhub-telegram (bot gateway;
+                  Telegram's webhook arrives via web's /telegram/webhook), jobhub-whatsapp
+                  (baileys session, admin fallback only)
 ```
 
 **Two data tiers (Stage 2, 2026-09-23).** All tunables live in `poc/config/pipeline.ini`
@@ -95,13 +96,15 @@ remain only for the rollback path.
 - **Alerts (v2, 2026-09-23)**: an alert is its owner's filters — JSON lists `titles`,
   `locations`, `companies`, `keywords` (OR within a list, AND across; whole-word, with
   location aliases like Bangalore/Bengaluru, `alerts/rules.py`) plus `work_mode` — and which
-  of the owner's **own verified contacts** get it (`notify_email`/`notify_whatsapp`). No
-  phone number is stored per alert: `alerts/contacts.py` reads email/mobile from
-  auth-service's `/internal/admin/users` at send time (the host reaches it on
+  of the owner's **own verified contacts** get it (`notify_email`/`notify_telegram`; was
+  `notify_whatsapp` until 2026-09-24, `db._migrate_alerts_telegram` rebuilt the tables and
+  kept WhatsApp rows in `alerts_sent` as history). No address is stored per alert:
+  `alerts/contacts.py` reads email / Telegram chat id from auth-service's
+  `/internal/admin/users` at send time (the host reaches it on
   `127.0.0.1:3200`, published loopback-only by compose). `run_alerts` groups new-job matches
   per alert and `alerts/delivery.py` sends **one digest per alert per channel per run**
   (`alerts/digest.py`, ≤10 jobs linking to `/jobs?job=<id>` + "N more") via
-  `alerts/senders.py` (WhatsApp gateway, or Resend email with `RESEND_FROM_EMAIL`).
+  `alerts/senders.py` (the Telegram gateway, or Resend email with `RESEND_FROM_EMAIL`).
   `alerts_sent` has `UNIQUE(subscription_id, job_id, channel)` and records SENT / FAILED /
   SKIPPED (unverified channel), so re-runs never resend; alerts of deleted users are
   deactivated. "New" means inserted into jobhub.db **and** first seen by the warehouse after
@@ -109,7 +112,21 @@ remain only for the rollback path.
   titles/keywords are shipped to pi05 each run (`alerts/alert_terms.py`) and widen the
   export; a changed term set triggers a full warehouse re-scan. `NOTIFIER_BACKEND=console`
   prints digests instead of sending (dry run); `live` (or legacy `whatsapp`) sends.
-- **WhatsApp gateway (`poc/whatsapp-sender/`)**: a separate, hand-rolled Node service (no
+- **Telegram gateway (`poc/telegram-gateway/`, container `jobhub-telegram`, since
+  2026-09-24)**: the only holder of the bot token (@AavartJobsAlert_bot); no npm deps. Out:
+  `POST /send` (`x-api-key` = `TELEGRAM_GATEWAY_API_KEY`; `410 blocked` if the user blocked
+  the bot); host CLIs reach it on `127.0.0.1:3300`. In: Telegram posts to
+  `https://<site>/telegram/webhook` (`webapp/telegram_webhook.py`, a passthrough) → gateway
+  `POST /webhook`, which checks `TELEGRAM_WEBHOOK_SECRET` and re-registers the webhook on
+  every boot — so `getUpdates` no longer works for this bot. **Extension point for anything
+  users send the bot:** `src/router.js` normalises updates (command / text / inline-button
+  callback `"<action>:<arg>"`), `src/handlers.js` registers what they do. Today `/start
+  <token>` asks auth-service for the reply (a linking code); anything else gets help with
+  the user's chat id.
+- **WhatsApp gateway (`poc/whatsapp-sender/`)**: now only the admin-message fallback
+  (`admin_notify.py`) — user alerts and signup moved to Telegram on 2026-09-24 because the
+  baileys session kept desyncing (Bad MAC / "Waiting for this message", stream 503s). A
+  separate, hand-rolled Node service (no
   framework) holding a `baileys` (pinned `6.7.24`, not `7.0.0-rc*`) WhatsApp Web session.
   Exposes `GET /health` and `POST /send` (header `x-api-key`). Requires a one-time,
   un-scriptable QR-code pairing with a real phone (see `poc/whatsapp-sender/README.md`) —
@@ -140,7 +157,10 @@ cd ../whatsapp-sender
 npm install && npm test                    # pure-logic tests only, no live WhatsApp needed
 
 cd ../auth-service
-npm install && npm test                    # mocked Resend + a local stub for whatsapp-sender
+npm install && npm test                    # mocked Resend; Telegram linking against in-memory SQLite
+
+cd ../telegram-gateway
+npm test                                   # no deps; fake Bot API and fake auth-service
 
 cd ../jobhub_poc/webapp/frontend
 npm install && npm test                    # pure-logic TS helpers only (node --test, no DOM)
@@ -178,8 +198,8 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
   `poc/config/pipeline.ini` into `~/jobhub-poc/` on pi05.
 - **pi09**: runs the loader/purge/alerts CLIs directly via a Python venv against
   `~/jobhub-poc/data/jobhub.db`, plus Docker containers from `poc/docker-compose.yml`:
-  `jobhub-web` (the Flask app), `jobhub-auth` (Better Auth), and `jobhub-whatsapp` (the
-  gateway), all `restart: unless-stopped`. `jobhub-cloudflare-tunnel` also runs there but
+  `jobhub-web` (the Flask app), `jobhub-auth` (Better Auth), `jobhub-telegram` (the
+  Telegram gateway) and `jobhub-whatsapp` (admin fallback), all `restart: unless-stopped`. `jobhub-cloudflare-tunnel` also runs there but
   is not defined in this repo. `~/jobhub-poc` on pi09 is **not a git checkout** — deploys are
   an rsync of `poc/` (excluding `.env`, `data/`, `dumps/`, `.venv/`, `whatsapp-sender/auth_info/`,
   `auth-service/data/`) followed by `docker compose build && docker compose up -d`. The
@@ -256,18 +276,32 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - `WEB_ORIGIN` — this deployment's **public** origin. Compose passes it straight through to
   `auth-service` as both `BETTER_AUTH_URL` and `TRUSTED_ORIGINS` and refuses to start if
   it's unset, so it is the single place the public origin is configured. `poc/auth-service/.env`
-  has its own set (`BETTER_AUTH_SECRET`, `RESEND_*`, `WHATSAPP_GATEWAY_*`) — read that
+  has its own set (`BETTER_AUTH_SECRET`, `RESEND_*`) — read that
   file's comments, several of its defaults are correct only for non-Docker local dev
-- `NOTIFIER_BACKEND` (`console` | `live`; `whatsapp` is a legacy alias for `live`) / `WHATSAPP_GATEWAY_URL` /
-  `WHATSAPP_GATEWAY_API_KEY` — alert delivery backend
+- `NOTIFIER_BACKEND` (`console` | `live`; `whatsapp` is a legacy alias for `live`) — alert
+  delivery backend
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_GATEWAY_URL` (host:
+  `http://127.0.0.1:3300`; compose overrides it for web), `TELEGRAM_GATEWAY_API_KEY`,
+  `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_INTERNAL_API_KEY` — all in `poc/.env`; compose hands
+  each container only the ones it needs (the gateway has no `env_file`)
+- `WHATSAPP_GATEWAY_URL` / `WHATSAPP_GATEWAY_API_KEY` / `ADMIN_ALERT_WHATSAPP` — admin
+  fallback only
 
 ## Accounts (`poc` web app)
 
 Real self-service accounts, live since 2026-09-23. Identity lives in `poc/auth-service/`, a
 second container (`jobhub-auth`) running Better Auth over its own `auth.db`; Flask
 reverse-proxies `/auth/*` to it and issues no site-user session of its own. Signup is
-email + password + mobile, with both the email (Resend) and the mobile (the existing
-`whatsapp-sender` gateway) verified by OTP before the account can do anything. `/jobs` and
+email + password, then the email verified by a Resend OTP and **Telegram linked** before
+the account can do anything (since 2026-09-24; it was a WhatsApp mobile OTP before, and
+accounts verified that way are sent to /verify once to link Telegram). Linking
+(`auth-service/src/telegram.js`): signed in, `POST /auth/telegram/link` gives a one-time
+`t.me/<bot>?start=<token>`; pressing Start makes the gateway call auth-service's
+`/internal/telegram/start` (key `TELEGRAM_INTERNAL_API_KEY`), which replies with a 6-digit
+code bound to that user and chat; `POST /auth/telegram/verify {code}` sets
+`telegramChatId`/`telegramUsername`/`telegramVerified` (Better Auth plugin fields, `input:
+false`). The code must come back through the site session, so a forwarded link can't
+attach someone else's Telegram; one chat links to one account. `/jobs` and
 `/api/jobs` are public; `/alerts/*` requires a fully verified account and is scoped to
 `alert_subscriptions.owner_auth_user_id`.
 

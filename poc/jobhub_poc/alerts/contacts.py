@@ -1,6 +1,6 @@
-"""Where each alert owner's digests go: their account's email and mobile, and whether
-each is verified. Read once per pipeline run from auth-service -- alerts no longer store
-a phone number of their own, so an edited or re-verified contact takes effect at once.
+"""Where each alert owner's digests go: their account's email and linked Telegram chat,
+and whether each is verified. Read once per pipeline run from auth-service -- alerts
+store no address of their own, so an edited or re-linked contact takes effect at once.
 """
 from dataclasses import dataclass
 
@@ -11,8 +11,8 @@ from jobhub_poc import auth_admin_client
 class Contact:
     email: str | None
     email_verified: bool
-    phone: str | None
-    phone_verified: bool
+    telegram_chat_id: str | None
+    telegram_verified: bool
 
 
 def load_contacts():
@@ -23,8 +23,8 @@ def load_contacts():
         u["id"]: Contact(
             email=u.get("email"),
             email_verified=bool(u.get("emailVerified")),
-            phone=u.get("phoneNumber"),
-            phone_verified=bool(u.get("phoneNumberVerified")),
+            telegram_chat_id=u.get("telegramChatId"),
+            telegram_verified=bool(u.get("telegramVerified")),
         )
         for u in users
     }

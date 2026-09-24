@@ -104,9 +104,10 @@ def access_state():
     user = getattr(g, "current_user", None)
     if user is None:
         return "anonymous"
-    # phoneNumberVerified is `null` (not `false`) before phone verification --
-    # Python's `and` already treats None as falsy here, no special-casing needed.
-    if not (user.get("emailVerified") and user.get("phoneNumberVerified")):
+    # telegramVerified is `null` (not `false`) until Telegram is linked -- Python's
+    # `and` already treats None as falsy here. Accounts verified by WhatsApp before the
+    # 2026-09-24 switch have no Telegram yet, so they land on /verify once to link it.
+    if not (user.get("emailVerified") and user.get("telegramVerified")):
         return "unverified"
     return "verified"
 
@@ -139,13 +140,13 @@ def login():
 
 @bp.route("/register")
 def register():
-    """Thin shell -- sign-up + both OTP sends happen client-side, see auth.ts."""
+    """Thin shell -- sign-up and the email-code send happen client-side, see auth.ts."""
     return render_template("register.html")
 
 
 @bp.route("/verify")
 def verify():
-    """Thin shell -- both OTP verify calls (and the email resend affordance) happen
+    """Thin shell -- the email code, the Telegram link and its code all happen
     client-side, see auth.ts."""
     return render_template("verify.html")
 

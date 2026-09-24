@@ -41,21 +41,22 @@ CREATE TABLE IF NOT EXISTS alert_subscriptions (
     keywords            TEXT NOT NULL DEFAULT '[]',
     work_mode           TEXT CHECK (work_mode IN ('remote', 'onsite')),
     notify_email        INTEGER NOT NULL DEFAULT 0,
-    notify_whatsapp     INTEGER NOT NULL DEFAULT 0,
+    notify_telegram     INTEGER NOT NULL DEFAULT 0,
     is_active           INTEGER NOT NULL DEFAULT 1,
     created_at          TEXT NOT NULL,
-    CHECK (notify_email + notify_whatsapp >= 1)
+    CHECK (notify_email + notify_telegram >= 1)
 );
 CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_owner ON alert_subscriptions(owner_auth_user_id);
 
 -- One row per (alert, job, channel) ever considered: SENT, FAILED, or SKIPPED (e.g. the
 -- owner's contact for that channel isn't verified). The UNIQUE constraint is what makes a
--- re-run never re-send. Jobs from one digest share its message and sent_at.
+-- re-run never re-send. Jobs from one digest share its message and sent_at. 'whatsapp'
+-- rows are history from before alerts moved to Telegram (2026-09-24).
 CREATE TABLE IF NOT EXISTS alerts_sent (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     subscription_id   INTEGER NOT NULL REFERENCES alert_subscriptions(id),
     job_id            INTEGER NOT NULL REFERENCES jobs(id),
-    channel           TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp')),
+    channel           TEXT NOT NULL CHECK (channel IN ('email', 'telegram', 'whatsapp')),
     notifier_backend  TEXT NOT NULL,
     message           TEXT NOT NULL,
     sent_at           TEXT NOT NULL,

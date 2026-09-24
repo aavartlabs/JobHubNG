@@ -1,6 +1,6 @@
 /* One fresh Cloudflare Turnstile token per protected /auth/* call. Tokens are
-   single-use and each is bound to an action (signup, login, send_email_otp,
-   send_phone_otp) that auth_proxy.py checks server-side, so a widget is rendered per
+   single-use and each is bound to an action (signup, login, send_email_otp) that
+   auth_proxy.py checks server-side, so a widget is rendered per
    request and removed once it has produced its token. "interaction-only" keeps it
    invisible unless Cloudflare actually wants the visitor to click something.
 

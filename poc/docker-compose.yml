@@ -16,9 +16,11 @@ services:
       # publishes no host port. Port 3200 matches auth-service's own PORT default
       # (src/server.js / .env.example), not an arbitrary choice.
       AUTH_SERVICE_URL: http://auth-service:3200
-      # The shared .env's WHATSAPP_GATEWAY_URL is localhost, right for the alert CLIs on
-      # the host but not inside this container (admin sign-in codes are sent from here).
+      # The shared .env's gateway URLs are localhost, right for the alert CLIs on the host
+      # but not inside this container (admin sign-in codes are sent from here, and
+      # /telegram/webhook forwards to the Telegram gateway).
       WHATSAPP_GATEWAY_URL: http://whatsapp:3100
+      TELEGRAM_GATEWAY_URL: http://telegram:3300
     volumes:
       - ./data:/app/data
     ports:
@@ -37,12 +39,11 @@ services:
       # survive a container recreate). Must stay under /app/data to actually land on the
       # mounted volume.
       AUTH_DB_PATH: /app/data/auth.db
-      # Same reason: auth-service/.env.example's localhost:3100 default is correct for
-      # plain local dev but resolves to the auth-service container itself in here. The
-      # whatsapp service below is reached by its compose service name over the jobhub
-      # network. Set here rather than left to whoever fills in the real .env, because
-      # getting it wrong fails only at the first real OTP send.
-      WHATSAPP_GATEWAY_URL: http://whatsapp:3100
+      # Telegram account linking (src/telegram.js): the bot's @username for the
+      # t.me/<bot>?start=<token> links, and the key telegram-gateway presents on
+      # /internal/telegram/start. Both from poc/.env.
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:?set TELEGRAM_BOT_USERNAME in poc/.env (the bot's @username, without the @)}
+      TELEGRAM_INTERNAL_API_KEY: ${TELEGRAM_INTERNAL_API_KEY:?set TELEGRAM_INTERNAL_API_KEY in poc/.env (openssl rand -hex 32)}
       # Both of these must be the PUBLIC origin the browser (and Flask) talk to -- not
       # this service's internal address, which is what auth-service/.env.example's
       # standalone-dev defaults use. WEB_ORIGIN comes from poc/.env (the same value
@@ -64,6 +65,28 @@ services:
     # ever reach this service via web's /auth/* proxy.
     ports:
       - "127.0.0.1:3200:3200"
+    networks:
+      - jobhub
+    restart: unless-stopped
+
+  # The only holder of the bot token (poc/telegram-gateway). No env_file on purpose: it
+  # gets exactly these values from poc/.env, nothing else from it.
+  telegram:
+    build: ./telegram-gateway
+    container_name: jobhub-telegram
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in poc/.env (from @BotFather)}
+      TELEGRAM_GATEWAY_API_KEY: ${TELEGRAM_GATEWAY_API_KEY:?set TELEGRAM_GATEWAY_API_KEY in poc/.env (openssl rand -hex 32)}
+      # Telegram posts updates to web's /telegram/webhook, which forwards them here.
+      TELEGRAM_WEBHOOK_URL: ${WEB_ORIGIN:?set WEB_ORIGIN in poc/.env}/telegram/webhook
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:?set TELEGRAM_WEBHOOK_SECRET in poc/.env (openssl rand -hex 32)}
+      AUTH_SERVICE_URL: http://auth-service:3200
+      TELEGRAM_INTERNAL_API_KEY: ${TELEGRAM_INTERNAL_API_KEY:?set TELEGRAM_INTERNAL_API_KEY in poc/.env}
+      SITE_URL: ${WEB_ORIGIN}
+    # Loopback only, like auth-service: the alert CLIs on pi09's host send digests and
+    # admin messages through this port.
+    ports:
+      - "127.0.0.1:3300:3300"
     networks:
       - jobhub
     restart: unless-stopped

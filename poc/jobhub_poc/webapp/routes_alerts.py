@@ -1,6 +1,7 @@
 """Job alerts v2: filters (titles, locations, companies, keywords, work mode) plus which
-of the owner's own verified contacts get the digest. No phone number is ever typed here:
-digests go to the account's email/mobile (alerts/contacts.py), looked up at send time."""
+of the owner's own verified contacts get the digest. No address is ever typed here:
+digests go to the account's email / linked Telegram (alerts/contacts.py), looked up at
+send time."""
 import json
 from datetime import datetime, timezone
 
@@ -46,11 +47,11 @@ def parse_alert_form(form):
     if not any(lists.values()) and not work_mode:
         raise InvalidAlert("Pick at least one job title, location, company, keyword or a work mode.")
     notify_email = form.get("notify_email") == "on"
-    notify_whatsapp = form.get("notify_whatsapp") == "on"
-    if not (notify_email or notify_whatsapp):
-        raise InvalidAlert("Choose email or WhatsApp (or both) for this alert.")
+    notify_telegram = form.get("notify_telegram") == "on"
+    if not (notify_email or notify_telegram):
+        raise InvalidAlert("Choose email or Telegram (or both) for this alert.")
     return {**{k: json.dumps(v) for k, v in lists.items()}, "work_mode": work_mode,
-            "notify_email": int(notify_email), "notify_whatsapp": int(notify_whatsapp)}
+            "notify_email": int(notify_email), "notify_telegram": int(notify_telegram)}
 
 
 def _mask_email(email):
@@ -58,14 +59,14 @@ def _mask_email(email):
     return f"{name[:2]}•••@{domain}" if domain else ""
 
 
-def _mask_phone(phone):
-    phone = phone or ""
-    return f"{phone[:3]}{'•' * max(len(phone) - 7, 0)}{phone[-4:]}" if len(phone) > 7 else phone
+def _telegram_label(user):
+    username = user.get("telegramUsername")
+    return f"@{username}" if username else "your linked account"
 
 
 def _form_context():
     user = g.current_user
-    return {"masked_email": _mask_email(user.get("email")), "masked_phone": _mask_phone(user.get("phoneNumber"))}
+    return {"masked_email": _mask_email(user.get("email")), "telegram_label": _telegram_label(user)}
 
 
 @bp.route("/alerts/register", methods=["GET", "POST"])
@@ -86,9 +87,9 @@ def register():
     conn = current_app.get_db()
     conn.execute(
         """INSERT INTO alert_subscriptions (owner_auth_user_id, titles, locations, companies, keywords,
-                                            work_mode, notify_email, notify_whatsapp, is_active, created_at)
+                                            work_mode, notify_email, notify_telegram, is_active, created_at)
            VALUES (:owner, :titles, :locations, :companies, :keywords, :work_mode, :notify_email,
-                   :notify_whatsapp, 1, :created_at)""",
+                   :notify_telegram, 1, :created_at)""",
         {**values, "owner": g.current_user["id"], "created_at": datetime.now(timezone.utc).isoformat()},
     )
     conn.commit()

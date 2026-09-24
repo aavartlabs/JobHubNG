@@ -10,7 +10,7 @@
       {% for alert in alerts %}{% set sub = alert.row %}
       <tr>
         <td>{{ alert.summary }}</td>
-        <td>{{ ["Email" if sub['notify_email'], "WhatsApp" if sub['notify_whatsapp']] | select | join(" + ") }}</td>
+        <td>{{ ["Email" if sub['notify_email'], "Telegram" if sub['notify_telegram']] | select | join(" + ") }}</td>
         <td>{{ 'Active' if sub['is_active'] else 'Paused' }}</td>
         <td class="actions">
           {% if sub['is_active'] %}

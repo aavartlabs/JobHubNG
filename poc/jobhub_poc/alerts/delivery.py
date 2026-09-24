@@ -3,7 +3,7 @@ per job in alerts_sent (SENT / FAILED / SKIPPED). Jobs already recorded for that
 channel are left out, so re-running a run never re-sends."""
 from datetime import datetime, timezone
 
-from jobhub_poc.alerts.digest import build_email, build_whatsapp
+from jobhub_poc.alerts.digest import build_email, build_telegram
 
 
 def _pending(conn, match, channel):
@@ -35,13 +35,13 @@ def deliver(conn, matches, contacts, sender, backend, origin):
             stats["deactivated"] += 1
             continue
 
-        channels = [c for c, wanted in (("email", match.notify_email), ("whatsapp", match.notify_whatsapp)) if wanted]
+        channels = [c for c, wanted in (("email", match.notify_email), ("telegram", match.notify_telegram)) if wanted]
         for channel in channels:
             jobs = _pending(conn, match, channel)
             if not jobs:
                 continue
             address, verified = ((contact.email, contact.email_verified) if channel == "email"
-                                 else (contact.phone, contact.phone_verified))
+                                 else (contact.telegram_chat_id, contact.telegram_verified))
             if not (address and verified):
                 _record(conn, match, jobs, channel, backend, f"{channel} not verified", "SKIPPED")
                 stats["skipped"] += 1
@@ -52,8 +52,8 @@ def deliver(conn, matches, contacts, sender, backend, origin):
                     sender.email(address, subject, text, html)
                     message = subject
                 else:
-                    message = build_whatsapp(match.rule, jobs, origin)
-                    sender.whatsapp(address, message)
+                    message = build_telegram(match.rule, jobs, origin)
+                    sender.telegram(address, message)
                 status = "SENT"
                 stats["digests_sent"] += 1
             except Exception as exc:  # noqa: BLE001 -- any failure is recorded, never fatal to the run

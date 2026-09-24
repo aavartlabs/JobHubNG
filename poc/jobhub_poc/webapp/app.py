@@ -6,7 +6,7 @@ from datetime import timedelta
 from flask import Flask, g, redirect, request, url_for
 
 from jobhub_poc import config, db
-from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs
+from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs, telegram_webhook
 
 
 def create_app(test_conn=None):
@@ -91,6 +91,7 @@ def create_app(test_conn=None):
     app.register_blueprint(routes_alerts.bp)
     app.register_blueprint(routes_api.bp)
     app.register_blueprint(admin.bp)
+    app.register_blueprint(telegram_webhook.bp)
 
     @app.route("/")
     def index():

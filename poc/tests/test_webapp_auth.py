@@ -9,16 +9,16 @@ GET_SESSION_URL = f"{config.AUTH_SERVICE_URL}/auth/get-session"
 SIGN_OUT_URL = f"{config.AUTH_SERVICE_URL}/auth/sign-out"
 
 
-def _user(email_verified=True, phone_verified=True, user_id="auth-user-1"):
+def _user(email_verified=True, telegram_verified=True, user_id="auth-user-1"):
     return {
         "id": user_id,
         "email": "seeker@example.com",
         "name": "Job Seeker",
         "emailVerified": email_verified,
-        # Better Auth's own default before phone verification is `null`, not `false` --
-        # exercised directly below rather than always using bool.
-        "phoneNumberVerified": phone_verified,
-        "phoneNumber": "+15551234567",
+        # `null`, not `false`, until Telegram is linked -- exercised directly below
+        # rather than always using bool.
+        "telegramVerified": telegram_verified,
+        "telegramChatId": "4242",
     }
 
 
@@ -59,11 +59,11 @@ def test_gated_route_with_unauthenticated_get_session_redirects_to_login(conn, r
     assert "/login" in resp.headers["Location"]
 
 
-def test_gated_route_with_unverified_phone_redirects_to_verify(conn, requests_mock):
-    """Test /alerts/register (gated route) with unverified phone redirects to /verify.
-    phoneNumberVerified is `null` before verification, not `false` -- confirm the
-    login_required `and` check treats that correctly."""
-    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _user(phone_verified=None)})
+def test_gated_route_without_telegram_redirects_to_verify(conn, requests_mock):
+    """Test /alerts/register (gated route) without a linked Telegram redirects to /verify.
+    telegramVerified is `null` until linked, not `false` -- confirm the login_required
+    `and` check treats that correctly."""
+    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": _user(telegram_verified=None)})
     _app, client = _app_and_client(conn)
     client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
     resp = client.get("/alerts/register")
@@ -200,3 +200,12 @@ def test_every_page_carries_the_jobshub_brand_and_favicons(conn):
     assert "/static/brand/mark-64.png" in html
     assert "/static/brand/favicon.ico" in html and "/static/brand/apple-touch-icon.png" in html
     assert "POC" not in html
+
+
+def test_whatsapp_verified_account_without_telegram_must_link_it(conn, requests_mock):
+    """Accounts verified by WhatsApp before the switch to Telegram go to /verify once."""
+    user = {**_user(telegram_verified=None), "phoneNumberVerified": True}
+    requests_mock.get(GET_SESSION_URL, json={"session": {}, "user": user})
+    _app, client = _app_and_client(conn)
+    client.set_cookie(SESSION_COOKIE_NAME, "fake-session-token")
+    assert "/verify" in client.get("/alerts").headers["Location"]

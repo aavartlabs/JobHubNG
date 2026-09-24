@@ -22,10 +22,14 @@ WHATSAPP_GATEWAY_API_KEY = os.environ.get("WHATSAPP_GATEWAY_API_KEY", "")
 # Where admin-only messages go -- ops alerts when a backup, restore drill or cold export
 # fails, and admin sign-in codes (admin_notify.py). Telegram first when set, WhatsApp as the
 # fallback. Admin only -- never a site user's chat or number.
-# TELEGRAM_BOT_TOKEN is the bot's token from @BotFather; ADMIN_TELEGRAM_CHAT_ID is the
-# admin's chat with that bot (scripts/telegram_chat_id.py prints it after they press Start).
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+# ADMIN_TELEGRAM_CHAT_ID is the admin's chat with the bot (the bot's reply to /start
+# shows it). Everything Telegram goes through poc/telegram-gateway/, which alone holds the
+# bot token.
 ADMIN_TELEGRAM_CHAT_ID = os.environ.get("ADMIN_TELEGRAM_CHAT_ID", "")
+# The shared .env's value is for the host (alert CLIs: http://127.0.0.1:3300); compose
+# overrides it for the web container.
+TELEGRAM_GATEWAY_URL = os.environ.get("TELEGRAM_GATEWAY_URL", "")
+TELEGRAM_GATEWAY_API_KEY = os.environ.get("TELEGRAM_GATEWAY_API_KEY", "")
 # The fallback admin number (E.164, e.g. +91...).
 ADMIN_ALERT_WHATSAPP = os.environ.get("ADMIN_ALERT_WHATSAPP", "")
 # Resend, for alert digests sent by email (alerts/senders.py). The same Resend account as

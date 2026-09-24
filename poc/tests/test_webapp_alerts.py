@@ -11,7 +11,7 @@ GET_SESSION_URL = f"{config.AUTH_SERVICE_URL}/auth/get-session"
 
 def _user(user_id="auth-user-1"):
     return {"id": user_id, "email": "seeker@example.com", "name": "Job Seeker", "emailVerified": True,
-            "phoneNumberVerified": True, "phoneNumber": "+919902065845"}
+            "telegramVerified": True, "telegramChatId": "4242", "telegramUsername": "seeker"}
 
 
 def _client(conn, requests_mock, user_id="auth-user-1"):
@@ -25,7 +25,7 @@ def _client(conn, requests_mock, user_id="auth-user-1"):
 
 def _form(**overrides):
     form = {"titles": "SRE, DevOps, sre", "locations": "Bangalore, Remote", "companies": "", "keywords": "",
-            "work_mode": "", "notify_email": "on", "notify_whatsapp": "on", "cf-turnstile-response": "good-token"}
+            "work_mode": "", "notify_email": "on", "notify_telegram": "on", "cf-turnstile-response": "good-token"}
     form.update(overrides)
     return form
 
@@ -34,11 +34,12 @@ def _subs(conn):
     return [dict(r) for r in conn.execute("SELECT * FROM alert_subscriptions ORDER BY id")]
 
 
-def test_register_form_has_no_phone_field_and_shows_masked_contacts(conn, requests_mock):
+def test_register_form_has_no_address_field_and_shows_the_contacts(conn, requests_mock):
     html = _client(conn, requests_mock).get("/alerts/register").get_data(as_text=True)
     assert 'name="phone_number"' not in html
-    assert "se•••@example.com" in html and "+91••••••5845" in html
-    for field in ("titles", "locations", "companies", "keywords", "work_mode", "notify_email", "notify_whatsapp"):
+    assert "se•••@example.com" in html and "@seeker" in html
+    assert "notify_whatsapp" not in html
+    for field in ("titles", "locations", "companies", "keywords", "work_mode", "notify_email", "notify_telegram"):
         assert f'name="{field}"' in html
 
 
@@ -49,13 +50,13 @@ def test_register_stores_normalised_multi_value_rule_and_channels(conn, requests
     assert sub["owner_auth_user_id"] == "auth-user-42"
     assert json.loads(sub["titles"]) == ["sre", "devops"]
     assert json.loads(sub["locations"]) == ["bangalore", "remote"]
-    assert (sub["work_mode"], sub["notify_email"], sub["notify_whatsapp"]) == ("remote", 1, 1)
+    assert (sub["work_mode"], sub["notify_email"], sub["notify_telegram"]) == ("remote", 1, 1)
     assert turnstile_calls[-1] == ("good-token", "alert_register")
 
 
 @pytest.mark.parametrize("overrides,message", [
     ({"titles": "", "locations": "", "work_mode": ""}, "at least one"),
-    ({"notify_email": "", "notify_whatsapp": ""}, "email or WhatsApp"),
+    ({"notify_email": "", "notify_telegram": ""}, "email or Telegram"),
     ({"titles": ",".join(f"t{i}" for i in range(11))}, "10"),
     ({"titles": "x" * 61}, "60"),
     ({"work_mode": "hybrid"}, "work mode"),
@@ -93,7 +94,7 @@ def test_list_shows_only_own_alerts_with_readable_criteria(conn, requests_mock, 
     html = _client(conn, requests_mock, "me").get("/alerts").get_data(as_text=True)
     assert "sre, devops · bangalore, remote" in html
     assert "chef" not in html
-    assert "Email" in html and "WhatsApp" in html
+    assert "Email" in html and "Telegram" in html
 
 
 def test_pause_resume_and_delete_own_alert(conn, requests_mock, turnstile_calls):

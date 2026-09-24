@@ -15,10 +15,7 @@ import crypto from "node:crypto";
 
 const PREFIX = "/internal/admin/users";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// E.164, same rule as src/phone.js's isValidPhoneNumber.
-const PHONE_RE = /^\+[1-9][0-9]{6,14}$/;
-// Better Auth's email-otp plugin keys pending codes as `${type}-otp-${email}`;
-// the phone-number plugin keys them by the bare number.
+// Better Auth's email-otp plugin keys pending codes as `${type}-otp-${email}`.
 const EMAIL_OTP_TYPES = ["sign-in", "email-verification", "forget-password"];
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -63,18 +60,15 @@ function parseUpdate(body) {
     if (typeof body.email !== "string" || !EMAIL_RE.test(body.email.trim())) return { error: "invalid email" };
     set.email = body.email.trim().toLowerCase();
   }
-  if ("phoneNumber" in body) {
-    const phone = body.phoneNumber === null ? "" : body.phoneNumber;
-    if (typeof phone !== "string" || (phone.trim() && !PHONE_RE.test(phone.trim()))) {
-      return { error: "invalid phoneNumber" };
-    }
-    set.phoneNumber = phone.trim() || null;
+  if ("emailVerified" in body) {
+    if (typeof body.emailVerified !== "boolean") return { error: "emailVerified must be a boolean" };
+    set.emailVerified = body.emailVerified ? 1 : 0;
   }
-  for (const flag of ["emailVerified", "phoneNumberVerified"]) {
-    if (flag in body) {
-      if (typeof body[flag] !== "boolean") return { error: `${flag} must be a boolean` };
-      set[flag] = body[flag] ? 1 : 0;
-    }
+  // Telegram can only be unlinked here: linking needs the user's own code
+  // (src/telegram.js). Unlinked, they're sent to /verify to connect it again.
+  if ("telegramVerified" in body) {
+    if (body.telegramVerified !== false) return { error: "telegramVerified can only be set to false (unlink)" };
+    Object.assign(set, { telegramVerified: 0, telegramChatId: null, telegramUsername: null });
   }
   if (Object.keys(set).length === 0) return { error: "nothing to update" };
   return { set };
@@ -82,7 +76,8 @@ function parseUpdate(body) {
 
 export function createAdminHandler({ db, apiKey = process.env.ADMIN_API_KEY || "" }) {
   const listUsers = db.prepare(`
-    SELECT u.id, u.name, u.email, u.emailVerified, u.phoneNumber, u.phoneNumberVerified,
+    SELECT u.id, u.name, u.email, u.emailVerified,
+           u.telegramChatId, u.telegramUsername, u.telegramVerified,
            u.createdAt, u.updatedAt,
            (SELECT count(*) FROM "session" s WHERE s.userId = u.id AND s.expiresAt > ?) AS activeSessions
     FROM "user" u
@@ -93,12 +88,19 @@ export function createAdminHandler({ db, apiKey = process.env.ADMIN_API_KEY || "
   const deleteAccounts = db.prepare(`DELETE FROM "account" WHERE userId = ?`);
   const deleteVerification = db.prepare(`DELETE FROM "verification" WHERE identifier = ?`);
   const deleteUserRow = db.prepare(`DELETE FROM "user" WHERE id = ?`);
+  // src/telegram.js creates this table; absent only in a DB that never ran it.
+  const hasTelegramTable = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'telegram_verification'`)
+    .get();
+  const deleteTelegramPending = hasTelegramTable
+    ? db.prepare(`DELETE FROM telegram_verification WHERE user_id = ?`)
+    : null;
 
   const deleteUser = db.transaction((user) => {
     deleteSessions.run(user.id);
     deleteAccounts.run(user.id);
     for (const type of EMAIL_OTP_TYPES) deleteVerification.run(`${type}-otp-${user.email}`);
-    if (user.phoneNumber) deleteVerification.run(user.phoneNumber);
+    deleteTelegramPending?.run(user.id);
     deleteUserRow.run(user.id);
   });
 
@@ -132,7 +134,7 @@ export function createAdminHandler({ db, apiKey = process.env.ADMIN_API_KEY || "
       const users = listUsers.all(new Date().toISOString()).map((u) => ({
         ...u,
         emailVerified: Boolean(u.emailVerified),
-        phoneNumberVerified: Boolean(u.phoneNumberVerified),
+        telegramVerified: Boolean(u.telegramVerified),
       }));
       sendJson(res, 200, { users });
       return true;
@@ -167,7 +169,7 @@ export function createAdminHandler({ db, apiKey = process.env.ADMIN_API_KEY || "
         updateUser(id, set);
       } catch (err) {
         if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
-          sendJson(res, 409, { error: "email or phone number already belongs to another user" });
+          sendJson(res, 409, { error: "email already belongs to another user" });
           return true;
         }
         throw err;

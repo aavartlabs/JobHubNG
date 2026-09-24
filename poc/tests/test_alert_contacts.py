@@ -15,14 +15,14 @@ def key(monkeypatch):
 
 def test_contacts_are_keyed_by_user_id_with_verification_flags(requests_mock):
     requests_mock.get(USERS_URL, json={"users": [
-        {"id": "u1", "email": "a@x.com", "emailVerified": True, "phoneNumber": "+15550000001", "phoneNumberVerified": True},
-        {"id": "u2", "email": "b@x.com", "emailVerified": False, "phoneNumber": None, "phoneNumberVerified": False},
+        {"id": "u1", "email": "a@x.com", "emailVerified": True, "telegramChatId": "4242", "telegramVerified": True},
+        {"id": "u2", "email": "b@x.com", "emailVerified": False, "telegramChatId": None, "telegramVerified": False},
     ]})
     contacts = load_contacts()
     assert requests_mock.last_request.headers["x-admin-api-key"] == "k"
     assert contacts["u1"].email == "a@x.com" and contacts["u1"].email_verified
-    assert contacts["u1"].phone == "+15550000001" and contacts["u1"].phone_verified
-    assert not contacts["u2"].email_verified and contacts["u2"].phone is None
+    assert contacts["u1"].telegram_chat_id == "4242" and contacts["u1"].telegram_verified
+    assert not contacts["u2"].email_verified and contacts["u2"].telegram_chat_id is None
 
 
 def test_unreachable_auth_service_raises(requests_mock):

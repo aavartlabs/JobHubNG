@@ -20,7 +20,8 @@ browser's Better Auth cookie against that service on each request (and makes **n
 call at all when the cookie is absent, so anonymous browsing doesn't depend on it being up).
 
 Two things must both be true for `login_required` to let a request through — a session
-exists, **and** its user has `emailVerified` and `phoneNumberVerified` both set. A session
+exists, **and** its user has `emailVerified` and `telegramVerified` both set (it was
+`phoneNumberVerified`, a WhatsApp OTP, until 2026-09-24). A session
 missing either is redirected to `/verify`, not to `/login`. This check in Flask is the only
 verification gate; the auth-service deliberately lets an unverified user sign in, so that
 someone who loses their session mid-verification can get back in to finish it.

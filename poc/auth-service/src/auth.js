@@ -2,10 +2,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
-import { emailOTP, phoneNumber } from "better-auth/plugins";
+import { emailOTP } from "better-auth/plugins";
 
 import { sendEmailOTP } from "./email.js";
-import { isValidPhoneNumber, sendPhoneOTP } from "./phone.js";
+import { createTelegramStore, telegramPlugin } from "./telegram.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +15,10 @@ const DB_PATH = process.env.AUTH_DB_PATH || path.join(__dirname, "..", "auth.db"
 
 // Shared with src/admin.js (the internal admin API), so both use one connection.
 export const db = new Database(DB_PATH);
+
+// Telegram account linking (src/telegram.js). Shared with server.js's internal
+// /internal/telegram/start route, which telegram-gateway calls.
+export const telegramStore = createTelegramStore({ db, botUsername: process.env.TELEGRAM_BOT_USERNAME });
 
 const trustedOrigins = (process.env.TRUSTED_ORIGINS || "")
   .split(",")
@@ -40,13 +44,12 @@ export const auth = betterAuth({
     enabled: true,
     // Default is already true; explicit for the reason below.
     // A brand-new user holds a session immediately after /sign-up/email so
-    // the phone-number plugin's /phone-number/verify (updatePhoneNumber:
-    // true) has a session to attach the verified phone number to.
+    // /telegram/link and /telegram/verify (session-only) work straight away.
     autoSignIn: true,
   },
   // There is deliberately NO sign-in-time verification gate here. An earlier
   // version blocked /sign-in/email for users whose emailVerified /
-  // phoneNumberVerified weren't both true; that permanently bricked any
+  // phoneNumberVerified (now telegramVerified) weren't both true; that permanently bricked any
   // account whose owner lost the post-signup session mid-verification (close
   // the tab, log out, let it expire) -- they could neither sign back in to
   // finish verifying nor re-register (USER_ALREADY_EXISTS). The Flask app's
@@ -60,9 +63,8 @@ export const auth = betterAuth({
   // own equivalent check.
   rateLimit: {
     // Explicitly on, rather than relying on Better Auth's default of
-    // `enabled: isProduction` -- these endpoints trigger real WhatsApp and
-    // email sends to arbitrary, caller-supplied recipients without
-    // authentication, so "off unless NODE_ENV happens to be production" is
+    // `enabled: isProduction` -- these endpoints trigger real email sends to
+    // arbitrary, caller-supplied recipients without authentication, so "off unless NODE_ENV happens to be production" is
     // not a safe default to depend on.
     enabled: true,
     // Global fallback for any path without a more specific rule below or a
@@ -72,15 +74,14 @@ export const auth = betterAuth({
     window: 60,
     max: 120,
     // Applied last, overriding both Better Auth's built-in special rules and
-    // the plugins' own (phone-number: 10/60s across /phone-number/*;
-    // email-otp: 3/60s on send-verification-otp). Paths here are relative to
+    // the plugins' own (email-otp: 3/60s on send-verification-otp). Paths here are relative to
     // basePath, i.e. "/auth" is already stripped.
     customRules: {
-      // Each call sends a real WhatsApp message to a caller-supplied number.
-      "/phone-number/send-otp": { window: 60, max: 5 },
+      // Session-only; each makes a one-time link (only the newest one works).
+      "/telegram/link": { window: 60, max: 5 },
       // Verification attempts -- enough for a few fat-fingered codes, not
-      // enough to brute-force a 6-digit OTP.
-      "/phone-number/verify": { window: 60, max: 10 },
+      // enough to brute-force a 6-digit OTP (which also dies after 5 misses).
+      "/telegram/verify": { window: 60, max: 10 },
       // Each call sends a real email to a caller-supplied address.
       "/email-otp/send-verification-otp": { window: 60, max: 5 },
       "/email-otp/verify-email": { window: 60, max: 10 },
@@ -95,14 +96,8 @@ export const auth = betterAuth({
         await sendEmailOTP(email, otp, type);
       },
     }),
-    phoneNumber({
-      otpLength: 6,
-      // Rejects malformed numbers (e.g. "+01...", or no country code) with 400
-      // INVALID_PHONE_NUMBER on send-otp and verify, before any WhatsApp send.
-      phoneNumberValidator: isValidPhoneNumber,
-      async sendOTP({ phoneNumber: number, code }) {
-        await sendPhoneOTP(number, code);
-      },
-    }),
+    // Replaced the phone-number plugin (WhatsApp OTP) on 2026-09-24. Existing
+    // rows keep their phoneNumber / phoneNumberVerified columns; nothing reads them.
+    telegramPlugin(telegramStore),
   ],
 });

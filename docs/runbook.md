@@ -34,9 +34,9 @@ npm start                        # :3200; Flask's AUTH_SERVICE_URL default point
 
 **You cannot fully register an account locally without real credentials.** Signup requires
 both an email OTP (sent via Resend — needs a real `RESEND_API_KEY` and a verified sending
-domain) and a mobile OTP (sent via the `whatsapp-sender` gateway — needs a QR-paired
-WhatsApp number). Without those, `/register` creates the account but neither code is ever
-delivered, so it can never become usable. What you *can* exercise locally without them:
+domain) and a linked Telegram (the bot sends a code — needs `telegram-gateway/` running with
+a real bot token and a public webhook URL). Without those, `/register` creates the account
+but it can never become usable. What you *can* exercise locally without them:
 the public job browsing, the unit test suites, and the redirect behaviour of the gated
 routes. Full registration is verified against the real pi09 deployment, not locally.
 

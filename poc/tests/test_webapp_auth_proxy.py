@@ -70,13 +70,13 @@ def test_proxy_forwards_origin_header(conn, requests_mock):
 def test_proxy_replaces_caller_supplied_forwarding_headers(conn, requests_mock, turnstile_calls):
     """The auth-service rate-limits by client IP read from X-Forwarded-For. Relaying a
     caller's own forwarding headers would hand them a fresh rate-limit bucket per
-    request on endpoints that trigger real WhatsApp/email sends without authentication."""
-    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/phone-number/send-otp", json={"message": "code sent"})
+    request on endpoints that trigger real email sends without authentication."""
+    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/email-otp/send-verification-otp", json={"success": True})
     client = _client(conn)
 
     client.post(
-        "/auth/phone-number/send-otp",
-        json={"phoneNumber": "+15551234567"},
+        "/auth/email-otp/send-verification-otp",
+        json={"email": "a@example.com", "type": "email-verification"},
         headers={
             "X-Forwarded-For": "6.6.6.6",
             "X-Real-IP": "6.6.6.6",
@@ -95,12 +95,12 @@ def test_proxy_replaces_caller_supplied_forwarding_headers(conn, requests_mock, 
 def test_proxy_uses_cloudflares_real_client_ip_when_present(conn, requests_mock, turnstile_calls):
     """Behind the Cloudflare Tunnel, remote_addr is cloudflared's own address -- the same
     for every visitor. CF-Connecting-IP is the real client, and it wins when set."""
-    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/phone-number/send-otp", json={"message": "code sent"})
+    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/email-otp/send-verification-otp", json={"success": True})
     client = _client(conn)
 
     client.post(
-        "/auth/phone-number/send-otp",
-        json={"phoneNumber": "+15551234567"},
+        "/auth/email-otp/send-verification-otp",
+        json={"email": "a@example.com", "type": "email-verification"},
         headers={
             "CF-Connecting-IP": "198.51.100.7",
             "X-Forwarded-For": "6.6.6.6",
@@ -159,19 +159,15 @@ def test_proxy_connection_error_returns_502_json(conn, requests_mock):
     assert "error" in resp.get_json()
 
 
-def test_proxy_timeout_outlasts_whatsapp_gateway_ack_wait(conn, requests_mock, turnstile_calls):
-    # /auth/phone-number/send-otp blocks inside auth-service until whatsapp-sender gets a
-    # WhatsApp server ack, which it waits up to ACK_TIMEOUT_MS=45000 for. A shorter proxy
-    # timeout 502s the browser while the OTP is still being (and often successfully) sent.
-    requests_mock.post(
-        f"{config.AUTH_SERVICE_URL}/auth/phone-number/send-otp",
-        json={"status": True},
-    )
+def test_proxy_timeout_outlasts_a_slow_email_send(conn, requests_mock, turnstile_calls):
+    # An OTP email send can take a while inside auth-service; a short proxy timeout 502s
+    # the browser while the code is still (often successfully) being sent.
+    requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/email-otp/send-verification-otp", json={"success": True})
     client = _client(conn)
 
     client.post(
-        "/auth/phone-number/send-otp",
-        json={"phoneNumber": "+15551234567"},
+        "/auth/email-otp/send-verification-otp",
+        json={"email": "a@example.com", "type": "email-verification"},
         headers={"X-Turnstile-Token": "good-token"},
     )
 
@@ -181,13 +177,10 @@ def test_proxy_timeout_outlasts_whatsapp_gateway_ack_wait(conn, requests_mock, t
 @pytest.mark.parametrize("path,action", [
     ("sign-up/email", "signup"),
     ("sign-in/email", "login"),
-    ("sign-in/phone-number", "login"),
     ("sign-in/email-otp", "login"),
     ("email-otp/send-verification-otp", "send_email_otp"),
     ("forget-password/email-otp", "send_email_otp"),
     ("email-otp/request-password-reset", "send_email_otp"),
-    ("phone-number/send-otp", "send_phone_otp"),
-    ("phone-number/request-password-reset", "send_phone_otp"),
 ])
 def test_protected_posts_need_a_turnstile_token_for_their_action(conn, requests_mock, turnstile_calls, path, action):
     upstream = requests_mock.post(f"{config.AUTH_SERVICE_URL}/auth/{path}", json={"ok": True})
@@ -238,7 +231,7 @@ def test_protection_ignores_path_case_and_trailing_slash_tricks(conn, requests_m
 @pytest.mark.parametrize("path", [
     "/auth/sign-up/./email",
     "/auth/./sign-in/email",
-    "/auth/phone-number/x/../send-otp",
+    "/auth/email-otp/x/../send-verification-otp",
     "/auth/../internal/admin/users",
     "/auth/%2e%2e/internal/admin/users",
     "/auth/sign-up//email",

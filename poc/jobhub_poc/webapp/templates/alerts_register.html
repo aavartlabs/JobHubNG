@@ -21,7 +21,7 @@
   <fieldset>
     <legend>Send alerts to</legend>
     <label><input type="checkbox" name="notify_email" {{ 'checked' if not form or form.get('notify_email') }}> Email ({{ masked_email }})</label>
-    <label><input type="checkbox" name="notify_whatsapp" {{ 'checked' if not form or form.get('notify_whatsapp') }}> WhatsApp ({{ masked_phone }})</label>
+    <label><input type="checkbox" name="notify_telegram" {{ 'checked' if not form or form.get('notify_telegram') }}> Telegram ({{ telegram_label }})</label>
   </fieldset>
   {{ turnstile.widget("alert_register") }}
   <button type="submit">Create alert</button>

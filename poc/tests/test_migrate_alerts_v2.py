@@ -40,11 +40,11 @@ def test_old_alert_tables_are_converted_keeping_owned_alerts(tmp_path):
     conn = db.get_connection(str(_old_db(tmp_path)))
     db.init_db(conn)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(alert_subscriptions)")}
-    assert "phone_number" not in cols and {"titles", "notify_whatsapp"} <= cols
+    assert "phone_number" not in cols and {"titles", "notify_telegram"} <= cols
     [sub] = [dict(r) for r in conn.execute("SELECT * FROM alert_subscriptions")]
     assert sub["id"] == 5 and sub["owner_auth_user_id"] == "u1"
     assert json.loads(sub["titles"]) == ["sre"] and json.loads(sub["locations"]) == ["bengaluru"]
-    assert (sub["notify_whatsapp"], sub["notify_email"]) == (1, 0)
+    assert (sub["notify_telegram"], sub["notify_email"]) == (1, 0)
     [sent] = [dict(r) for r in conn.execute("SELECT * FROM alerts_sent")]
     assert (sent["subscription_id"], sent["channel"], sent["status"]) == (5, "whatsapp", "SENT")
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []

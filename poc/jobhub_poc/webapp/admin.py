@@ -32,7 +32,6 @@ from jobhub_poc import admin_codes, auth_admin_client, config
 from jobhub_poc.admin_notify import notify_admin
 from jobhub_poc.alerts.senders import get_senders
 from jobhub_poc.auth_admin_client import AuthServiceError
-from jobhub_poc.phone import normalize_e164
 from jobhub_poc.webapp import turnstile
 from jobhub_poc.webapp.auth import client_ip
 
@@ -275,13 +274,8 @@ def edit_user(user_id):
 
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
-    raw_phone = request.form.get("phone_number", "").strip()
-    phone = normalize_e164(raw_phone) if raw_phone else ""
-    if phone is None:
-        flash("Not saved: mobile must be + and the country code, e.g. +91 98765 43210.")
-        return redirect(url_for("admin.edit_user", user_id=user_id))
     email_verified = request.form.get("email_verified") == "on"
-    phone_verified = request.form.get("phone_verified") == "on"
+    unlink_telegram = request.form.get("unlink_telegram") == "on"
 
     changes = {}
     if name != user["name"]:
@@ -290,13 +284,12 @@ def edit_user(user_id):
         # A new address hasn't been proven by anyone, whatever the checkbox says.
         changes["email"] = email
         email_verified = False
-    if phone != (user.get("phoneNumber") or ""):
-        changes["phoneNumber"] = phone
-        phone_verified = False
     if email_verified != bool(user["emailVerified"]):
         changes["emailVerified"] = email_verified
-    if phone_verified != bool(user["phoneNumberVerified"]):
-        changes["phoneNumberVerified"] = phone_verified
+    # Linking needs the user's own code, so the admin can only unlink; the user is then
+    # sent to /verify to connect Telegram again.
+    if unlink_telegram and user.get("telegramVerified"):
+        changes["telegramVerified"] = False
 
     if not changes:
         flash("No changes.")

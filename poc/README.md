@@ -52,16 +52,18 @@ https://jobshub.aavartlabs.com --(Cloudflare Tunnel, fixed target jobhub-web:300
   separate from `jobhub.db`). Flask reverse-proxies `/auth/*` to it over the
   internal `jobhub` network -- it publishes no host port, since the
   Cloudflare Tunnel's ingress is fixed to `jobhub-web` and Flask is the only
-  public entrypoint. Self-service signup: email + password + mobile, with the
-  email verified by a Resend OTP and the mobile by an OTP through the same
-  `whatsapp-sender` gateway the alerts use. Alert subscriptions are owned per
+  public entrypoint. Self-service signup: email + password, then the email
+  verified by a Resend OTP and Telegram linked by a code the bot sends (since
+  2026-09-24; it was a WhatsApp mobile OTP before). Alert subscriptions are owned per
   account (`alert_subscriptions.owner_auth_user_id`). See
   `auth-service/README.md`.
-- **Alerts**: real registration + matching logic ships now; only a
-  `ConsoleNotifier` (stdout + `alerts_sent` table) backs it for the POC. A
-  real WhatsApp notifier is a one-line `NOTIFIER_BACKEND` swap once someone
-  manually QR-pairs a dedicated number with OpenWA/whatsapp-gateway/baileys
-  -- see `jobhub_poc/alerts/notifier.py`.
+- **Telegram (pi09)**: `telegram-gateway/`, a third small Node container
+  (`jobhub-telegram`) and the only holder of the bot token. It sends alert
+  digests, admin messages and linking codes, and receives what users send the
+  bot through `/telegram/webhook` -- see `telegram-gateway/README.md` for how
+  to add commands or button actions.
+- **Alerts**: digests go by Telegram and/or email (`jobhub_poc/alerts/`).
+  `whatsapp-sender/` is now only the admin-message fallback.
 
 ## Quick start (local)
 
@@ -87,7 +89,7 @@ cd poc
 
 `/jobs` and `/api/jobs` are public, so that's all you need to browse. `/alerts/*`
 needs a verified account, which needs `auth-service/` running alongside -- and a
-full registration needs real Resend + WhatsApp credentials, so it can't be
+full registration needs real Resend + Telegram credentials, so it can't be
 completed on a bare local checkout. See `docs/runbook.md` for what is and isn't
 possible locally.
 
@@ -112,7 +114,7 @@ possible locally.
   `Linger=yes` so it runs unattended). Logs go to `~/jobhub-poc/pipeline.log`
   on pi09. EverJobs on pi05 runs as a systemd system service
   (`/etc/systemd/system/jobhub-everjobs.service`, `Restart=always`, enabled
-  on boot). `jobhub-web` and `jobhub-whatsapp` on pi09 already auto-restart
+  on boot). `jobhub-web`, `jobhub-auth`, `jobhub-telegram` and `jobhub-whatsapp` on pi09 auto-restart
   via Docker's `restart: unless-stopped`. **The whole pipeline now runs
   entirely on always-on Raspberry Pi hardware** -- a third host (harita, a
   laptop/desktop that isn't reliably up 24/7) was originally in the loop
@@ -124,19 +126,21 @@ possible locally.
 A signed-in, verified user creates alerts at `/alerts/register`: comma-separated job
 titles, locations, companies and description keywords (OR within a field, AND across
 fields; whole words; Bangalore = Bengaluru etc.), an optional work mode, and whether to
-receive them by email, WhatsApp or both — always to the account's own verified contacts.
+receive them by email, Telegram or both — always to the account's own verified contacts.
 Each pipeline run sends **one digest per alert per channel** (up to 10 jobs + "N more",
 linking back to JobHub). Dry-run the next run's digests without sending anything:
 
     NOTIFIER_BACKEND=console .venv/bin/python -m jobhub_poc.alerts.run_alerts --recent-minutes 1440
 
 Email digests need `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (a Resend-verified domain) in
-`poc/.env`; contacts come from auth-service via `AUTH_SERVICE_URL` + `AUTH_ADMIN_API_KEY`.
+`poc/.env`; Telegram digests need the gateway (`TELEGRAM_GATEWAY_URL` +
+`TELEGRAM_GATEWAY_API_KEY`); contacts come from auth-service via `AUTH_SERVICE_URL` +
+`AUTH_ADMIN_API_KEY`.
 
 ## Bot protection and the admin console
 
 **Cloudflare Turnstile** guards every request a bot could abuse: signup, login, every
-email and WhatsApp code send (including resends), the alert subscription form, and the
+email code send (including resends), the alert subscription form, and the
 admin login. The browser gets a fresh single-use token per request (`frontend/src/turnstile.ts`
 for the fetch-driven auth pages, an implicit widget on the server-rendered forms) and
 Flask verifies it with Cloudflare's siteverify (`webapp/turnstile.py`) before anything
@@ -148,7 +152,7 @@ for local dev (`TURNSTILE_ALLOW_TEST_KEYS=1`, never in production).
 **Admin console** at `/admin`: sign in as an `app_users` row (create or rotate one with
 `scripts/set_admin_password.py <username>`, which also clears that username's lockout), then
 list every registered user with their verification state, sessions and alert counts; edit
-name/email/mobile and the two verified flags; sign a user out everywhere; or delete them
+name/email and the email-verified flag, or unlink their Telegram; sign a user out everywhere; or delete them
 (with their alert subscriptions and history). User records are changed through
 auth-service's internal `/internal/admin/*` API, keyed by `AUTH_ADMIN_API_KEY` and not
 reachable through the public `/auth/*` proxy. Login brute force: Turnstile, then a lockout
@@ -166,8 +170,8 @@ every attempt logged to `docker logs jobhub-web`.
 - "Location" filtering in the web UI is client-side over whatever `location`
   field a scraped job happens to have -- EverJobs itself can't be asked for
   jobs in a specific place.
-- Accounts are usable only once *both* the email and mobile OTP are
-  verified, and there is no password-reset or "claim my existing alert" flow
+- Accounts are usable only once the email is verified *and* Telegram is
+  linked, and there is no password-reset or "claim my existing alert" flow
   yet. The 4 alert subscriptions that predate accounts keep running unowned
   (`owner_auth_user_id IS NULL`) -- they still fire, but nobody can see or
   manage them through the UI.

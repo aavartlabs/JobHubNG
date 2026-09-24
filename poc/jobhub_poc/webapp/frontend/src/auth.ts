@@ -3,24 +3,17 @@
    /auth/* proxy (see auth_proxy.py) on this same origin, which byte-for-byte relays to
    poc/auth-service/'s own Better Auth router (see that service's README.md). */
 
-import {
-  type PendingPhoneStorage,
-  clearPendingPhone,
-  resolvePhoneNumber,
-  savePendingPhone,
-} from "./pending_phone";
 import { safeNext, withNext } from "./nav";
-import { normalizePhone } from "./phone";
 import { getTurnstileToken } from "./turnstile";
 
 interface AuthUser {
   id: string;
   email: string;
   name?: string;
-  phoneNumber?: string | null;
   emailVerified: boolean;
-  // Better Auth's own default before phone verification -- null, not false.
-  phoneNumberVerified: boolean | null;
+  // Set only by POST /auth/telegram/verify (auth-service/src/telegram.js); null until then.
+  telegramVerified: boolean | null;
+  telegramUsername?: string | null;
 }
 
 interface GetSessionResponse {
@@ -34,19 +27,6 @@ interface GetSessionResponse {
 // way to detect a silent failure from the HTTP response, so this is a fixed timeout, not
 // a response check.
 const EMAIL_RESEND_DELAY_MS = 45_000;
-
-/** sessionStorage, or null where the browser refuses to hand it over at all. */
-function pendingPhoneStorage(): PendingPhoneStorage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-// Carries a failed first phone-code send from /register over to /verify, where the
-// person can see it and correct the number -- otherwise it just never arrives, silently.
-const PHONE_SEND_ERROR_KEY = "jobhub.phoneSendError";
 
 const BOT_CHECK_FAILED = "Bot check failed or didn't load. Please try again.";
 
@@ -161,49 +141,16 @@ function initRegister(): void {
     const name = (document.getElementById("register-name") as HTMLInputElement | null)?.value.trim() ?? "";
     const email = (document.getElementById("register-email") as HTMLInputElement | null)?.value.trim() ?? "";
     const password = (document.getElementById("register-password") as HTMLInputElement | null)?.value ?? "";
-    const phone = normalizePhone(
-      (document.getElementById("register-phone") as HTMLInputElement | null)?.value ?? "",
-    );
-    if (!phone.ok) {
-      showError(errorEl, phone.error);
-      return;
-    }
-    const phoneNumber = phone.phone;
 
-    // 1. Sign up with email+password only -- deliberately NOT phoneNumber. Better Auth's
-    // phone-number/verify later refuses to attach a number that "already exists" on any
-    // user, including the requester's own just-created one (confirmed in Task 1). Sign-up
-    // leaves us with an active session (autoSignIn), which the next two calls need.
+    // Sign-up leaves an active session (autoSignIn), which the email code and the
+    // Telegram link on /verify both need.
     const signUp = await postJson("/auth/sign-up/email", { name, email, password }, "signup");
     if (!signUp.ok) {
       showError(errorEl, errorMessage(signUp.data, "Could not create your account."));
       return;
     }
-
-    // 2. Stash the typed number BEFORE navigating away. /phone-number/send-otp does not
-    // write it to the user row (only /phone-number/verify with updatePhoneNumber:true
-    // does), so without this stash /verify has no number to verify against and every
-    // attempt 400s with OTP_NOT_FOUND. See src/pending_phone.ts for the full reasoning.
-    // /verify also renders an editable field prefilled from this, for the cases this
-    // can't cover (a different tab/device, storage unavailable).
-    savePendingPhone(pendingPhoneStorage(), phoneNumber);
-
-    // 3 & 4. Trigger both OTP sends as separate steps, then move on to /verify
-    // regardless of their outcome -- that page re-derives status from get-session and
-    // offers its own resend affordances, so this is best-effort here.
-    const phoneSend = await postJson("/auth/phone-number/send-otp", { phoneNumber }, "send_phone_otp");
-    if (!phoneSend.ok) {
-      try {
-        window.sessionStorage.setItem(
-          PHONE_SEND_ERROR_KEY,
-          errorMessage(phoneSend.data, "We couldn't send a WhatsApp code to that number."),
-        );
-      } catch {
-        // storage unavailable -- /verify still offers a resend
-      }
-    }
+    // Best-effort: /verify re-derives status from get-session and offers a resend.
     await postJson("/auth/email-otp/send-verification-otp", { email, type: "email-verification" }, "send_email_otp");
-
     window.location.href = withNext("/verify", currentNext());
   });
 }
@@ -212,42 +159,26 @@ function initRegister(): void {
 function initVerify(): void {
   const statusEl = document.getElementById("verify-status");
   const emailSection = document.getElementById("email-section");
-  const phoneSection = document.getElementById("phone-section");
-  if (!statusEl || !emailSection || !phoneSection) return; // not on the verify page
+  const telegramSection = document.getElementById("telegram-section");
+  if (!statusEl || !emailSection || !telegramSection) return; // not on the verify page
 
   const continueEl = document.getElementById("verify-continue");
   const emailForm = document.getElementById("email-otp-form") as HTMLFormElement | null;
   const emailError = document.getElementById("email-error");
   const emailVerifiedMsg = document.getElementById("email-verified-msg");
   const resendEmailBtn = document.getElementById("resend-email-otp") as HTMLButtonElement | null;
-  const phoneForm = document.getElementById("phone-otp-form") as HTMLFormElement | null;
-  const phoneError = document.getElementById("phone-error");
-  const phoneVerifiedMsg = document.getElementById("phone-verified-msg");
-  const resendPhoneBtn = document.getElementById("resend-phone-otp") as HTMLButtonElement | null;
-  // Visible and editable on purpose: the number may not be recoverable here at all (a
-  // different tab or device, cleared storage, or a signed-back-in unverified user), in
-  // which case typing it in is the only way to finish verification.
-  const phoneInput = document.getElementById("phone-number-input") as HTMLInputElement | null;
-
-  const storage = pendingPhoneStorage();
+  const telegramError = document.getElementById("telegram-error");
+  const telegramVerifiedMsg = document.getElementById("telegram-verified-msg");
+  const connectBtn = document.getElementById("telegram-connect") as HTMLButtonElement | null;
+  const openLink = document.getElementById("telegram-open") as HTMLAnchorElement | null;
+  const telegramForm = document.getElementById("telegram-otp-form") as HTMLFormElement | null;
 
   let email = "";
   let emailDone = false;
-  let phoneDone = false;
-
-  /** The number to verify against: whatever is in the editable field right now,
-      normalised, or null (with the reason shown) if it isn't a usable number. */
-  function currentPhoneNumber(): string | null {
-    const phone = normalizePhone(phoneInput?.value ?? "");
-    if (!phone.ok) {
-      showError(phoneError, phone.error);
-      return null;
-    }
-    return phone.phone;
-  }
+  let telegramDone = false;
 
   function maybeShowContinue(): void {
-    if (!(emailDone && phoneDone && continueEl)) return;
+    if (!(emailDone && telegramDone && continueEl)) return;
     const link = continueEl.querySelector("a");
     if (link) link.href = safeNext(currentNext());
     continueEl.hidden = false;
@@ -261,14 +192,13 @@ function initVerify(): void {
     maybeShowContinue();
   }
 
-  function markPhoneVerified(): void {
-    phoneDone = true;
-    if (phoneForm) phoneForm.hidden = true;
-    if (phoneVerifiedMsg) phoneVerifiedMsg.hidden = false;
-    if (resendPhoneBtn) resendPhoneBtn.hidden = true;
-    // The number now lives on the account (verify + updatePhoneNumber wrote it there),
-    // so the stash has done its job and shouldn't linger into a later registration.
-    clearPendingPhone(storage);
+  function markTelegramVerified(username?: string | null): void {
+    telegramDone = true;
+    for (const el of [connectBtn, openLink, telegramForm]) if (el) el.hidden = true;
+    if (telegramVerifiedMsg) {
+      telegramVerifiedMsg.textContent = username ? `Telegram connected (@${username}).` : "Telegram connected.";
+      telegramVerifiedMsg.hidden = false;
+    }
     maybeShowContinue();
   }
 
@@ -284,25 +214,12 @@ function initVerify(): void {
     }
 
     email = sessionData.user.email;
-    // user.phoneNumber is still null until /phone-number/verify writes it, so the
-    // registration-time stash is the normal source here -- see src/pending_phone.ts.
-    if (phoneInput) phoneInput.value = resolvePhoneNumber(sessionData.user.phoneNumber, storage);
-    statusEl.textContent = "Enter the codes sent to your email and phone to finish setting up your account.";
+    statusEl.textContent = "Verify your email and connect Telegram to finish setting up your account.";
     emailSection.hidden = false;
-    phoneSection.hidden = false;
-
-    try {
-      const sendError = window.sessionStorage.getItem(PHONE_SEND_ERROR_KEY);
-      if (sendError) {
-        window.sessionStorage.removeItem(PHONE_SEND_ERROR_KEY);
-        showError(phoneError, `${sendError} Check the number below and use "Resend phone code".`);
-      }
-    } catch {
-      // storage unavailable
-    }
+    telegramSection.hidden = false;
 
     if (sessionData.user.emailVerified) markEmailVerified();
-    if (sessionData.user.phoneNumberVerified) markPhoneVerified();
+    if (sessionData.user.telegramVerified) markTelegramVerified(sessionData.user.telegramUsername);
 
     // We've SENT a code -- not confirmed it arrived (see the EMAIL_RESEND_DELAY_MS
     // comment above). Never claim delivery here; only offer a way to try again.
@@ -310,9 +227,6 @@ function initVerify(): void {
       window.setTimeout(() => {
         resendEmailBtn.hidden = false;
       }, EMAIL_RESEND_DELAY_MS);
-    }
-    if (!phoneDone && resendPhoneBtn) {
-      resendPhoneBtn.hidden = false;
     }
   })();
 
@@ -349,38 +263,37 @@ function initVerify(): void {
     }, EMAIL_RESEND_DELAY_MS);
   });
 
-  phoneForm?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (phoneError) phoneError.hidden = true;
-    const phoneNumber = currentPhoneNumber();
-    if (!phoneNumber) return;
-    const code = (document.getElementById("phone-otp-code") as HTMLInputElement | null)?.value.trim() ?? "";
-
-    const { ok, data } = await postJson("/auth/phone-number/verify", {
-      phoneNumber,
-      code,
-      updatePhoneNumber: true,
-    });
-    if (!ok) {
-      showError(phoneError, errorMessage(data, "That code didn't work. Check it and try again."));
+  // A one-time t.me link: pressing Start there makes the bot send a code, which comes
+  // back here. Shown as a link rather than opened for them: a popup after an await is
+  // usually blocked, and on a laptop they may want to open it on their phone.
+  connectBtn?.addEventListener("click", async () => {
+    if (telegramError) telegramError.hidden = true;
+    connectBtn.disabled = true;
+    const { ok, data } = await postJson("/auth/telegram/link", {});
+    connectBtn.disabled = false;
+    if (!ok || typeof data?.url !== "string") {
+      showError(telegramError, errorMessage(data, "Couldn't create a Telegram link. Try again."));
       return;
     }
-    markPhoneVerified();
+    if (openLink) {
+      openLink.href = data.url;
+      openLink.hidden = false;
+    }
+    connectBtn.textContent = "Get a new link";
+    if (telegramForm) telegramForm.hidden = false;
   });
 
-  resendPhoneBtn?.addEventListener("click", async () => {
-    if (phoneError) phoneError.hidden = true;
-    const phoneNumber = currentPhoneNumber();
-    if (!phoneNumber) return;
-    // Keep the stash in step with whatever the user actually typed, so a reload of
-    // /verify prefills the number they just asked a code for, not a stale one.
-    savePendingPhone(storage, phoneNumber);
-    resendPhoneBtn.disabled = true;
-    const { ok, data } = await postJson("/auth/phone-number/send-otp", { phoneNumber }, "send_phone_otp");
-    resendPhoneBtn.disabled = false;
+  telegramForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (telegramError) telegramError.hidden = true;
+    const code = (document.getElementById("telegram-otp-code") as HTMLInputElement | null)?.value.trim() ?? "";
+    const { ok, data } = await postJson("/auth/telegram/verify", { code });
     if (!ok) {
-      showError(phoneError, errorMessage(data, "Couldn't send a code to that number. Check it and try again."));
+      showError(telegramError, errorMessage(data, "That code didn't work. Check it and try again."));
+      return;
     }
+    const refreshed = await getSession();
+    markTelegramVerified(refreshed?.user?.telegramUsername);
   });
 }
 

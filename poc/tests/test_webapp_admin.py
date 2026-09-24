@@ -50,8 +50,9 @@ def _user(user_id="u1", **overrides):
         "name": "Ada",
         "email": "ada@example.com",
         "emailVerified": True,
-        "phoneNumber": "+15550000001",
-        "phoneNumberVerified": True,
+        "telegramChatId": "4242",
+        "telegramUsername": "ada",
+        "telegramVerified": True,
         "activeSessions": 1,
         "createdAt": "2026-09-23T10:00:00.000Z",
         "updatedAt": "2026-09-23T10:00:00.000Z",
@@ -311,21 +312,21 @@ def test_admin_session_does_not_make_you_a_site_user(client, requests_mock):
 
 def test_users_page_lists_users_state_and_subscription_counts(client, conn, requests_mock):
     conn.execute(
-        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_telegram) "
         "VALUES ('[\"sre\"]', 'u1', 1, 'x', 1), ('[\"sre\"]', 'u1', 0, 'x', 1)"
     )
     conn.commit()
     _logged_in(client, requests_mock, users=[
         _user(),
         _user("u2", name="Bob", email="bob@example.com", emailVerified=False,
-              phoneNumber=None, phoneNumberVerified=False, activeSessions=0),
+              telegramChatId=None, telegramUsername=None, telegramVerified=False, activeSessions=0),
     ])
     html = client.get("/admin/users").get_data(as_text=True)
     assert requests_mock.last_request.headers["x-admin-api-key"] == "admin-key"
     assert "ada@example.com" in html and "bob@example.com" in html
     assert "1 active / 2" in html
-    assert "Pending email" in html
-    assert "Verified" in html
+    assert "Pending email + Telegram" in html
+    assert "Verified" in html and "@ada" in html
 
 
 def test_users_page_reports_auth_service_errors(client, requests_mock):
@@ -349,33 +350,41 @@ def test_edit_sends_only_changed_fields(client, requests_mock):
     patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
     resp = client.post("/admin/users/u1", data={
         "csrf_token": _csrf(client), "name": "Ada L", "email": "ada@example.com",
-        "phone_number": "+15550000001", "email_verified": "on", "phone_verified": "on",
+        "email_verified": "on",
     })
     assert resp.status_code == 302
     assert patch.last_request.json() == {"name": "Ada L"}
 
 
-def test_changing_email_or_phone_resets_that_verification(client, requests_mock):
+def test_changing_email_resets_its_verification(client, requests_mock):
     _logged_in(client, requests_mock)
     patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
     client.post("/admin/users/u1", data={
-        "csrf_token": _csrf(client), "name": "Ada", "email": "new@example.com",
-        "phone_number": "+15550000009", "email_verified": "on", "phone_verified": "on",
+        "csrf_token": _csrf(client), "name": "Ada", "email": "new@example.com", "email_verified": "on",
     })
-    assert patch.last_request.json() == {
-        "email": "new@example.com", "emailVerified": False,
-        "phoneNumber": "+15550000009", "phoneNumberVerified": False,
-    }
+    assert patch.last_request.json() == {"email": "new@example.com", "emailVerified": False}
+
+
+def test_admin_can_unlink_telegram_but_not_link_it(client, requests_mock):
+    _logged_in(client, requests_mock)
+    html = client.get("/admin/users/u1").get_data(as_text=True)
+    assert "@ada" in html and 'name="unlink_telegram"' in html
+    patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
+    client.post("/admin/users/u1", data={
+        "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com", "email_verified": "on",
+        "unlink_telegram": "on",
+    })
+    assert patch.last_request.json() == {"telegramVerified": False}
 
 
 def test_verification_flags_can_be_set_by_hand(client, requests_mock):
-    _logged_in(client, requests_mock, users=[_user(emailVerified=False, phoneNumberVerified=False)])
+    _logged_in(client, requests_mock, users=[_user(emailVerified=False)])
     patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
     client.post("/admin/users/u1", data={
         "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com",
-        "phone_number": "+15550000001", "email_verified": "on", "phone_verified": "on",
+        "email_verified": "on",
     })
-    assert patch.last_request.json() == {"emailVerified": True, "phoneNumberVerified": True}
+    assert patch.last_request.json() == {"emailVerified": True}
 
 
 def test_edit_with_no_changes_makes_no_call(client, requests_mock):
@@ -383,7 +392,7 @@ def test_edit_with_no_changes_makes_no_call(client, requests_mock):
     patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
     client.post("/admin/users/u1", data={
         "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com",
-        "phone_number": "+15550000001", "email_verified": "on", "phone_verified": "on",
+        "email_verified": "on",
     })
     assert patch.call_count == 0
 
@@ -391,10 +400,9 @@ def test_edit_with_no_changes_makes_no_call(client, requests_mock):
 def test_edit_surfaces_auth_service_validation_errors(client, requests_mock):
     _logged_in(client, requests_mock)
     requests_mock.patch(f"{USERS_URL}/u1", status_code=409,
-                        json={"error": "email or phone number already belongs to another user"})
+                        json={"error": "email already belongs to another user"})
     resp = client.post("/admin/users/u1", data={
         "csrf_token": _csrf(client), "name": "Ada", "email": "taken@example.com",
-        "phone_number": "+15550000001",
     }, follow_redirects=True)
     assert "already belongs to another user" in resp.get_data(as_text=True)
 
@@ -435,12 +443,12 @@ def test_delete_needs_a_confirmation_page_first(client, requests_mock):
 def test_delete_removes_user_and_their_subscriptions_and_history(client, conn, requests_mock):
     _seed_job(conn)
     conn.execute(
-        "INSERT INTO alert_subscriptions (id, titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "INSERT INTO alert_subscriptions (id, titles, owner_auth_user_id, is_active, created_at, notify_telegram) "
         "VALUES (10, '[\"sre\"]', 'u1', 1, 'x', 1), (11, '[\"sre\"]', 'u2', 1, 'x', 1)"
     )
     conn.execute(
         "INSERT INTO alerts_sent (subscription_id, job_id, channel, notifier_backend, message, sent_at, status) "
-        "VALUES (10, 1, 'whatsapp', 'console', 'm', 'x', 'SENT'), (11, 1, 'whatsapp', 'console', 'm', 'x', 'SENT')"
+        "VALUES (10, 1, 'telegram', 'console', 'm', 'x', 'SENT'), (11, 1, 'telegram', 'console', 'm', 'x', 'SENT')"
     )
     conn.commit()
     _logged_in(client, requests_mock)
@@ -457,7 +465,7 @@ def test_delete_removes_user_and_their_subscriptions_and_history(client, conn, r
 
 def test_failed_auth_service_delete_keeps_subscriptions(client, conn, requests_mock):
     conn.execute(
-        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_whatsapp) "
+        "INSERT INTO alert_subscriptions (titles, owner_auth_user_id, is_active, created_at, notify_telegram) "
         "VALUES ('[\"sre\"]', 'u1', 1, 'x', 1)"
     )
     conn.commit()
@@ -467,23 +475,6 @@ def test_failed_auth_service_delete_keeps_subscriptions(client, conn, requests_m
     client.post("/admin/users/u1/delete", data={"csrf_token": _csrf(client)})
 
     assert conn.execute("SELECT count(*) AS n FROM alert_subscriptions").fetchone()["n"] == 1
-
-
-def test_edit_normalises_phone_and_refuses_non_international(client, requests_mock):
-    _logged_in(client, requests_mock)
-    patch = requests_mock.patch(f"{USERS_URL}/u1", json={"ok": True})
-    client.post("/admin/users/u1", data={
-        "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com",
-        "phone_number": "+1 555 000 0009", "email_verified": "on", "phone_verified": "on",
-    })
-    assert patch.last_request.json() == {"phoneNumber": "+15550000009", "phoneNumberVerified": False}
-
-    resp = client.post("/admin/users/u1", data={
-        "csrf_token": _csrf(client), "name": "Ada", "email": "ada@example.com",
-        "phone_number": "9902065845", "email_verified": "on", "phone_verified": "on",
-    }, follow_redirects=True)
-    assert patch.call_count == 1
-    assert "country code" in resp.get_data(as_text=True)
 
 
 def test_delete_also_removes_the_users_job_interactions(client, conn, requests_mock):

@@ -9,10 +9,13 @@
   <label>Name <input type="text" name="name" value="{{ user.name }}" required></label>
   <label>Email <input type="email" name="email" value="{{ user.email }}" required></label>
   <label><input type="checkbox" name="email_verified" {{ "checked" if user.emailVerified }}> Email verified</label>
-  <label>Mobile <input type="text" name="phone_number" value="{{ user.phoneNumber or '' }}" placeholder="+91 98765 43210"></label>
-  <label><input type="checkbox" name="phone_verified" {{ "checked" if user.phoneNumberVerified }}> Mobile verified</label>
-  <p class="hint">Changing the email or mobile marks it unverified, whatever the checkbox says;
-     tick it in a second save if you've confirmed it yourself.</p>
+  <p class="hint">Changing the email marks it unverified, whatever the checkbox says; tick it
+     in a second save if you've confirmed it yourself.</p>
+  <p>Telegram:
+    {% if user.telegramVerified %}{{ "@" ~ user.telegramUsername if user.telegramUsername else "linked" }} (chat {{ user.telegramChatId }}) ✓{% else %}not linked{% endif %}</p>
+  {% if user.telegramVerified %}
+  <label><input type="checkbox" name="unlink_telegram"> Unlink Telegram (they'll be asked to connect it again)</label>
+  {% endif %}
   <button type="submit">Save</button>
 </form>
 

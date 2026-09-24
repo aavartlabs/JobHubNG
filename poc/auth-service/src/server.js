@@ -2,12 +2,14 @@ import http from "node:http";
 import { toNodeHandler } from "better-auth/node";
 
 import { createAdminHandler } from "./admin.js";
-import { auth, db } from "./auth.js";
+import { auth, db, telegramStore } from "./auth.js";
+import { createTelegramInternalHandler } from "./telegram.js";
 
 const PORT = Number(process.env.PORT || 3200);
 
 const authHandler = toNodeHandler(auth);
 const adminHandler = createAdminHandler({ db });
+const telegramHandler = createTelegramInternalHandler({ store: telegramStore });
 
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });
@@ -22,6 +24,8 @@ const server = http.createServer(async (req, res) => {
 
   // /internal/admin/* -- see src/admin.js for why it is outside /auth/*.
   if (await adminHandler(req, res)) return;
+  // /internal/telegram/start -- for telegram-gateway, see src/telegram.js.
+  if (await telegramHandler(req, res)) return;
 
   // Everything else (basePath "/auth/*") is Better Auth's own router --
   // it 404s unmatched paths itself.

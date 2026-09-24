@@ -18,27 +18,27 @@ def _job(conn, key, title, location="Bengaluru, KA, in", company="Acme", descrip
 
 
 def _sub(conn, owner="u1", titles=(), locations=(), companies=(), keywords=(), work_mode=None,
-         email=0, whatsapp=1, active=1):
+         email=0, telegram=1, active=1):
     sid = conn.execute(
         "INSERT INTO alert_subscriptions (owner_auth_user_id, titles, locations, companies, keywords, work_mode, "
-        "notify_email, notify_whatsapp, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 't')",
+        "notify_email, notify_telegram, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 't')",
         (owner, json.dumps(list(titles)), json.dumps(list(locations)), json.dumps(list(companies)),
-         json.dumps(list(keywords)), work_mode, email, whatsapp, active)).lastrowid
+         json.dumps(list(keywords)), work_mode, email, telegram, active)).lastrowid
     conn.commit()
     return sid
 
 
-VERIFIED = Contact(email="a@x.com", email_verified=True, phone="+15550000001", phone_verified=True)
+VERIFIED = Contact(email="a@x.com", email_verified=True, telegram_chat_id="4242", telegram_verified=True)
 
 
 class RecordingSender:
     def __init__(self, fail=()):
         self.sent, self.fail = [], set(fail)
 
-    def whatsapp(self, phone, text):
-        if "whatsapp" in self.fail:
+    def telegram(self, chat_id, text):
+        if "telegram" in self.fail:
             raise RuntimeError("gateway down")
-        self.sent.append(("whatsapp", phone, text))
+        self.sent.append(("telegram", chat_id, text))
 
     def email(self, to, subject, text, html):
         if "email" in self.fail:
@@ -75,10 +75,10 @@ def test_inactive_alerts_and_alerts_with_no_matches_are_left_out(conn):
 
 def test_one_digest_per_alert_per_channel(conn):
     ids = [_job(conn, f"k{i}", f"SRE {i}") for i in range(3)]
-    sub = _sub(conn, titles=("sre",), email=1, whatsapp=1)
+    sub = _sub(conn, titles=("sre",), email=1, telegram=1)
     sender = RecordingSender()
     stats = deliver(conn, find_matches(conn, ids), {"u1": VERIFIED}, sender, "live", ORIGIN)
-    assert [s[0] for s in sender.sent] == ["email", "whatsapp"]
+    assert [s[0] for s in sender.sent] == ["email", "telegram"]
     assert "3 new jobs" in sender.sent[1][2]
     assert stats == {"digests_sent": 2, "digests_failed": 0, "skipped": 0, "deactivated": 0}
     assert len(_rows(conn)) == 6 and {r["status"] for r in _rows(conn)} == {"SENT"}
@@ -95,19 +95,19 @@ def test_rerunning_never_resends(conn):
 
 def test_unverified_channel_is_skipped_and_recorded(conn):
     a = _job(conn, "a", "SRE")
-    _sub(conn, titles=("sre",), email=1, whatsapp=1)
-    half = Contact(email="a@x.com", email_verified=True, phone="+15550000001", phone_verified=False)
+    _sub(conn, titles=("sre",), email=1, telegram=1)
+    half = Contact(email="a@x.com", email_verified=True, telegram_chat_id=None, telegram_verified=False)
     sender = RecordingSender()
     stats = deliver(conn, find_matches(conn, [a]), {"u1": half}, sender, "live", ORIGIN)
     assert [s[0] for s in sender.sent] == ["email"]
-    assert {(r["channel"], r["status"]) for r in _rows(conn)} == {("email", "SENT"), ("whatsapp", "SKIPPED")}
+    assert {(r["channel"], r["status"]) for r in _rows(conn)} == {("email", "SENT"), ("telegram", "SKIPPED")}
     assert stats["skipped"] == 1
 
 
 def test_a_failed_send_is_recorded_as_failed(conn):
     a = _job(conn, "a", "SRE")
     _sub(conn, titles=("sre",))
-    stats = deliver(conn, find_matches(conn, [a]), {"u1": VERIFIED}, RecordingSender(fail={"whatsapp"}), "live", ORIGIN)
+    stats = deliver(conn, find_matches(conn, [a]), {"u1": VERIFIED}, RecordingSender(fail={"telegram"}), "live", ORIGIN)
     assert [r["status"] for r in _rows(conn)] == ["FAILED"]
     assert stats["digests_failed"] == 1
 

@@ -13,7 +13,7 @@ class AlertMatch:
     owner_auth_user_id: str
     rule: Rule
     notify_email: bool
-    notify_whatsapp: bool
+    notify_telegram: bool
     jobs: list[dict] = field(default_factory=list)
 
 
@@ -37,5 +37,5 @@ def find_matches(conn: sqlite3.Connection, new_job_ids: list[int]) -> list[Alert
         matched = [job for job in jobs if rule_matches(rule, job)]
         if matched:
             matches.append(AlertMatch(sub["id"], sub["owner_auth_user_id"], rule,
-                                      bool(sub["notify_email"]), bool(sub["notify_whatsapp"]), matched))
+                                      bool(sub["notify_email"]), bool(sub["notify_telegram"]), matched))
     return matches

@@ -1,6 +1,7 @@
-"""How a message actually leaves: WhatsApp via the whatsapp-sender gateway, email via
-Resend, Telegram via the Bot API (admin messages only, for now -- admin_notify.py), or --
-NOTIFIER_BACKEND=console -- printed instead of sent (dev and dry runs).
+"""How a message actually leaves: Telegram via poc/telegram-gateway (alert digests and
+admin messages), email via Resend, WhatsApp via the whatsapp-sender gateway (admin
+fallback only, admin_notify.py), or -- NOTIFIER_BACKEND=console -- printed instead of
+sent (dev and dry runs).
 
 Every send raises on failure, so the caller records it as FAILED rather than SENT.
 """
@@ -9,12 +10,12 @@ import requests
 from jobhub_poc import config
 
 RESEND_URL = "https://api.resend.com/emails"
-TELEGRAM_API = "https://api.telegram.org"
 # Above whatsapp-sender's own ACK_TIMEOUT_MS (45s on pi09) so its timeout reaches us as a
 # clean HTTP error rather than us giving up on the connection first.
 _WHATSAPP_TIMEOUT_SECONDS = 55
 _EMAIL_TIMEOUT_SECONDS = 20
-_TELEGRAM_TIMEOUT_SECONDS = 20
+# Above the gateway's own Bot API timeout (20s) plus one 429 wait (10s).
+_TELEGRAM_TIMEOUT_SECONDS = 35
 
 
 class ConsoleSender:
@@ -65,24 +66,22 @@ class LiveSender:
             raise RuntimeError(f"Resend returned HTTP {resp.status_code}: {resp.text[:300]}")
 
     def telegram(self, chat_id, text):
-        if not config.TELEGRAM_BOT_TOKEN:
-            raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
-        # The token is part of the URL, so no requests error (which quotes the URL) is let
-        # through: it would land in backup.log and the app log.
-        try:
-            resp = requests.post(
-                f"{TELEGRAM_API}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
-                timeout=_TELEGRAM_TIMEOUT_SECONDS,
-            )
-        except requests.RequestException as exc:
-            raise RuntimeError(f"Telegram unreachable ({type(exc).__name__})") from None
+        if not config.TELEGRAM_GATEWAY_URL:
+            raise RuntimeError("TELEGRAM_GATEWAY_URL is not configured")
+        resp = requests.post(
+            f"{config.TELEGRAM_GATEWAY_URL.rstrip('/')}/send",
+            json={"chat_id": str(chat_id), "text": text},
+            headers={"x-api-key": config.TELEGRAM_GATEWAY_API_KEY},
+            timeout=_TELEGRAM_TIMEOUT_SECONDS,
+        )
         if resp.status_code >= 300:
             try:
-                reason = resp.json().get("description", "")
+                error = resp.json().get("error", "")
             except ValueError:
-                reason = ""
-            raise RuntimeError(f"Telegram returned HTTP {resp.status_code}: {reason[:300]}")
+                error = resp.text[:300]
+            if error == "blocked":
+                raise RuntimeError("the user has blocked the Telegram bot")
+            raise RuntimeError(f"Telegram gateway returned HTTP {resp.status_code}: {error}")
 
 
 def get_senders(backend):

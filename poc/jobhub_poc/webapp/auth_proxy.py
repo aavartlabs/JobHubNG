@@ -35,17 +35,15 @@ _HOP_BY_HOP_HEADERS = {
     "content-encoding",
     "content-length",
 }
-# Must outlast the slowest upstream call: /auth/phone-number/send-otp blocks until
-# whatsapp-sender gets a WhatsApp server ack, which it waits up to ACK_TIMEOUT_MS=45000
-# for (poc/whatsapp-sender/.env). Must also stay under Cloudflare's 100s origin timeout.
+# Must outlast the slowest upstream call (an OTP email send through Resend) and stay
+# under Cloudflare's 100s origin timeout.
 _PROXY_TIMEOUT_SECONDS = 60
 
 # Forwarding headers a caller can set themselves. The auth-service rate-limits by client
 # IP (see poc/auth-service/src/auth.js) and reads that IP from X-Forwarded-For, so
 # relaying an inbound one verbatim would let any caller mint a fresh rate-limit bucket
-# per request -- on endpoints (/phone-number/send-otp, /email-otp/send-verification-otp)
-# that need no authentication and trigger a real WhatsApp or email send to an
-# attacker-chosen recipient. Dropped here and replaced with one value this app derives
+# per request -- on endpoints (/email-otp/send-verification-otp) that need no
+# authentication and trigger a real email send to an attacker-chosen recipient. Dropped here and replaced with one value this app derives
 # itself; see auth.client_ip() for where that value comes from.
 _CLIENT_CONTROLLED_FORWARDING_HEADERS = {
     "x-forwarded-for",
@@ -54,21 +52,20 @@ _CLIENT_CONTROLLED_FORWARDING_HEADERS = {
 }
 
 
-# Every Better Auth endpoint that sends a real email/WhatsApp message to a caller-chosen
-# recipient, or checks a password, mapped to the Turnstile action its token must carry.
-# Includes endpoints the frontend never calls (password reset, OTP/phone sign-in): they
-# are still reachable through this proxy, so they must not be the unguarded way in.
+# Every Better Auth endpoint that sends a real email to a caller-chosen recipient, or
+# checks a password, mapped to the Turnstile action its token must carry. Includes
+# endpoints the frontend never calls (password reset, OTP sign-in): they are still
+# reachable through this proxy, so they must not be the unguarded way in. The Telegram
+# endpoints (/telegram/link, /telegram/verify) aren't here: they need a signed-in
+# session, send nothing themselves, and are rate-limited in auth-service.
 _TURNSTILE_ACTIONS = {
     "sign-up/email": "signup",
     "sign-in/email": "login",
-    "sign-in/phone-number": "login",
     "sign-in/email-otp": "login",
     "email-otp/send-verification-otp": "send_email_otp",
     "forget-password/email-otp": "send_email_otp",
     "email-otp/request-password-reset": "send_email_otp",
     "email-otp/request-email-change": "send_email_otp",
-    "phone-number/send-otp": "send_phone_otp",
-    "phone-number/request-password-reset": "send_phone_otp",
 }
 # Sent by frontend/src/auth.ts on each protected call; consumed here, never forwarded.
 TURNSTILE_HEADER = "X-Turnstile-Token"

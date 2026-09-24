@@ -37,8 +37,9 @@ def _job_url(origin, job):
     return f"{origin}/jobs?job={job['id']}"
 
 
-def build_whatsapp(rule, jobs, origin):
-    lines = [f"*{_headline(rule, len(jobs))}*", ""]
+def build_telegram(rule, jobs, origin):
+    """Plain text: the gateway sends without a parse mode, so nothing needs escaping."""
+    lines = [_headline(rule, len(jobs)), ""]
     for i, job in enumerate(jobs[:MAX_LISTED], 1):
         lines.append(f"{i}. {_line(job)}\n   {_job_url(origin, job)}")
     if len(jobs) > MAX_LISTED:

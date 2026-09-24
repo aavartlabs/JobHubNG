@@ -1,7 +1,7 @@
 """Send one admin-only message: an ops alert or an admin sign-in code.
 
-Telegram first when TELEGRAM_BOT_TOKEN's bot has an ADMIN_TELEGRAM_CHAT_ID, then the
-ADMIN_ALERT_WHATSAPP number through the WhatsApp gateway. Stops at the first channel that
+Telegram (through poc/telegram-gateway) first when ADMIN_TELEGRAM_CHAT_ID is set, then
+the ADMIN_ALERT_WHATSAPP number through the WhatsApp gateway. Stops at the first channel that
 takes the message; raises only if none did (or none is set), with every channel's reason.
 Site users never get these.
 """
