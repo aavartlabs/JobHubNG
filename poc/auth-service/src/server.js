@@ -3,13 +3,15 @@ import { toNodeHandler } from "better-auth/node";
 
 import { createAdminHandler } from "./admin.js";
 import { auth, db, telegramStore } from "./auth.js";
-import { createTelegramInternalHandler } from "./telegram.js";
+import { createTelegramInternalHandler, ensureTelegramChatIndex } from "./telegram.js";
 
 const PORT = Number(process.env.PORT || 3200);
 
 const authHandler = toNodeHandler(auth);
 const adminHandler = createAdminHandler({ db });
 const telegramHandler = createTelegramInternalHandler({ store: telegramStore });
+// Here, not in auth.js: the migrate CLI imports auth.js before adding the column.
+ensureTelegramChatIndex(db);
 
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });

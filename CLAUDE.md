@@ -301,7 +301,10 @@ accounts verified that way are sent to /verify once to link Telegram). Linking
 code bound to that user and chat; `POST /auth/telegram/verify {code}` sets
 `telegramChatId`/`telegramUsername`/`telegramVerified` (Better Auth plugin fields, `input:
 false`). The code must come back through the site session, so a forwarded link can't
-attach someone else's Telegram; one chat links to one account. `/jobs` and
+attach someone else's Telegram. One chat links to one account: a chat already on another
+account gets no code at `/start`, only that account's masked email ("sign in with that
+account instead"); verify re-checks, and auth-service's startup builds a partial unique
+index `user_telegram_chat_unique` (skipped with an error log if duplicates already exist). `/jobs` and
 `/api/jobs` are public; `/alerts/*` requires a fully verified account and is scoped to
 `alert_subscriptions.owner_auth_user_id`.
 

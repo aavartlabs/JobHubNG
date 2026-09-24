@@ -87,7 +87,11 @@ Auth's.
 - `POST /auth/telegram/verify` (session) `{code}` -> `200 {"status": true}`
   and the user's `telegramChatId`/`telegramUsername`/`telegramVerified` set;
   `400` with `code` `INVALID_CODE`, `CODE_EXPIRED`, `TOO_MANY_ATTEMPTS` (5) or
-  `TELEGRAM_IN_USE` (that chat already belongs to another account).
+  `TELEGRAM_IN_USE` (that chat already belongs to another account; the message
+  names it by masked email, e.g. `so•••@example.org`). A chat that's already
+  linked elsewhere is caught earlier too: `/start` gets that message instead of
+  a code. The database backs this with a partial unique index on
+  `telegramChatId`, created at startup by `ensureTelegramChatIndex`.
 - `POST /internal/telegram/start` -- **not** under `/auth/*`, so Flask's
   proxy can't reach it; only `telegram-gateway` calls it, with header
   `x-telegram-internal-key` = `TELEGRAM_INTERNAL_API_KEY`. `{token, chatId,

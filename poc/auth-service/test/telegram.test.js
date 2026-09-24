@@ -11,6 +11,8 @@ import {
   TelegramVerifyError,
   createTelegramInternalHandler,
   createTelegramStore,
+  ensureTelegramChatIndex,
+  maskEmail,
 } from "../src/telegram.js";
 
 const NOW = "2026-09-24T00:00:00.000Z";
@@ -19,7 +21,7 @@ function setup() {
   const db = new Database(":memory:");
   db.exec(`CREATE TABLE "user" ("id" text not null primary key, "email" text not null, "updatedAt" date not null,
     "telegramChatId" text, "telegramUsername" text, "telegramVerified" integer)`);
-  db.prepare(`INSERT INTO "user" (id, email, updatedAt) VALUES ('u1', 'a@x', ?), ('u2', 'b@x', ?)`).run(NOW, NOW);
+  db.prepare(`INSERT INTO "user" (id, email, updatedAt) VALUES ('u1', 'ada@example.com', ?), ('u2', 'bob@example.com', ?)`).run(NOW, NOW);
   let clock = Date.parse(NOW);
   const store = createTelegramStore({ db, botUsername: "JobsBot", now: () => clock });
   return { db, store, tick: (ms) => { clock += ms; } };
@@ -75,14 +77,50 @@ test("codes expire, and belong to the user whose link was used", () => {
   failsWith(() => store.verify("u1", "abc"), "CODE_EXPIRED");
 });
 
-test("one Telegram chat links to one account only", () => {
+test("a Telegram already on another account gets no code, and is told which account", () => {
   const { db, store } = setup();
   store.verify("u1", codeOf(store.start({ token: tokenOf(store.createLink("u1")), chatId: "4242" })));
-  const code = codeOf(store.start({ token: tokenOf(store.createLink("u2")), chatId: "4242" }));
-  failsWith(() => store.verify("u2", code), "TELEGRAM_IN_USE");
+  const token = tokenOf(store.createLink("u2"));
+  const reply = store.start({ token, chatId: "4242" });
+  assert.match(reply, /already linked to the JobsHub account ad•••@example\.com/);
+  assert.doesNotMatch(reply, /[0-9]{6}/);
+  assert.equal(store.start({ token, chatId: "4242" }), EXPIRED_LINK_REPLY); // link used up
+  failsWith(() => store.verify("u2", "123456"), "CODE_EXPIRED"); // no code was issued
   assert.equal(user(db, "u2").telegramVerified, null);
   // Re-linking the same account to the same chat is fine.
   store.verify("u1", codeOf(store.start({ token: tokenOf(store.createLink("u1")), chatId: "4242" })));
+});
+
+test("if the chat gets linked elsewhere after the code went out, verify refuses and names it", () => {
+  const { db, store } = setup();
+  const code = codeOf(store.start({ token: tokenOf(store.createLink("u2")), chatId: "4242" }));
+  store.verify("u1", codeOf(store.start({ token: tokenOf(store.createLink("u1")), chatId: "4242" })));
+  assert.throws(() => store.verify("u2", code), (err) => err.code === "TELEGRAM_IN_USE" && /ad•••@example\.com/.test(err.message));
+  assert.equal(user(db, "u2").telegramVerified, null);
+});
+
+test("the database refuses a second account on the same chat", () => {
+  const { db } = setup();
+  assert.equal(ensureTelegramChatIndex(db), true);
+  assert.equal(ensureTelegramChatIndex(db), true); // idempotent
+  db.prepare(`UPDATE "user" SET "telegramChatId" = '4242' WHERE id = 'u1'`).run();
+  assert.throws(() => db.prepare(`UPDATE "user" SET "telegramChatId" = '4242' WHERE id = 'u2'`).run(), /UNIQUE/);
+  db.prepare(`UPDATE "user" SET "telegramChatId" = NULL WHERE id = 'u1'`).run(); // many unlinked is fine
+  db.prepare(`UPDATE "user" SET "telegramChatId" = NULL WHERE id = 'u2'`).run();
+});
+
+test("existing duplicates don't stop startup: the index is skipped and reported", () => {
+  const { db } = setup();
+  db.prepare(`UPDATE "user" SET "telegramChatId" = '4242'`).run();
+  const errors = [];
+  assert.equal(ensureTelegramChatIndex(db, { error: (m) => errors.push(m) }), false);
+  assert.match(errors[0], /duplicate/);
+});
+
+test("emails are masked to two characters and the domain", () => {
+  assert.equal(maskEmail("someone@example.org"), "so•••@example.org");
+  assert.equal(maskEmail("a@x.io"), "a•••@x.io");
+  assert.equal(maskEmail("nodomain"), "another account");
 });
 
 async function withInternal(store, apiKey, run) {

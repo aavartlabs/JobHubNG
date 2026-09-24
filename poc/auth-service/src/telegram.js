@@ -15,7 +15,10 @@ import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api
  *
  * The code has to come back through the site session, so forwarding someone a link
  * can't attach their Telegram to your account. One Telegram chat belongs to at most
- * one account. Tokens and codes are stored hashed.
+ * one account: a chat already linked elsewhere gets no code, just the (masked) email of
+ * the account it's on, so a person who already has an account signs in to that one
+ * instead of making another. verify() checks again, and a unique index
+ * (ensureTelegramChatIndex) backs both. Tokens and codes are stored hashed.
  */
 
 export const LINK_TTL_MS = 15 * 60 * 1000;
@@ -27,6 +30,34 @@ const MAX_BODY_BYTES = 16 * 1024;
 
 export const EXPIRED_LINK_REPLY =
   'That link has expired or was already used. On JobsHub, click "Connect Telegram" again for a fresh one.';
+
+/** "so•••@example.org" -- enough for the owner to recognise, not to learn an address. */
+export function maskEmail(email) {
+  const [name, domain] = String(email ?? "").split("@");
+  return domain ? `${name.slice(0, 2)}•••@${domain}` : "another account";
+}
+
+const inUseMessage = (email) =>
+  `That Telegram is already linked to the JobsHub account ${maskEmail(email)}. ` +
+  "Sign in with that account instead.";
+
+/**
+ * One account per Telegram chat, in the database itself. Called by server.js at
+ * startup -- after Better Auth's migrate has added the column, which importing this
+ * module (as the migrate CLI does) must not depend on. If existing rows already share
+ * a chat, the index can't be built: that's reported and startup goes on, with the
+ * checks in start()/verify() still in force.
+ */
+export function ensureTelegramChatIndex(db, log = console) {
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS user_telegram_chat_unique
+             ON "user" ("telegramChatId") WHERE "telegramChatId" IS NOT NULL`);
+    return true;
+  } catch (err) {
+    log.error(`[auth-service] no unique index on telegramChatId (duplicate chats already linked?): ${err.message}`);
+    return false;
+  }
+}
 
 const hash = (value) => crypto.createHash("sha256").update(String(value)).digest("hex");
 
@@ -80,7 +111,7 @@ export function createTelegramStore({ db, botUsername, now = () => Date.now() })
   let userStatements;
   const users = () =>
     (userStatements ??= {
-      chatOwner: db.prepare(`SELECT id FROM "user" WHERE "telegramChatId" = ? AND id != ?`),
+      chatOwner: db.prepare(`SELECT id, email FROM "user" WHERE "telegramChatId" = ? AND id != ?`),
       linkUser: db.prepare(`
         UPDATE "user" SET "telegramChatId" = @chatId, "telegramUsername" = @username,
           "telegramVerified" = 1, "updatedAt" = @updatedAt WHERE id = @userId
@@ -104,6 +135,11 @@ export function createTelegramStore({ db, botUsername, now = () => Date.now() })
     purge.run(now());
     const link = typeof token === "string" && token ? findLink.get(hash(token)) : undefined;
     if (!link) return EXPIRED_LINK_REPLY;
+    const owner = users().chatOwner.get(String(chatId), link.user_id);
+    if (owner) {
+      dropLink.run(link.key);
+      return inUseMessage(owner.email);
+    }
     const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
     db.transaction(() => {
       dropLink.run(link.key);
@@ -141,9 +177,8 @@ export function createTelegramStore({ db, botUsername, now = () => Date.now() })
         return ["INVALID_CODE", "Wrong code. Check the latest message from the bot."];
       }
       dropCode.run(userId);
-      if (users().chatOwner.get(row.chat_id, userId)) {
-        return ["TELEGRAM_IN_USE", "That Telegram account is already linked to another JobsHub account."];
-      }
+      const owner = users().chatOwner.get(row.chat_id, userId);
+      if (owner) return ["TELEGRAM_IN_USE", inUseMessage(owner.email)];
       users().linkUser.run({
         userId,
         chatId: row.chat_id,
