@@ -347,7 +347,7 @@ Every such call is logged by `auth_proxy._log_outcome` as one line — `auth sig
 `~/jobhub-poc/data/logs/web.log` on pi09 (`JOBHUB_LOG_FILE`, 5 × 5 MB), because `docker
 logs` is lost whenever a deploy recreates the container.
 
-**Resume features (phase 1 of 4, 2026-09-24; plan in memory `jobhubng_career_features`).**
+**Resume features (phases 1–3 of 4, 2026-09-24; plan in memory `jobhubng_career_features`).**
 `/profile`: upload PDF/DOCX (≤5 MB, identified by magic bytes, consent checkbox) →
 `resume_text.extract_text` → encrypted row in `resumes` (Fernet, `crypto.py`, key
 `RESUME_ENCRYPTION_KEY` in `.env`; unset = feature off) → `ai_tasks` queue → container
@@ -367,6 +367,21 @@ location 10 → Strong ≥75 / Good ≥55 / Stretch ≥40 / Not a fit, with reas
 must-haves missing → at most Stretch; <3 requirements found → at most Good, marked rough.
 Shown as `_match.html` in the pane/page (app.js polls `/jobs/<id>/match` while it's 202) and a
 badge on list rows.
+
+**Tailoring, apply kit, tracker (phase 3).** `POST /jobs/<id>/tailor` queues a `tailor` task;
+the LLM (`tailoring.PROMPT`) may only select, reorder and lightly reword the checked resume and
+draft a summary + cover note. **`tailoring.verify` is the honesty gate, in code:** every number
+and capitalised name/tool in a rewritten bullet must be in that bullet, in the summary/cover
+note anywhere in the resume, and none of the job's own skills may appear unless the resume
+has them — otherwise the original wording is put back (or the sentence dropped) and the page
+says so. Roles are never dropped or retitled; skills only reordered. Stored Fernet-encrypted
+in `tailored_resumes`; the user can edit it (their words, like /profile). Downloads: `.docx`
+(`resume_render.py`, python-docx) and a print page for "Save as PDF" (no PDF engine on the
+Pi), for tailored and original resumes (`routes_tailor.py`). The job page's "Your application"
+box (`_apply_kit.html`) holds these plus the **tracker**: after an Apply click it asks "Did you
+apply?"; `saved_jobs.status` = saved/applied/interviewing/offer/rejected (`db._migrate` adds
+it), shown and changed on **My jobs** (`/saved`, `?status=` filter). Measured 2026-09-24 on
+gemma4:e2b: 1–4 s per tailoring, 0 fabrications in 16 resume×job runs after verify.
 
 **Admin console (`/admin`)** is separate from site users: an `app_users` row in `jobhub.db`,
 Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +

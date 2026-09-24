@@ -5,7 +5,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from jobhub_poc import config, crypto, db, job_requirements, resume_parse
+from jobhub_poc import config, crypto, db, job_requirements, resume_parse, tailoring
 from jobhub_poc.webapp.job_text import plain_text
 from jobhub_poc.ai import ollama, tasks
 
@@ -42,7 +42,33 @@ def extract_job(conn, task):
     job_requirements.store(conn, task["ref"], data, config.OLLAMA_MODEL)
 
 
-HANDLERS = {"parse_resume": parse_resume, "extract_job": extract_job}
+def tailor(conn, task):
+    """The owner's checked resume, tailored for one job (ref = the job's dedupe_key), then
+    checked fact by fact by tailoring.verify before anything is stored."""
+    owner, key = task["owner_auth_user_id"], task["ref"]
+    row = conn.execute("SELECT structured_enc FROM resumes WHERE owner_auth_user_id = ?", (owner,)).fetchone()
+    job = conn.execute("SELECT title, company_name FROM jobs WHERE dedupe_key = ?", (key,)).fetchone()
+    if row is None or not row["structured_enc"] or job is None:
+        return  # resume deleted or job purged since it was queued
+    resume = crypto.decrypt_json(row["structured_enc"])
+    reqs = job_requirements.get_many(conn, [key]).get(key)
+    if reqs is None:
+        extract_job(conn, task)
+        reqs = job_requirements.get_many(conn, [key]).get(key) or {}
+    info = {"title": job["title"], "company": job["company_name"] or ""}
+    raw = ollama.generate(tailoring.prompt(resume, info, reqs), tailoring.SCHEMA, timeout=600)
+    tailored = tailoring.verify(raw, resume, info, reqs)
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO tailored_resumes (owner_auth_user_id, job_dedupe_key, data_enc, status, model, created_at, updated_at)
+           VALUES (?, ?, ?, 'ready', ?, ?, ?)
+           ON CONFLICT (owner_auth_user_id, job_dedupe_key) DO UPDATE SET data_enc = excluded.data_enc,
+             status = 'ready', model = excluded.model, created_at = excluded.created_at, updated_at = excluded.updated_at""",
+        (owner, key, crypto.encrypt_json(tailored), config.OLLAMA_MODEL, now, now))
+    conn.commit()
+
+
+HANDLERS = {"parse_resume": parse_resume, "extract_job": extract_job, "tailor": tailor}
 
 
 def run_once(conn):

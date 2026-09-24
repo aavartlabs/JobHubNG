@@ -201,6 +201,8 @@ function pollPendingMatches(root: ParentNode): void {
         const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "text/html" } });
         if (response.status === 200) {
           card.outerHTML = await response.text();
+          // The tailored resume is a whole page, not a card: show it.
+          if (document.querySelector("[data-reload-page]")) window.location.reload();
           return;
         }
       } catch {
@@ -330,6 +332,27 @@ function initTaskPolling(): void {
   window.setTimeout(() => void check(), 3000);
 }
 
+/** Small conveniences: status dropdowns that save on change (My jobs, the apply kit), the
+    cover note's Copy button, and the print page's Print button. */
+function initSmallActions(): void {
+  document.querySelectorAll<HTMLSelectElement>("select[data-autosubmit]").forEach((select) => {
+    select.addEventListener("change", () => select.form?.requestSubmit());
+  });
+  document.querySelectorAll<HTMLButtonElement>("button.copy-btn[data-copy]").forEach((button) => {
+    if (!navigator.clipboard) return;
+    button.hidden = false;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy ?? "");
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Couldn't copy";
+      }
+    });
+  });
+  document.getElementById("print-now")?.addEventListener("click", () => window.print());
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initFilters();
   initBackLinks();
@@ -340,4 +363,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initResumeUpload();
   initSuggestions();
   pollPendingMatches(document);
+  initSmallActions();
 });

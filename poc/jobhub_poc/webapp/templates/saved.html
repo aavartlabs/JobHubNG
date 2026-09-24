@@ -1,12 +1,21 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Saved jobs · JobsHub{% endblock %}
+{% block title %}My jobs · JobsHub{% endblock %}
 {% block content %}
-<h1>Saved jobs</h1>
+<h1>My jobs</h1>
+{% set total = counts.values() | sum %}
+{% if total %}
+<nav class="mb-4 flex flex-wrap gap-2" aria-label="Filter by status">
+  <a class="chip {{ 'border-brand bg-brand-soft text-brand-dark' if not wanted }}" href="{{ url_for('jobs.saved') }}">All · {{ total }}</a>
+  {% for value, label in statuses.items() %}{% if counts.get(value) %}
+  <a class="chip {{ 'border-brand bg-brand-soft text-brand-dark' if wanted == value }}" href="{{ url_for('jobs.saved', status=value) }}">{{ label }} · {{ counts[value] }}</a>
+  {% endif %}{% endfor %}
+</nav>
+{% endif %}
 {% if items %}
 <ul class="card divide-y divide-line overflow-hidden">
   {% for job in items %}
-  <li class="flex items-start gap-3 px-4 py-3.5">
+  <li class="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-start sm:gap-3">
     <div class="min-w-0 flex-1">
       {% if job.id %}
         <a href="{{ url_for('jobs.job_page', job_id=job.id) }}" class="font-semibold text-ink no-underline hover:text-brand-dark">{{ job.title }}</a>
@@ -21,17 +30,30 @@
         <span class="badge badge-plain">Saved {{ job.saved_on }}</span>
       </p>
     </div>
-    <form method="post" action="{{ url_for('jobs.saved_remove') }}">
-      <input type="hidden" name="key" value="{{ job.key }}">
-      <button type="submit" class="btn btn-secondary">Remove</button>
-    </form>
+    <div class="flex items-center gap-2">
+      <form method="post" action="{{ url_for('jobs.saved_status') }}" class="flex items-center gap-2">
+        <input type="hidden" name="key" value="{{ job.key }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <select name="status" class="mt-0 w-auto text-sm" data-autosubmit aria-label="Status of {{ job.title }}">
+          {% for value, label in statuses.items() %}<option value="{{ value }}" {{ "selected" if value == job.status }}>{{ label }}</option>{% endfor %}
+        </select>
+        <noscript><button type="submit" class="btn btn-secondary">Update</button></noscript>
+      </form>
+      <form method="post" action="{{ url_for('jobs.saved_remove') }}">
+        <input type="hidden" name="key" value="{{ job.key }}">
+        <button type="submit" class="btn btn-secondary">Remove</button>
+      </form>
+    </div>
   </li>
   {% endfor %}
 </ul>
+{% elif wanted %}
+<div class="card p-6 text-center"><p class="my-0">Nothing here with that status. <a href="{{ url_for('jobs.saved') }}">Show all</a></p></div>
 {% else %}
 <div class="card p-6 text-center">
-  <p class="mt-0">You haven't saved any jobs yet. Use the {{ icon("bookmark", "inline size-4 align-text-bottom") }} on a job to keep it here.</p>
+  <p class="mt-0">You haven't saved any jobs yet. Use the {{ icon("bookmark", "inline size-4 align-text-bottom") }} on a job to keep it here — and track where each application stands.</p>
   <a class="btn" href="{{ url_for('jobs.list_jobs') }}">Browse jobs</a>
 </div>
 {% endif %}
 {% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

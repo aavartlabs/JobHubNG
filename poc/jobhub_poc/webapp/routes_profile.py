@@ -187,6 +187,7 @@ def purge_user_resume_data(conn, user_id):
     """Everything resume-derived for a user (their delete button, and admin deletion)."""
     conn.execute("DELETE FROM resumes WHERE owner_auth_user_id = ?", (user_id,))
     conn.execute("DELETE FROM ai_tasks WHERE owner_auth_user_id = ?", (user_id,))
+    conn.execute("DELETE FROM tailored_resumes WHERE owner_auth_user_id = ?", (user_id,))
     conn.commit()
 
 

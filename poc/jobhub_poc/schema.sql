@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS saved_jobs (
     job_location        TEXT,
     job_apply_url       TEXT,
     saved_at            TEXT NOT NULL,
+    -- The application tracker ("My jobs"): saved | applied | interviewing | offer | rejected.
+    -- Added 2026-09-24; db._migrate adds the columns to older databases.
+    status              TEXT NOT NULL DEFAULT 'saved',
+    status_at           TEXT,
     PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
 );
 
@@ -141,6 +145,20 @@ CREATE TABLE IF NOT EXISTS resumes (
     consent_at          TEXT NOT NULL,
     uploaded_at         TEXT NOT NULL,
     updated_at          TEXT NOT NULL
+);
+
+-- A user's resume tailored for one job (tailoring.py): made by the local LLM, checked by
+-- tailoring.verify, then reviewed and possibly edited by the user. Resume content, so
+-- Fernet-encrypted like resumes. status: ready (as verified) | edited (the user saved it).
+CREATE TABLE IF NOT EXISTS tailored_resumes (
+    owner_auth_user_id  TEXT NOT NULL,
+    job_dedupe_key      TEXT NOT NULL,
+    data_enc            BLOB NOT NULL,
+    status              TEXT NOT NULL,
+    model               TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
 );
 
 -- What each job asks for (job_requirements.py), read by the local LLM when someone with a

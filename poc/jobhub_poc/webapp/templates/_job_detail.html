@@ -30,6 +30,7 @@
 
 {% if state == "verified" %}
   {% include "_match.html" %}
+  {% include "_apply_kit.html" %}
   <div class="mt-5 flex flex-col gap-2 sm:flex-row">
     {% if can_apply %}
       {# New tab: JobsHub stays where the user left it. /apply records the click first. #}

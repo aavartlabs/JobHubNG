@@ -27,6 +27,7 @@ from jobhub_poc.webapp.job_text import format_description
 from jobhub_poc.webapp.jobs_listing import (
     PAGE_SIZES,
     POSTED_WITHIN_OPTIONS,
+    TRACK_STATUSES,
     list_query_string,
     parse_list_args,
     present_job,
@@ -36,9 +37,12 @@ from jobhub_poc.webapp.jobs_listing import (
     save_job,
     saved_jobs,
     saved_keys,
+    set_status,
     site_figures,
+    track_state,
     unsave_job,
 )
+from jobhub_poc.webapp.routes_tailor import tailor_state
 
 bp = Blueprint("jobs", __name__)
 
@@ -91,8 +95,14 @@ def _detail(conn, job_id, record_view):
         record(conn, row, "view_details")
     here = url_for("jobs.job_page", job_id=job_id)
     job = present_job(row)
+    user_id = _user_id()
+    track_status, clicked_apply = track_state(conn, user_id, job["key"])
     return {
         **_match_context(conn, _user_resume(conn), job, priority=5),
+        "tailor_state": tailor_state(conn, user_id, job["key"]) if user_id else None,
+        "track_status": track_status,
+        "clicked_apply": clicked_apply,
+        "track_statuses": TRACK_STATUSES,
         "job": job,
         "saved": bool(saved_keys(conn, _user_id(), [job["key"]])),
         "share_url": f"{config.WEB_ORIGIN.rstrip('/')}{here}",
@@ -246,19 +256,50 @@ def unsave(job_id):
     return _toggle(job_id, False)
 
 
+@bp.route("/jobs/<int:job_id>/status", methods=["POST"])
+def set_track_status(job_id):
+    """The tracker: "Yes, I applied", or a status change. Saves the job if it isn't yet."""
+    denied = _needs_account(job_id)
+    if denied:
+        return denied
+    conn = current_app.get_db()
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if job is None:
+        abort(404)
+    set_status(conn, g.current_user["id"], job["dedupe_key"], request.form.get("status", ""), job=job)
+    return redirect(_safe_next(request.form.get("next"), url_for("jobs.job_page", job_id=job_id)))
+
+
+@bp.route("/saved/status", methods=["POST"])
+@login_required
+def saved_status():
+    """Status change from My jobs -- works for jobs no longer listed, too (by key)."""
+    set_status(current_app.get_db(), g.current_user["id"], request.form.get("key", ""), request.form.get("status", ""))
+    return redirect(_safe_next(request.form.get("next"), url_for("jobs.saved")))
+
+
 @bp.route("/saved")
 @login_required
 def saved():
-    items = []
+    """My jobs: saved jobs and where each application stands (?status= filters)."""
+    wanted = request.args.get("status", "")
+    if wanted not in TRACK_STATUSES:
+        wanted = ""
+    items, counts = [], {}
     for saved_row, job in saved_jobs(current_app.get_db(), g.current_user["id"]):
+        status = saved_row["status"] or "saved"
+        counts[status] = counts.get(status, 0) + 1
+        if wanted and status != wanted:
+            continue
         if job is not None:
             item = present_job(job)
         else:  # purged since it was saved: show what was saved
             item = {"id": None, "key": saved_row["job_dedupe_key"], "title": saved_row["job_title"],
                     "company": saved_row["job_company"] or "", "location": saved_row["job_location"] or ""}
         item["saved_on"] = saved_row["saved_at"][:10]
+        item["status"] = status
         items.append(item)
-    return render_template("saved.html", items=items)
+    return render_template("saved.html", items=items, counts=counts, wanted=wanted, statuses=TRACK_STATUSES)
 
 
 @bp.route("/saved/remove", methods=["POST"])

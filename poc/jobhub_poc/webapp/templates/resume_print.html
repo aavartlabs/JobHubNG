@@ -1,0 +1,43 @@
+<!doctype html>
+{# A resume on one clean page for the browser's Print → Save as PDF (routes_tailor). Standalone:
+   no site header, its own small print stylesheet. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{{ resume.name or "Resume" }}</title>
+  <style>
+    body { font: 10.5pt/1.45 Calibri, "Segoe UI", Roboto, Arial, sans-serif; color: #1f1a24; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 20pt; margin: 0; }
+    .muted { color: #555; }
+    h2 { font-size: 10pt; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin: 1.1rem 0 .4rem; }
+    .role { margin: .55rem 0 .2rem; break-inside: avoid; }
+    .role strong { font-size: 11pt; }
+    ul { margin: .2rem 0 .4rem; padding-left: 1.2rem; }
+    li { margin: .1rem 0; }
+    p { margin: .3rem 0; }
+    .bar { background: #fbe7ef; border-radius: 6px; padding: .6rem .8rem; margin-bottom: 1.2rem; font-size: 10pt; }
+    .bar button { font: inherit; background: #c8175d; color: #fff; border: 0; border-radius: 5px; padding: .35rem .8rem; cursor: pointer; }
+    @media print { .bar { display: none; } body { margin: 0; max-width: none; } @page { margin: 14mm 16mm; } }
+  </style>
+</head>
+<body>
+  <div class="bar">Use your browser's <strong>Print</strong> and choose <strong>Save as PDF</strong>.
+    <button type="button" id="print-now">Print / Save as PDF</button></div>
+  <h1>{{ resume.name }}</h1>
+  <p class="muted">{{ [resume.headline, resume.location, resume.contact] | select | join(" · ") }}</p>
+  {% for link in resume.links or [] %}<p class="muted">{{ link }}</p>{% endfor %}
+  {% if resume.summary %}<h2>Summary</h2><p>{{ resume.summary }}</p>{% endif %}
+  {% if resume.skills %}<h2>Skills</h2><p>{{ resume.skills | join(", ") }}</p>{% endif %}
+  {% if resume.roles %}<h2>Experience</h2>
+    {% for r in resume.roles %}
+    <div class="role"><strong>{{ r.title }}</strong>{% if r.company %} — {{ r.company }}{% endif %}
+      <div class="muted">{{ [dates(r), r.location] | select | join(" · ") }}</div></div>
+    {% if r.bullets %}<ul>{% for b in r.bullets %}<li>{{ b.text }}</li>{% endfor %}</ul>{% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if resume.education %}<h2>Education</h2>{% for e in resume.education %}<p>{{ e }}</p>{% endfor %}{% endif %}
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

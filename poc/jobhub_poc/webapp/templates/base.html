@@ -31,7 +31,7 @@
           </form>
         {% endif %}
         {% if g.current_user %}
-          <a class="nav-link" href="{{ url_for('jobs.saved') }}">Saved</a>
+          <a class="nav-link" href="{{ url_for('jobs.saved') }}">My jobs</a>
           <a class="nav-link" href="{{ url_for('profile.profile') }}">Profile</a>
           <a class="nav-link" href="{{ url_for('alerts.list_alerts') }}">Alerts</a>
           {# POST, not a link -- see auth.py's logout(). #}

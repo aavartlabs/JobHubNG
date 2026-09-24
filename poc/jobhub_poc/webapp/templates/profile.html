@@ -75,6 +75,12 @@
 </section>
 {%- endmacro %}
 
+<p class="mt-0 mb-4 flex flex-wrap items-center gap-2 text-sm">
+  <span class="text-muted">Your checked resume as a document:</span>
+  <a class="btn btn-secondary" href="{{ url_for('tailor.original_docx') }}">Word (.docx)</a>
+  <a class="btn btn-secondary" href="{{ url_for('tailor.original_print') }}" target="_blank" rel="noopener">Print / PDF</a>
+  <span class="text-xs text-muted">Tailored versions are on each job's page.</span>
+</p>
 <form method="post" action="{{ url_for('profile.save') }}" id="resume-review">
   <h2 class="mb-1">Check your details</h2>
   <p class="hint mt-0">This is what JobsHub uses for matching and tailoring — it never adds anything that isn't here.</p>

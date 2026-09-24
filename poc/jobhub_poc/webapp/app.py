@@ -8,7 +8,8 @@ from logging.handlers import RotatingFileHandler
 from flask import Flask, g, redirect, request, url_for
 
 from jobhub_poc import config, db
-from jobhub_poc.webapp import admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs, routes_profile, telegram_webhook
+from jobhub_poc.webapp import (admin, auth, auth_proxy, routes_alerts, routes_api, routes_jobs, routes_profile,
+                                routes_tailor, telegram_webhook)
 
 
 class _PlainFormatter(logging.Formatter):
@@ -124,6 +125,7 @@ def create_app(test_conn=None):
     app.register_blueprint(admin.bp)
     app.register_blueprint(telegram_webhook.bp)
     app.register_blueprint(routes_profile.bp)
+    app.register_blueprint(routes_tailor.bp)
 
     @app.route("/")
     def index():

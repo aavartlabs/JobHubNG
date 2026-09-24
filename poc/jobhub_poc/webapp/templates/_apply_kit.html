@@ -1,0 +1,43 @@
+{# The apply kit on a job (routes_jobs._detail): the resume to send, then the tracker.
+   tailor_state: no_resume | none | pending | ready (routes_tailor.tailor_state). #}
+{% from "_icons.html" import icon %}
+<section class="mt-5 rounded-lg border border-line p-4">
+  <h3 class="mb-2 flex items-center gap-2 text-base font-semibold">{{ icon("file", "size-4 text-brand") }} Your application</h3>
+  {% if tailor_state == "no_resume" %}
+    <p class="my-0 text-sm text-muted"><a href="{{ url_for('profile.profile') }}">Add your resume</a> to get a version tailored for this job.</p>
+  {% elif tailor_state == "ready" %}
+    <p class="my-0 mb-2 text-sm">Your resume, tailored for this job from what it already says.</p>
+    <div class="flex flex-wrap gap-2">
+      <a class="btn btn-secondary" href="{{ url_for('tailor.review', job_id=job.id) }}">Review &amp; cover note</a>
+      <a class="btn btn-secondary" href="{{ url_for('tailor.tailored_docx', job_id=job.id) }}">{{ icon("download", "size-4") }} Word</a>
+      <a class="btn btn-secondary" href="{{ url_for('tailor.tailored_print', job_id=job.id) }}" target="_blank" rel="noopener">PDF</a>
+    </div>
+  {% elif tailor_state == "pending" %}
+    <p class="my-0 text-sm text-muted"><span class="inline-block animate-pulse">●</span> Tailoring your resume… <a href="{{ url_for('tailor.review', job_id=job.id) }}">see it here</a></p>
+  {% else %}
+    <form method="post" action="{{ url_for('tailor.start', job_id=job.id) }}" class="flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-secondary">Tailor my resume for this job</button>
+      <span class="text-xs text-muted">Only from what your resume says.</span>
+    </form>
+  {% endif %}
+
+  {% set statuses = track_statuses %}
+  {% if track_status in ("applied", "interviewing", "offer", "rejected") %}
+    <form method="post" action="{{ url_for('jobs.set_track_status', job_id=job.id) }}" class="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-sm">
+      <input type="hidden" name="next" value="{{ url_for('jobs.job_page', job_id=job.id) }}">
+      <span class="font-medium">Status:</span>
+      <select name="status" class="mt-0 w-auto" data-autosubmit aria-label="Application status">
+        {% for value, label in statuses.items() %}<option value="{{ value }}" {{ "selected" if value == track_status }}>{{ label }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-secondary">Update</button></noscript>
+      <a href="{{ url_for('jobs.saved') }}" class="text-sm">My jobs</a>
+    </form>
+  {% elif clicked_apply %}
+    <form method="post" action="{{ url_for('jobs.set_track_status', job_id=job.id) }}" class="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-sm">
+      <input type="hidden" name="next" value="{{ url_for('jobs.job_page', job_id=job.id) }}">
+      <span>Did you apply?</span>
+      <button type="submit" name="status" value="applied" class="btn">Yes, I applied</button>
+      <span class="text-xs text-muted">We'll keep it in My jobs.</span>
+    </form>
+  {% endif %}
+</section>

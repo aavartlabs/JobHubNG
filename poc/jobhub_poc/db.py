@@ -38,6 +38,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )
     _migrate_alerts_v2(conn)
     _migrate_alerts_telegram(conn)
+    saved = {r[1] for r in conn.execute("PRAGMA table_info(saved_jobs)")}
+    if "status" not in saved:
+        conn.execute("ALTER TABLE saved_jobs ADD COLUMN status TEXT NOT NULL DEFAULT 'saved'")
+        conn.execute("ALTER TABLE saved_jobs ADD COLUMN status_at TEXT")
     # Here, not in schema.sql: on an old database the column only exists after the ALTER.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_jobs_posted_or_seen ON jobs(COALESCE(posted_at, first_seen_at))"

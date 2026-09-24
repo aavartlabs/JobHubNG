@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Your resume for {{ job.title }} · JobsHub{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+<p class="mt-0 mb-2 text-sm"><a href="{{ url_for('jobs.job_page', job_id=job.id) }}">← {{ job.title }}{% if job.company %} · {{ job.company }}{% endif %}</a></p>
+<h1>Your resume for this job</h1>
+{% if notice %}<p class="flash" role="status">{{ notice }}</p>{% endif %}
+
+{% if resume is none %}
+  <div class="card p-5">
+    <p class="mt-0">Tailoring works from your checked resume. <a href="{{ url_for('profile.profile') }}">Upload it on your profile</a> first.</p>
+  </div>
+{% elif pending %}
+  {% include "_tailor_pending.html" %}
+{% elif tailored is none %}
+  <div class="card p-5">
+    <p class="mt-0">JobsHub reorders your resume for <strong>{{ job.title }}</strong>: the experience that matters for this job first,
+      bullets that don't help left out, a short summary and cover note — <strong>all from what your resume already says</strong>.
+      Every sentence is checked against your resume; anything that isn't in it is put back or left out.</p>
+    <form method="post" action="{{ url_for('tailor.start', job_id=job.id) }}"><button type="submit">Tailor my resume for this job</button></form>
+  </div>
+{% else %}
+  {% set t = tailored %}
+  {% set reworded = t.roles | map(attribute="bullets") | sum(start=[]) | selectattr("status", "equalto", "reworded") | list | length %}
+  <div class="mb-4 rounded-lg border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-3 text-sm text-[#166534]">
+    <strong>✓ Built only from your checked resume.</strong>
+    {% if record.status == "edited" %}Includes your own edits.
+    {%- else %}Most relevant experience first{% if reworded %}, {{ reworded }} bullet{{ "s" if reworded != 1 }} reworded for clarity{% else %}, in your own words{% endif %}
+      {%- if t.log %}; {{ t.log | length }} change{{ "s" if t.log | length != 1 }} undone because {{ "they" if t.log | length != 1 else "it" }} went beyond your resume{% endif %}.{% endif %}
+    {% if t.log and record.status != "edited" %}
+    <details class="mt-1"><summary class="cursor-pointer">What we put back</summary>
+      <ul class="mt-1 list-disc pl-5">{% for line in t.log %}<li>{{ line }}</li>{% endfor %}</ul></details>
+    {% endif %}
+  </div>
+
+  <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+    <a class="btn" href="{{ url_for('tailor.tailored_docx', job_id=job.id) }}">{{ icon("download", "size-4") }} Word (.docx)</a>
+    <a class="btn btn-secondary" href="{{ url_for('tailor.tailored_print', job_id=job.id) }}" target="_blank" rel="noopener">Print / save as PDF</a>
+    {% if can_apply %}<a class="btn btn-secondary" href="{{ url_for('jobs.apply', job_id=job.id) }}" target="_blank" rel="noopener">Apply on employer's site {{ icon("external", "size-4") }}</a>{% endif %}
+  </div>
+
+  <section class="card mb-4 p-4 sm:p-5">
+    <h2 class="mb-1 text-base">{{ t.name }}</h2>
+    <p class="my-0 text-sm text-muted">{{ [t.headline, t.location, contact] | select | join(" · ") }}</p>
+    {% if t.summary %}<p class="mb-0">{{ t.summary }}</p>
+      {% if t.summary_status == "tailored" and t.summary_original and t.summary != t.summary_original %}<p class="my-1 text-xs text-muted">Your original: {{ t.summary_original }}</p>{% endif %}{% endif %}
+    <p class="mt-3 mb-0 flex flex-wrap gap-1.5">{% for k in t.skills %}<span class="badge">{{ k }}</span>{% endfor %}</p>
+  </section>
+
+  {% for r in t.roles %}
+  <section class="card mb-4 p-4 sm:p-5">
+    <h3 class="mb-0 text-base font-semibold">{{ r.title }}{% if r.company %} <span class="font-normal text-muted">· {{ r.company }}</span>{% endif %}</h3>
+    <p class="my-0 text-xs text-muted">{{ [r.start, r.end] | select | join(" – ") }}</p>
+    <ul class="mt-2 mb-0 space-y-2 text-sm">
+      {% for b in r.bullets %}
+      <li class="border-l-3 pl-3 {{ {'reworded': 'border-l-[#2563eb]', 'put_back': 'border-l-[#d97706]'}.get(b.status, 'border-l-line') }}">
+        {{ b.text }}
+        {% if b.status == "reworded" %}<span class="mt-0.5 block text-xs text-muted">Reworded · was: {{ b.original }}</span>
+        {% elif b.status == "put_back" %}<span class="mt-0.5 block text-xs text-[#92400e]">Your wording kept — the rewrite {{ b.why }}</span>{% endif %}
+      </li>
+      {% else %}<li class="text-muted">No bullets kept for this role.</li>{% endfor %}
+    </ul>
+    {% if r.left_out %}
+    <details class="mt-2 text-sm"><summary class="cursor-pointer text-muted">Left out for this job ({{ r.left_out | length }})</summary>
+      <ul class="mt-1 list-disc pl-5 text-muted">{% for x in r.left_out %}<li>{{ x }}</li>{% endfor %}</ul></details>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  {% if t.cover_note %}
+  <section class="card mb-4 p-4 sm:p-5">
+    <div class="flex items-center justify-between gap-2">
+      <h3 class="mb-0 text-base font-semibold">Cover note</h3>
+      <button type="button" class="btn btn-secondary copy-btn" data-copy="{{ t.cover_note }}" hidden>Copy</button>
+    </div>
+    <p class="mb-0 text-sm whitespace-pre-line">{{ t.cover_note }}</p>
+  </section>
+  {% endif %}
+
+  <details class="card mb-4 p-4 sm:p-5">
+    <summary class="cursor-pointer font-semibold">Edit before you download</summary>
+    <form method="post" action="{{ url_for('tailor.save', job_id=job.id) }}" class="mt-3">
+      <p class="hint mt-0 text-sm">What you type here is yours to stand behind — it's used as written.</p>
+      <label>Contact line <span class="font-normal text-muted">(shown under your name — email, phone)</span>
+        <input name="contact" value="{{ contact }}"></label>
+      <label>Summary <textarea name="summary" rows="3" class="mt-1 block w-full rounded-md border border-line px-3 py-2">{{ t.summary }}</textarea></label>
+      <label>Skills <span class="font-normal text-muted">(comma-separated, in order)</span>
+        <textarea name="skills" rows="2" class="mt-1 block w-full rounded-md border border-line px-3 py-2">{{ t.skills | join(", ") }}</textarea></label>
+      {% for r in t.roles %}
+      <label>{{ r.title }}{% if r.company %} · {{ r.company }}{% endif %} <span class="font-normal text-muted">(one bullet per line)</span>
+        <textarea name="role-{{ loop.index0 }}-bullets" rows="{{ [r.bullets | length * 2 + 1, 3] | max }}" class="mt-1 block w-full rounded-md border border-line px-3 py-2 text-sm">{% for b in r.bullets %}{{ b.text }}
+{% endfor %}</textarea></label>
+      {% endfor %}
+      <label>Cover note <textarea name="cover_note" rows="6" class="mt-1 block w-full rounded-md border border-line px-3 py-2 text-sm">{{ t.cover_note }}</textarea></label>
+      <button type="submit">Save my version</button>
+    </form>
+  </details>
+
+  <form method="post" action="{{ url_for('tailor.start', job_id=job.id) }}" class="text-right">
+    <button type="submit" class="btn btn-secondary">Start over from my resume</button>
+  </form>
+{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

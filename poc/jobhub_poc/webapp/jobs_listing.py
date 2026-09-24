@@ -361,3 +361,34 @@ def saved_jobs(conn, user_id):
         marks = ",".join("?" * len(listed))
         jobs = {r["id"]: r for r in conn.execute(f"SELECT * FROM jobs WHERE id IN ({marks})", list(listed))}
     return [(r, jobs.get(r["listed_id"])) for r in rows]
+
+
+# ---- application tracker (saved_jobs.status) ----
+
+TRACK_STATUSES = {"saved": "Saved", "applied": "Applied", "interviewing": "Interviewing",
+                  "offer": "Offer", "rejected": "Not selected"}
+
+
+def set_status(conn, user_id, dedupe_key, status, job=None):
+    """Move a job along the tracker. A job that isn't saved yet is saved first (needs the
+    jobs row `job` for its snapshot); unknown statuses are ignored. True if it changed."""
+    if status not in TRACK_STATUSES:
+        return False
+    if job is not None:
+        save_job(conn, user_id, job)
+    changed = conn.execute(
+        "UPDATE saved_jobs SET status = ?, status_at = ? WHERE owner_auth_user_id = ? AND job_dedupe_key = ?",
+        (status, datetime.now(timezone.utc).isoformat(), user_id, dedupe_key)).rowcount
+    conn.commit()
+    return bool(changed)
+
+
+def track_state(conn, user_id, dedupe_key):
+    """(tracker status or None if not saved, whether they clicked Apply on it)."""
+    if not user_id:
+        return None, False
+    row = conn.execute("SELECT status FROM saved_jobs WHERE owner_auth_user_id = ? AND job_dedupe_key = ?",
+                       (user_id, dedupe_key)).fetchone()
+    clicked = conn.execute("SELECT 1 FROM job_interactions WHERE owner_auth_user_id = ? AND job_dedupe_key = ? "
+                           "AND action = 'click_apply' LIMIT 1", (user_id, dedupe_key)).fetchone()
+    return (row["status"] if row else None), clicked is not None
