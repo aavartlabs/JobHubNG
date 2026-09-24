@@ -56,6 +56,45 @@
       text-plum-muted no-underline hover:text-white sm:text-base;
   }
 
+  /* Job badges (location, type, salary, posted, New) and search chips. */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md border border-line bg-white px-2 py-0.5 text-xs
+      leading-5 font-medium whitespace-nowrap text-muted;
+  }
+  .badge-plain { @apply border-transparent bg-transparent px-0.5; }
+  .badge-brand { @apply border-transparent bg-brand-soft text-brand-dark; }
+  .badge-strong { @apply text-ink; }
+  .badge-new { @apply border-transparent bg-[#e7f7ee] font-semibold text-[#166534]; }
+  .chip {
+    @apply inline-flex items-center rounded-full border border-line bg-white px-3 py-1 text-xs
+      font-medium text-ink no-underline hover:border-brand/40 hover:bg-brand-soft hover:text-brand-dark;
+  }
+
+  /* Company initials in a coloured tile (no logos in the data). White text on each colour
+     is WCAG AA. The class comes from jobs_listing.monogram(). */
+  .monogram {
+    @apply inline-flex shrink-0 items-center justify-center rounded-lg font-bold tracking-tight
+      text-white select-none;
+  }
+  .mono-0 { background: #7b1450; }
+  .mono-1 { background: #1d4ed8; }
+  .mono-2 { background: #047857; }
+  .mono-3 { background: #b45309; }
+  .mono-4 { background: #6d28d9; }
+  .mono-5 { background: #be123c; }
+
+  /* Stats cards above the list. */
+  .stat-card { @apply flex items-center gap-3 rounded-lg border border-line bg-white p-3 sm:p-4; }
+  .stat-card strong { @apply block text-lg leading-tight font-bold text-ink sm:text-xl; }
+  .stat-card > span:last-child { @apply text-xs text-muted sm:text-sm; }
+  .stat-icon { @apply inline-flex size-9 shrink-0 items-center justify-center rounded-full sm:size-10; }
+
+  /* A job description as produced by job_text.format_description. */
+  .job-description { @apply text-[0.95rem] leading-relaxed break-words text-ink; }
+  .job-description h3 { @apply mt-5 mb-1.5 text-base font-semibold; }
+  .job-description p { @apply my-2.5; }
+  .job-description ul { @apply my-2.5 list-disc space-y-1 pl-5 marker:text-brand; }
+
   /* Small data tables (admin): scroll sideways inside their card, never the page. */
   .table-card { @apply overflow-x-auto rounded-lg border border-line bg-white shadow-card; }
   .table-card table { @apply w-full border-collapse text-sm; }

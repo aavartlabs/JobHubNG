@@ -88,8 +88,17 @@ remain only for the rollback path.
   holds no identity of its own — see [Accounts](#accounts-poc-web-app). **Pages are
   server-rendered Jinja + Tailwind CSS v4 (since 2026-09-24), phone-first** (unprefixed
   classes = phone, `sm:`/`lg:` add wider layouts). The jobs flow (`routes_jobs.py`): `/jobs`
-  is the list (title, company, location, posted; each row an `<a id="job-<id>">`), its
-  filters/sort/page are plain GET params so the URL is the list state; `/jobs/<id>` is one
+  is hero search (`q` = title or company; old `title=` still accepted; location with a
+  datalist; `work_mode` remote/onsite) + stats cards + the list (each row an
+  `<a id="job-<id>" class="job-row">` with initials tile, real badges only: location,
+  Remote, type, salary, posted, New — no invented ratings/experience); filters/sort/page
+  are plain GET params so the URL is the list state. **On a PC (`lg`, ≥1024px) it's a split
+  view**: the pane beside the list shows `?sel=<id>` or the first row (the default one never
+  records a view); `app.ts` swaps it via `/jobs/<id>/panel` (HTML fragment) and
+  `history.replaceState`s `sel` (not push, so Back leaves the list); ↑/↓ move. Below `lg`
+  rows open the job page as before. Descriptions go through `webapp/job_text.py`
+  (`format_description`: decode entities, drop any tags, escape, then add only
+  paragraphs/bullets/headings/bold — never trusts source HTML). `/jobs/<id>` is one
   job (anyone sees the basics; description + Apply need a verified account; Back returns to
   `/jobs?<same params>#job-<id>`, or `history.back()` when the list is the referrer, so the
   same row comes back); `/jobs/<id>/apply` records `click_apply` then 302s to the employer

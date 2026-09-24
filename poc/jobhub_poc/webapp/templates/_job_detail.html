@@ -1,0 +1,53 @@
+{% from "_icons.html" import icon %}
+{# One job's details: the full page (job.html, in_panel false) and the PC pane
+   (_job_panel.html, in_panel true). Description + Apply only for verified accounts. #}
+<header class="flex gap-4">
+  <span class="monogram {{ job.monogram_class }} size-12 text-base sm:size-14 sm:text-lg" aria-hidden="true">{{ job.monogram }}</span>
+  <div class="min-w-0">
+    {% if in_panel %}<h2 class="mb-1 text-xl leading-snug">{{ job.title }}</h2>{% else %}<h1 class="mb-1 leading-snug">{{ job.title }}</h1>{% endif %}
+    <p class="my-0 text-muted">{{ job.company }}</p>
+  </div>
+</header>
+
+<div class="mt-4 flex flex-wrap gap-2">
+  {% if job.location %}<span class="badge">{{ icon("pin") }}{{ job.location }}</span>{% endif %}
+  {% if job.is_remote %}<span class="badge badge-brand">{{ icon("home") }}Remote</span>{% endif %}
+  {% if job.employment %}<span class="badge">{{ icon("briefcase") }}{{ job.employment }}</span>{% endif %}
+  {% if job.department %}<span class="badge">{{ icon("users") }}{{ job.department }}</span>{% endif %}
+  {% if job.salary %}<span class="badge badge-strong">{{ icon("money") }}{{ job.salary }}</span>{% endif %}
+  {% if job.posted %}<span class="badge badge-plain" title="{{ job.posted_on }}">{{ icon("clock") }}Posted {{ job.posted }}</span>{% endif %}
+  {% if job.is_new %}<span class="badge badge-new">New</span>{% endif %}
+</div>
+
+{% if state == "verified" %}
+  <div class="mt-5 flex flex-col gap-2 sm:flex-row">
+    {% if can_apply %}
+      {# New tab: JobsHub stays where the user left it. /apply records the click first. #}
+      <a href="{{ url_for('jobs.apply', job_id=job.id) }}" target="_blank" rel="noopener" class="btn">Apply on employer's site {{ icon("external", "size-4") }}</a>
+    {% else %}
+      <p class="my-0 self-center text-sm text-muted">This posting has no apply link.</p>
+    {% endif %}
+    {% if in_panel %}<a href="{{ url_for('jobs.job_page', job_id=job.id) }}" class="btn btn-secondary">Open full page</a>{% endif %}
+  </div>
+  <section class="mt-6 border-t border-line pt-5">
+    <h3 class="mb-2 text-base font-semibold">Job description</h3>
+    {% if description %}
+      <div class="job-description">{{ description }}</div>
+    {% else %}
+      <p class="text-muted italic">No description available for this posting.</p>
+    {% endif %}
+  </section>
+{% else %}
+  <div class="mt-5 rounded-lg border border-line bg-surface p-4 sm:p-5">
+    {% if state == "unverified" %}
+      <p class="mt-0 font-medium">Finish setting up your account to see the full description and apply.</p>
+      <a href="{{ verify_url }}" class="btn">Finish verification</a>
+    {% else %}
+      <p class="mt-0 font-medium">Sign in to see the full description and apply.</p>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <a href="{{ login_url }}" class="btn">Log in</a>
+        <a href="{{ register_url }}" class="btn btn-secondary">Create a free account</a>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}

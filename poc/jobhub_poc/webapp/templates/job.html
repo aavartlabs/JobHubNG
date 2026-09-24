@@ -3,53 +3,10 @@
 {% block content %}
 <article class="mx-auto max-w-3xl">
   <a href="{{ back_url }}" class="back-link inline-flex min-h-11 items-center gap-1 text-sm font-medium no-underline sm:min-h-0">← Back to jobs</a>
-
-  <header class="mt-2 mb-4">
-    <h1 class="mb-1">{{ job.title }}</h1>
-    <p class="my-0 text-muted">
-      {{ [job.company_name, job.location] | select | join(" · ") }}
-      {% if posted %}<span class="whitespace-nowrap"> · {{ posted }}</span>{% endif %}
-    </p>
-    {% if job.employment_type or job.is_remote %}
-    <p class="mt-2 mb-0 flex flex-wrap gap-2 text-xs font-medium">
-      {% if job.is_remote %}<span class="rounded-full bg-brand-soft px-2.5 py-1 text-brand-dark">Remote</span>{% endif %}
-      {% if job.employment_type %}<span class="rounded-full bg-surface px-2.5 py-1 text-muted">{{ job.employment_type }}</span>{% endif %}
-    </p>
-    {% endif %}
-  </header>
-
-  {% if state == "verified" %}
-    <div class="card p-4 sm:p-6">
-      {% if job.description %}
-        <div class="text-[0.95rem] leading-relaxed break-words whitespace-pre-wrap">{{ job.description }}</div>
-      {% else %}
-        <p class="my-0 text-muted italic">No description available for this posting.</p>
-      {% endif %}
-    </div>
-    <div class="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <a href="{{ back_url }}" class="back-link btn btn-secondary">← Back to jobs</a>
-      {% if can_apply %}
-        {# New tab: JobsHub stays where the user left it. /apply records the click first. #}
-        <a href="{{ url_for('jobs.apply', job_id=job.id) }}" target="_blank" rel="noopener" class="btn">Apply on employer's site ↗</a>
-      {% else %}
-        <p class="my-0 text-sm text-muted">This posting has no apply link.</p>
-      {% endif %}
-    </div>
-  {% else %}
-    <div class="card p-4 sm:p-6">
-      {% if state == "unverified" %}
-        <p class="mt-0 font-medium">Finish setting up your account to see the full description and apply.</p>
-        <a href="{{ verify_url }}" class="btn">Finish verification</a>
-      {% else %}
-        <p class="mt-0 font-medium">Sign in to see the full description and apply.</p>
-        <div class="flex flex-col gap-2 sm:flex-row">
-          <a href="{{ login_url }}" class="btn">Log in</a>
-          <a href="{{ register_url }}" class="btn btn-secondary">Create a free account</a>
-        </div>
-      {% endif %}
-    </div>
-    <p class="mt-5"><a href="{{ back_url }}" class="back-link font-medium no-underline">← Back to jobs</a></p>
-  {% endif %}
+  <div class="card mt-2 p-4 sm:p-6">
+    {% with in_panel = false %}{% include "_job_detail.html" %}{% endwith %}
+  </div>
+  <p class="mt-5"><a href="{{ back_url }}" class="back-link btn btn-secondary">← Back to jobs</a></p>
 </article>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

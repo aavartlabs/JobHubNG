@@ -1,6 +1,7 @@
 """The server-rendered jobs pages: /jobs (list), /jobs/<id> (one job), /jobs/<id>/apply.
 Filter/sort/paging SQL is shared with /api/jobs (jobs_listing.py); tests/test_webapp_api.py
 covers it through the API, these cover what the pages add."""
+import json
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -8,7 +9,16 @@ import pytest
 
 from jobhub_poc import config
 from jobhub_poc.webapp.app import create_app
-from jobhub_poc.webapp.jobs_listing import ListQuery, list_query_string, posted_label, safe_back_query
+from jobhub_poc.webapp.jobs_listing import (
+    ListQuery,
+    employment_label,
+    list_query_string,
+    monogram,
+    posted_label,
+    present_job,
+    safe_back_query,
+    salary_label,
+)
 
 SESSION_COOKIE_NAME = "jobhub-auth.session_token"
 GET_SESSION_URL = f"{config.AUTH_SERVICE_URL}/auth/get-session"
@@ -56,13 +66,21 @@ def test_list_is_public_and_needs_no_auth_call(conn, requests_mock):
 
 def test_list_rows_link_to_their_job_page_and_carry_the_list_state(conn):
     _seed(conn, n=30)
-    html = _client(conn).get("/jobs?title=sre&page=2&page_size=10").get_data(as_text=True)
+    html = _client(conn).get("/jobs?q=sre&page=2&page_size=10").get_data(as_text=True)
     assert "Showing 11–20 of 30 jobs" in html
     assert 'id="job-20"' in html and 'id="job-5"' not in html  # newest first, page 2
-    assert 'href="/jobs/20?back=title%3Dsre%26page%3D2%26page_size%3D10"' in html
+    assert 'href="/jobs/20?back=q%3Dsre%26page%3D2%26page_size%3D10"' in html
     # Prev/Next keep the filters; page 1 is the default so it isn't in the URL.
-    assert 'href="/jobs?title=sre&amp;page_size=10">← Prev' in html
-    assert 'href="/jobs?title=sre&amp;page=3&amp;page_size=10">Next →' in html
+    assert 'href="/jobs?q=sre&amp;page_size=10">← Prev' in html
+    assert 'href="/jobs?q=sre&amp;page=3&amp;page_size=10">Next →' in html
+
+
+def test_old_title_links_still_search():
+    # ?title= was the search parameter until 2026-09-24.
+    from urllib.parse import parse_qs
+    assert list_query_string(ListQuery(q="sre")) == "q=sre"
+    assert safe_back_query("title=sre") == "q=sre"
+    assert parse_qs(safe_back_query("title=sre&q=devops")) == {"q": ["devops"]}
 
 
 def test_list_shows_the_four_fields_and_no_row_buttons(conn):
@@ -98,7 +116,7 @@ def test_old_job_links_redirect_to_the_job_page(conn):
 def test_signed_out_sees_the_basics_and_a_sign_in_prompt_only(conn):
     _seed(conn, n=1)
     html = _client(conn).get("/jobs/1").get_data(as_text=True)
-    assert "SRE 1" in html and "Acme · Bengaluru" in html
+    assert "SRE 1" in html and ">Acme<" in html and "Bengaluru" in html
     assert "Run prod." not in html and "/jobs/1/apply" not in html
     assert 'href="/login?next=/jobs/1"' in html and 'href="/register?next=/jobs/1"' in html
     assert _interactions(conn) == []
@@ -115,17 +133,18 @@ def test_verified_sees_description_and_an_apply_link_in_a_new_tab(conn, requests
     _seed(conn, n=1)
     client = _client(conn, requests_mock, _verified())
     html = client.get("/jobs/1").get_data(as_text=True)
-    assert "Run prod.\nOn call." in html
+    assert "<p>Run prod.<br>On call.</p>" in html
     assert re.search(r'href="/jobs/1/apply" target="_blank" rel="noopener"', html)
     client.get("/jobs/1")  # a repeat view within the hour is the same signal
     assert _interactions(conn) == ["view_details"]
 
 
 @pytest.mark.parametrize("back, expected", [
-    ("title%3Dsre%26page%3D2", "/jobs?title=sre&amp;page=2#job-1"),
+    ("q%3Dsre%26page%3D2", "/jobs?q=sre&amp;page=2#job-1"),
+    ("title%3Dsre", "/jobs?q=sre#job-1"),  # old parameter name
     ("", "/jobs#job-1"),
     ("https%3A%2F%2Fevil.example%2F", "/jobs#job-1"),          # never another site
-    ("title%3Dx%26next%3D%2F%2Fevil.example", "/jobs?title=x#job-1"),  # unknown params dropped
+    ("q%3Dx%26next%3D%2F%2Fevil.example", "/jobs?q=x#job-1"),  # unknown params dropped
 ])
 def test_back_link_returns_to_the_same_list_row_and_nowhere_else(conn, back, expected):
     _seed(conn, n=1)
@@ -165,12 +184,13 @@ def test_apply_never_redirects_to_a_non_web_url(conn, requests_mock, url):
 
 def test_list_query_string_leaves_defaults_out():
     assert list_query_string(ListQuery()) == ""
-    assert list_query_string(ListQuery(title="sre ops", page=3)) == "title=sre+ops&page=3"
+    assert list_query_string(ListQuery(q="sre ops", page=3)) == "q=sre+ops&page=3"
+    assert list_query_string(ListQuery(work_mode="remote")) == "work_mode=remote"
 
 
 def test_safe_back_query_keeps_only_valid_list_parameters():
-    assert safe_back_query("title=sre&sort=posted&page=2") == "title=sre&sort=posted&page=2"
-    assert safe_back_query("sort=evil&page=-1&page_size=5000&foo=bar") == "page_size=100"
+    assert safe_back_query("q=sre&sort=posted&page=2") == "q=sre&sort=posted&page=2"
+    assert safe_back_query("sort=evil&work_mode=moon&page=-1&page_size=5000&foo=bar") == "page_size=100"
     assert safe_back_query(None) == ""
 
 
@@ -182,3 +202,93 @@ def test_posted_label_prefers_the_posted_date_and_falls_back_to_first_seen():
     assert posted_label(None, "junk", now) == ""
     assert posted_label("2026-05-01", "x", now) == "4mo ago"
     assert posted_label("2021-01-01", "x", now) == "5y ago"
+
+
+# ---- search, stats, the PC pane ----
+
+def _seed_rich(conn):
+    now = datetime.now(timezone.utc)
+    rows = [
+        # id, title, company, location, remote, first_seen (days ago), raw_json
+        (1, "SRE - Site Reliability Engineer", "NVIDIA", "Pune, India", 0, 0,
+         {"department": "Engineering", "compensation": {"currency": "INR", "interval": "yearly",
+                                                        "minAmount": 4500000, "maxAmount": 7000000}}),
+        (2, "Data Analyst", "Acme SRE Tools", "Remote", 1, 2, {"employmentType": "FULL_TIME"}),
+        (3, "Chef", "Taj", "Mumbai", 0, 5, {}),
+    ]
+    for jid, title, company, loc, remote, days, raw in rows:
+        seen = (now - timedelta(days=days, hours=1)).isoformat()
+        conn.execute(
+            """INSERT INTO jobs (id, dedupe_key, source_site, title, company_name, location, apply_url,
+                                 description, is_remote, first_seen_at, last_seen_at, raw_json)
+               VALUES (?, ?, 's', ?, ?, ?, 'https://e.example/a', 'About &amp; more', ?, ?, ?, ?)""",
+            (jid, f"r{jid}", title, company, loc, remote, seen, seen, json.dumps(raw)),
+        )
+    conn.commit()
+
+
+def test_q_matches_title_or_company_and_work_mode_filters(conn):
+    _seed_rich(conn)
+    html = _client(conn).get("/jobs?q=sre").get_data(as_text=True)
+    assert 'id="job-1"' in html and 'id="job-2"' in html and 'id="job-3"' not in html  # company "Acme SRE Tools"
+    html = _client(conn).get("/jobs?work_mode=remote").get_data(as_text=True)
+    assert 'id="job-2"' in html and 'id="job-1"' not in html
+    html = _client(conn).get("/jobs?work_mode=onsite").get_data(as_text=True)
+    assert 'id="job-2"' not in html and 'id="job-1"' in html
+
+
+def test_stats_count_every_match_not_just_the_page(conn):
+    _seed_rich(conn)
+    html = _client(conn).get("/jobs?page_size=10").get_data(as_text=True)
+    stats = re.findall(r'<strong>([\d,]+)</strong>(Jobs found|Companies|Locations|New today)', html)
+    assert dict((label, n) for n, label in stats) == {"Jobs found": "3", "Companies": "3", "Locations": "3", "New today": "1"}
+
+
+def test_rows_show_real_badges_only(conn):
+    _seed_rich(conn)
+    html = _client(conn).get("/jobs").get_data(as_text=True)
+    assert "₹45L–70L / yr" in html and "Full-time" in html and "New" in html and "Remote" in html
+    for fake in ("reviews", "yrs", "Hot"):
+        assert fake not in html
+
+
+def test_pc_pane_shows_the_first_job_without_counting_a_view(conn, requests_mock):
+    _seed_rich(conn)
+    html = _client(conn, requests_mock, _verified()).get("/jobs").get_data(as_text=True)
+    assert 'id="job-pane"' in html and 'data-job-panel="1"' in html
+    assert re.search(r'id="job-1"[^>]*aria-current="true"', html)
+    assert _interactions(conn) == []  # a phone never sees the pane
+
+
+def test_sel_picks_the_pane_job_and_counts_as_a_view(conn, requests_mock):
+    _seed_rich(conn)
+    html = _client(conn, requests_mock, _verified()).get("/jobs?sel=3").get_data(as_text=True)
+    assert 'data-job-panel="3"' in html and "About &amp; more" in html
+    assert _interactions(conn) == ["view_details"]
+
+
+def test_panel_fragment_is_gated_like_the_page(conn, requests_mock):
+    _seed_rich(conn)
+    anon = _client(conn).get("/jobs/1/panel")
+    assert anon.status_code == 200 and "<html" not in anon.get_data(as_text=True)
+    assert "Sign in to see the full description" in anon.get_data(as_text=True) and "About" not in anon.get_data(as_text=True)
+    verified = _client(conn, requests_mock, _verified()).get("/jobs/1/panel").get_data(as_text=True)
+    assert "About &amp; more" in verified and "Open full page" in verified and "/jobs/1/apply" in verified
+    assert _interactions(conn) == ["view_details"]
+    assert _client(conn).get("/jobs/99/panel").status_code == 404
+
+
+def test_row_helpers():
+    assert monogram("NVIDIA Corporation")[0] == "NV"
+    assert monogram("Tata Consultancy Services")[0] == "TC"
+    assert monogram("The Walt Disney Company")[0] == "WD"
+    assert monogram(None)[0] == "?"
+    assert monogram("Acme")[1] == monogram("ACME")[1]  # stable colour
+    assert salary_label({"currency": "USD", "interval": "yearly", "minAmount": 125000, "maxAmount": 160000}) == "$125k–160k / yr"
+    assert salary_label({"currency": "INR", "interval": "yearly", "minAmount": 4500000, "maxAmount": 12000000}) == "₹45L–1.2Cr / yr"
+    assert salary_label({"currency": "EUR", "interval": "hourly", "minAmount": 40}) == "from €40 / hr"
+    assert salary_label({"currency": "USD", "maxAmount": 90000}) == "up to $90k"
+    assert salary_label({"currency": "USD"}) is None and salary_label(None) is None and salary_label("x") is None
+    assert employment_label("FULL_TIME") == employment_label("Full-Time") == employment_label(["fulltime"]) == "Full-time"
+    assert employment_label("contractor") == "Contract" and employment_label(None) is None and employment_label([]) is None
+    assert employment_label("EOR Mexico") is None  # free text, not a job type

@@ -1,64 +1,94 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_job_row.html" import job_row %}
 {% block title %}Jobs · JobsHub{% endblock %}
 {% block content %}
-{# A plain GET form: the URL holds the whole list state (see routes_jobs.py). #}
-<form method="get" action="{{ url_for('jobs.list_jobs') }}" id="filter-form"
-      class="mb-4 grid grid-cols-2 gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-4 sm:items-center lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]">
-  {# Phone: searches full width, then two per row. Tablet: searches share a row, then the
-     rest. PC (lg): everything on one row. #}
-  <input type="search" name="title" value="{{ q.title }}" placeholder="Title contains…" aria-label="Title contains"
-         class="col-span-2 mt-0 sm:max-w-none lg:col-span-1">
-  <input type="search" name="location" value="{{ q.location }}" placeholder="Location contains…" aria-label="Location contains"
-         class="col-span-2 mt-0 sm:max-w-none lg:col-span-1">
-  <select name="posted_within" aria-label="Posted within" class="mt-0 sm:max-w-none">
-    {% for days, label in posted_within_options %}<option value="{{ days }}" {{ 'selected' if q.posted_within == days }}>{{ label }}</option>{% endfor %}
-  </select>
-  <select name="sort" aria-label="Sort" class="mt-0 sm:max-w-none">
-    <option value="freshness" {{ 'selected' if q.sort == 'freshness' }}>Newest</option>
-    <option value="posted" {{ 'selected' if q.sort == 'posted' }}>Recently posted</option>
-    <option value="title" {{ 'selected' if q.sort == 'title' }}>Title A–Z</option>
-  </select>
-  <select name="page_size" aria-label="Jobs per page" class="mt-0 sm:max-w-none">
-    {% for n in page_sizes %}<option value="{{ n }}" {{ 'selected' if q.page_size == n }}>{{ n }} / page</option>{% endfor %}
-  </select>
-  <button type="submit" class="btn">Filter</button>
+{# One GET form for search + filters: the URL holds the whole list state (routes_jobs.py). #}
+<form method="get" action="{{ url_for('jobs.list_jobs') }}" id="filter-form">
+  <section class="mb-3 rounded-xl border border-line bg-linear-to-r from-[#f3ecfb] via-white to-[#fdeef5] p-3 sm:mb-4 sm:p-6 xl:grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] xl:items-center xl:gap-8">
+    <div class="mb-3 sm:mb-4 xl:mb-0">
+      <h1 class="mb-0 text-xl tracking-tight sm:mb-1 sm:text-3xl">Find your <span class="text-brand">next opportunity</span></h1>
+      <p class="my-0 hidden text-sm text-muted sm:block sm:text-base">{{ '{:,}'.format(site.total) }} jobs from companies hiring now. Search by title or company.</p>
+    </div>
+    <div>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(9.5rem,0.9fr)_auto]">
+        <label class="relative col-span-2 mb-0 sm:col-span-1">
+          <span class="sr-only">Job title or company</span>
+          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">{{ icon("search", "size-4") }}</span>
+          <input type="search" name="q" value="{{ q.q }}" placeholder="Job title or company" class="mt-0 pl-9 sm:max-w-none">
+        </label>
+        <label class="relative col-span-2 mb-0 sm:col-span-1">
+          <span class="sr-only">Location</span>
+          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">{{ icon("pin", "size-4") }}</span>
+          <input type="search" name="location" value="{{ q.location }}" placeholder="Location" list="top-locations" class="mt-0 pl-9 sm:max-w-none">
+        </label>
+        <select name="work_mode" aria-label="Remote or on-site" class="mt-0 sm:max-w-none">
+          <option value="" {{ 'selected' if not q.work_mode }}>Any mode</option>
+          <option value="remote" {{ 'selected' if q.work_mode == 'remote' }}>Remote only</option>
+          <option value="onsite" {{ 'selected' if q.work_mode == 'onsite' }}>On-site only</option>
+        </select>
+        <button type="submit" class="btn">Search</button>
+      </div>
+      <datalist id="top-locations">{% for loc in site.top_locations %}<option value="{{ loc }}">{% endfor %}</datalist>
+      {% if popular %}
+      {# Phone: one line that scrolls sideways inside itself; wider: wraps. #}
+      <p class="-mx-1 mt-2.5 mb-0 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 text-sm [scrollbar-width:none] sm:mt-3 sm:flex-wrap sm:overflow-visible sm:pb-0">
+        <span class="mr-1 shrink-0 font-semibold text-muted">Popular:</span>
+        {% for term in popular %}<a href="{{ url_for('jobs.list_jobs', q=term) }}" class="chip shrink-0">{{ term }}</a>{% endfor %}
+      </p>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:grid-cols-4 lg:flex lg:items-center lg:justify-end">
+    <span class="col-span-2 hidden text-sm font-medium text-muted sm:col-span-1 lg:mr-auto lg:block">Refine</span>
+    <select name="posted_within" aria-label="Posted within" class="mt-0 sm:max-w-none lg:w-44">
+      {% for days, label in posted_within_options %}<option value="{{ days }}" {{ 'selected' if q.posted_within == days }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="sort" aria-label="Sort" class="mt-0 sm:max-w-none lg:w-44">
+      <option value="freshness" {{ 'selected' if q.sort == 'freshness' }}>Newest</option>
+      <option value="posted" {{ 'selected' if q.sort == 'posted' }}>Recently posted</option>
+      <option value="title" {{ 'selected' if q.sort == 'title' }}>Title A–Z</option>
+    </select>
+    <select name="page_size" aria-label="Jobs per page" class="mt-0 hidden sm:block sm:max-w-none lg:w-36">
+      {% for n in page_sizes %}<option value="{{ n }}" {{ 'selected' if q.page_size == n }}>{{ n }} / page</option>{% endfor %}
+    </select>
+    {% if filtered %}<a href="{{ url_for('jobs.list_jobs') }}" class="btn btn-secondary col-span-2 sm:col-span-1">Clear all</a>{% endif %}
+  </div>
 </form>
 
-<p class="my-2 text-sm text-muted">
-  {% if total %}Showing {{ first }}–{{ last }} of {{ '{:,}'.format(total) }} jobs{% else %}No jobs match these filters.{% endif %}
-</p>
-
-{% if jobs %}
-<div class="card overflow-hidden">
-  {# Column heads, PC only; on a phone each job is a two-line entry. #}
-  <div class="hidden grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_6.5rem] gap-4 border-b border-line bg-surface px-4 py-2 text-xs font-semibold tracking-wider text-muted uppercase sm:grid">
-    <span>Title</span><span>Company</span><span>Location</span><span>Posted</span>
-  </div>
-  <ul class="divide-y divide-line">
-    {% for job in jobs %}
-    <li>
-      <a id="job-{{ job.id }}" href="{{ url_for('jobs.job_page', job_id=job.id) }}{% if list_qs %}?back={{ list_qs | urlencode }}{% endif %}"
-         class="block scroll-mt-4 px-4 py-3 text-ink no-underline transition-colors hover:bg-brand-soft/50 hover:text-ink target:bg-brand-soft sm:grid sm:grid-cols-[minmax(0,2.4fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_6.5rem] sm:items-baseline sm:gap-4">
-        <span class="block font-semibold text-brand-dark sm:font-medium sm:text-ink">{{ job.title }}</span>
-        {# Phone: company · location · posted on one muted line. PC: three columns. #}
-        <span class="mt-0.5 block text-sm text-muted sm:mt-0 sm:text-[0.92rem] sm:text-ink">
-          {{ job.company }}<span class="sm:hidden">{% if job.company and job.location %} · {% endif %}{{ job.location }}{% if job.posted %} · {{ job.posted }}{% endif %}</span>
-        </span>
-        <span class="hidden text-[0.92rem] sm:block">{{ job.location }}</span>
-        <span class="hidden text-sm whitespace-nowrap text-muted tabular-nums sm:block" title="{{ job.posted_on }}">{{ job.posted }}</span>
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
+{# Stats: cards from sm up; on a phone the list header carries the two that matter. #}
+<div class="mb-4 hidden grid-cols-4 gap-3 sm:grid">
+  <div class="stat-card"><span class="stat-icon bg-brand-soft text-brand-dark">{{ icon("briefcase", "size-5") }}</span><span><strong>{{ '{:,}'.format(result.total) }}</strong>Jobs found</span></div>
+  <div class="stat-card"><span class="stat-icon bg-[#e8f0fe] text-[#1d4ed8]">{{ icon("building", "size-5") }}</span><span><strong>{{ '{:,}'.format(result.companies) }}</strong>Companies</span></div>
+  <div class="stat-card"><span class="stat-icon bg-[#e7f7ee] text-[#047857]">{{ icon("pin", "size-5") }}</span><span><strong>{{ '{:,}'.format(result.locations) }}</strong>Locations</span></div>
+  <div class="stat-card"><span class="stat-icon bg-[#fff4dc] text-[#b45309]">{{ icon("sparkle", "size-5") }}</span><span><strong>{{ '{:,}'.format(result.new_today) }}</strong>New today</span></div>
 </div>
-{% endif %}
 
-{% if total_pages > 1 %}
-<nav class="my-6 flex items-center justify-center gap-3" aria-label="Pages">
-  {% if prev_qs is not none %}<a class="btn btn-secondary" href="{{ url_for('jobs.list_jobs') }}{% if prev_qs %}?{{ prev_qs }}{% endif %}">← Prev</a>{% endif %}
-  <span class="text-sm text-muted tabular-nums">Page {{ page }} of {{ '{:,}'.format(total_pages) }}</span>
-  {% if next_qs %}<a class="btn btn-secondary" href="{{ url_for('jobs.list_jobs') }}?{{ next_qs }}">Next →</a>{% endif %}
-</nav>
-{% endif %}
+<div class="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start lg:gap-5">
+  <section class="card overflow-hidden" aria-label="Jobs">
+    <p class="my-0 border-b border-line px-4 py-2.5 text-sm text-muted">
+      {% if result.total %}<span class="sm:hidden">{{ '{:,}'.format(result.total) }} jobs{% if result.new_today %} · {{ '{:,}'.format(result.new_today) }} new today{% endif %}{% if result.total_pages > 1 %} · page {{ result.page }}{% endif %}</span><span class="hidden sm:inline">Showing {{ first }}–{{ last }} of {{ '{:,}'.format(result.total) }} jobs</span><span class="hidden lg:inline"> · select one to see it here</span>{% else %}No jobs match these filters.{% endif %}
+    </p>
+    {% if jobs %}
+    <ul class="divide-y divide-line" id="job-list">
+      {% for job in jobs %}{{ job_row(job, list_qs, selected.job.id if selected else None) }}{% endfor %}
+    </ul>
+    {% endif %}
+    {% if result.total_pages > 1 %}
+    <nav class="flex items-center justify-center gap-3 border-t border-line px-4 py-3" aria-label="Pages">
+      {% if prev_qs is not none %}<a class="btn btn-secondary" href="{{ url_for('jobs.list_jobs') }}{% if prev_qs %}?{{ prev_qs }}{% endif %}">← Prev</a>{% endif %}
+      <span class="text-sm text-muted tabular-nums">Page {{ result.page }} of {{ '{:,}'.format(result.total_pages) }}</span>
+      {% if next_qs %}<a class="btn btn-secondary" href="{{ url_for('jobs.list_jobs') }}?{{ next_qs }}">Next →</a>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+
+  {# PC only: the chosen job beside the list. app.js swaps its content via /jobs/<id>/panel. #}
+  <aside id="job-pane" aria-label="Job details" aria-live="polite"
+         class="card hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+    {% if selected %}{% with job=selected.job, state=selected.state, description=selected.description, can_apply=selected.can_apply, login_url=selected.login_url, register_url=selected.register_url, verify_url=selected.verify_url %}{% include "_job_panel.html" %}{% endwith %}{% endif %}
+  </aside>
+</div>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

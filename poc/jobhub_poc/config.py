@@ -52,6 +52,16 @@ AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:3200")
 # this value; it exists only for Flask's own direct server-to-server call.
 WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 
+# "Popular" search chips under the jobs page's search bar: a curated, comma-separated list
+# (not derived from users' alert terms, which are private). Each searches title/company,
+# so they should be role or company words, not places.
+POPULAR_SEARCHES = [
+    term.strip() for term in os.environ.get(
+        "POPULAR_SEARCHES",
+        "SRE, DevOps, Data Engineer, Product Manager, Solutions Architect, Designer, Sales, Analyst",
+    ).split(",") if term.strip()
+]
+
 
 # Former public hostnames of this deployment (comma-separated). Requests for them are
 # permanently redirected to the same path on WEB_ORIGIN (webapp/app.py), so old links --

@@ -1,0 +1,4 @@
+{# The PC pane's content, also served alone by /jobs/<id>/panel for app.js. #}
+<div class="p-5 sm:p-6" data-job-panel="{{ job.id }}">
+{% with in_panel = true %}{% include "_job_detail.html" %}{% endwith %}
+</div>

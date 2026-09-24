@@ -13,7 +13,7 @@
 <body class="min-h-screen">
   {# The 3px logo-gradient rule under the plum bar. #}
   <header class="bg-plum bg-bottom bg-no-repeat text-white [background-image:linear-gradient(90deg,#7B1450,#E0226D,#F07A3E,#F6C21A)] [background-size:100%_3px]">
-    <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 px-4 pt-2 pb-2.5 sm:px-6">
+    <div class="mx-auto flex {{ 'max-w-7xl' if wide else 'max-w-5xl' }} flex-wrap items-center justify-between gap-x-4 px-4 pt-2 pb-2.5 sm:px-6">
       <a class="flex items-center gap-2.5 text-white no-underline hover:text-white" href="{{ url_for('jobs.list_jobs') }}" aria-label="JobsHub home">
         <img src="{{ url_for('static', filename='brand/mark-64.png') }}" alt="" width="28" height="31" class="block h-auto w-7">
         <span class="leading-tight">
@@ -41,7 +41,7 @@
       </nav>
     </div>
   </header>
-  <main class="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
+  <main class="mx-auto {{ 'max-w-7xl' if wide else 'max-w-5xl' }} px-4 py-5 sm:px-6 sm:py-8">
     {% for message in get_flashed_messages() %}<p class="flash">{{ message }}</p>{% endfor %}
     {% block content %}{% endblock %}
   </main>

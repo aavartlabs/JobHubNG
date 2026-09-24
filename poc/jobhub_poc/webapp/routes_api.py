@@ -9,7 +9,7 @@ bp = Blueprint("api", __name__)
 @bp.route("/api/jobs")
 def list_jobs_json():
     q = parse_list_args(request.args)
-    rows, total, page, total_pages = query_jobs(current_app.get_db(), q)
+    result = query_jobs(current_app.get_db(), q)
     jobs = [
         {
             "id": r["id"],
@@ -21,14 +21,14 @@ def list_jobs_json():
             "first_seen_at": r["first_seen_at"],
             "posted_at": r["posted_at"],
         }
-        for r in rows
+        for r in result.rows
     ]
     return jsonify({
         "jobs": jobs,
-        "page": page,
+        "page": result.page,
         "page_size": q.page_size,
-        "total": total,
-        "total_pages": total_pages,
+        "total": result.total,
+        "total_pages": result.total_pages,
     })
 
 
