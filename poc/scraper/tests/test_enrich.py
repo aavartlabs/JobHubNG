@@ -149,3 +149,25 @@ def test_a_repost_under_a_new_id_is_enriched_under_the_id_its_record_carries(con
     assert conn.execute("SELECT description FROM jobs").fetchone()[0] == "Job Description:\n<p>x</p>"
     again = ingest(conn, [repost], max_posted_age_days=60, now=NOW + timedelta(hours=12))
     assert again["unchanged"] == 1
+
+
+def test_a_job_missing_from_the_latest_sweep_is_fetched_and_filled_when_seen_again(conn):
+    """Sweeps return slightly different sets; pi09 still shows a job seen yesterday."""
+    older = _sr_job("sr-old", url="https://api.smartrecruiters.com/v1/companies/C/postings/7", title="Data Engineer")
+    ingest(conn, [older], max_posted_age_days=60, now=NOW - timedelta(hours=12))
+    ingest(conn, [_sr_job()], max_posted_age_days=60, now=NOW)                     # the latest sweep lacks it
+    fetch = _fake(("ok", "Job Description:\n<p>y</p>", "https://jobs.smartrecruiters.com/C/7-x"))
+    enrich.enrich(conn, 10, 7, 0, now=NOW + timedelta(minutes=5), fetch=fetch, seen_within_days=15)  # after ingest
+    assert ("C", "7") in fetch.calls
+    row = conn.execute("SELECT description FROM jobs WHERE source_id = 'sr-old'").fetchone()
+    assert row[0] == "Job Description:\n<p>y</p>"                                 # stored now
+    back = ingest(conn, [older], max_posted_age_days=60, now=NOW + timedelta(hours=6))
+    assert back["unchanged"] == 1                                                  # sweeps don't undo it
+    out = Path(conn.execute("PRAGMA database_list").fetchone()[2]).with_name("d.jsonl.gz")
+    export_delta(conn, NOW.isoformat(), ("engineer",), (), out)                    # watermark = the run it was fetched in
+    sent = {json.loads(line)["dedupe_key"]: json.loads(line) for line in gzip.open(out, "rt")}
+    assert sent["sr-old"]["job"]["description"] == "Job Description:\n<p>y</p>"   # sent in full when seen again
+    # Long gone from the site: not fetched at all.
+    ancient = _sr_job("sr-ancient", url="https://api.smartrecruiters.com/v1/companies/C/postings/8", title="Old Engineer")
+    ingest(conn, [ancient], max_posted_age_days=0, now=NOW - timedelta(days=30))
+    assert ("C", "8") not in [c for c in enrich.candidates(conn, 7, NOW, seen_within_days=15)]

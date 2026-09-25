@@ -6,7 +6,7 @@ fetched here once per posting -- and has the ad's sections and the posting's own
 What is found goes to the warehouse's enrichments table and is laid over the job
 (warehouse.overlay), now and on every later sweep.
 
-Polite by design: only jobs in the latest sweep, at most [enrich] max_per_run a run, a
+Polite by design: only jobs pi09 can still show (seen within serving_retention_days), at most [enrich] max_per_run a run, a
 pause between fetches, a failed fetch retried only after retry_after_days, and a 429
 ends the run. Never fatal to the pipeline: errors are counted, not raised.
 
@@ -73,23 +73,22 @@ def fetch_posting(company, posting, session=None, timeout=15):
     return "ok", description, page
 
 
-def candidates(conn, retry_after_days, now, first_terms=()):
-    """(jobs row id, enrichment key, company, posting id) for SmartRecruiters jobs in the
-    latest sweep that have no description and no enrichment worth keeping (ok / gone / a
+def candidates(conn, retry_after_days, now, first_terms=(), seen_within_days=15):
+    """(jobs row id, enrichment key, company, posting id) for SmartRecruiters jobs seen in
+    the last `seen_within_days` (what pi09 still shows: each EverJobs sweep returns a
+    slightly different set, so "the latest sweep" alone misses many) that have no description and no enrichment worth keeping (ok / gone / a
     recent error). The key is the EverJobs id of the record carrying the link -- the one
     warehouse.overlay looks up -- which isn't always the row's source_id: a repost matched
     by fingerprint keeps the row's first id but brings a new record.
     Jobs whose title contains one of `first_terms` (the site's [serving] search terms --
     what export.py sends to pi09) come first, newest first: the per-run cap is spent on
     jobs people can actually see."""
-    latest = conn.execute("SELECT max(last_seen_at) FROM jobs").fetchone()[0]
-    if latest is None:
-        return []
     retry_before = (now - timedelta(days=retry_after_days)).isoformat()
     rows = conn.execute(
         """SELECT id, source_id, title, raw_json FROM jobs
-           WHERE last_seen_at = ? AND COALESCE(TRIM(description), '') = '' ORDER BY first_seen_at DESC""",
-        (latest,)).fetchall()
+           WHERE last_seen_at >= ? AND COALESCE(TRIM(description), '') = ''
+           ORDER BY last_seen_at DESC, first_seen_at DESC""",
+        ((now - timedelta(days=seen_within_days)).isoformat(),)).fetchall()
     done = {r["source_id"]: (r["status"], r["fetched_at"]) for r in conn.execute("SELECT * FROM enrichments")}
     shown, rest = [], []
     for row in rows:
@@ -116,9 +115,12 @@ def _record(conn, source_id, status, description=None, apply_url=None, error=Non
 
 
 def enrich(conn, max_per_run, retry_after_days, delay_ms, now=None, fetch=fetch_posting, sleep=time.sleep,
-           first_terms=()):
+           first_terms=(), seen_within_days=15):
+    """Fetch what candidates() finds, up to max_per_run. A job in the current sweep is
+    updated now (and exported this run); one that isn't gets its enrichment applied by
+    ingest the next time it's seen -- which is also when export would send it."""
     now = now or datetime.now(timezone.utc)
-    todo = candidates(conn, retry_after_days, now, first_terms)
+    todo = candidates(conn, retry_after_days, now, first_terms, seen_within_days)
     stats = {"candidates": len(todo), "fetched": 0, "ok": 0, "gone": 0, "errors": 0, "updated": 0,
              "rate_limited": False}
     session = requests.Session()
@@ -149,7 +151,8 @@ def main():
     conn = open_warehouse(os.environ.get("WAREHOUSE_DB_PATH", DEFAULT_DB_PATH))
     try:
         stats = enrich(conn, cfg.enrich.max_per_run, cfg.enrich.retry_after_days, cfg.enrich.delay_ms,
-                       first_terms=cfg.serving.search_terms)
+                       first_terms=cfg.serving.search_terms,
+                       seen_within_days=cfg.retention.serving_retention_days)
     finally:
         conn.close()
     print(json.dumps(stats))
