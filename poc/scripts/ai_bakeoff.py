@@ -15,7 +15,7 @@ models that train on prompts are refused.
 
     OPENROUTER_API_KEY=... .venv/bin/python scripts/ai_bakeoff.py \\
         --write-models openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash \\
-        --jobs-models meta/muse-spark-1.3-contributor,deepseek/deepseek-v4-flash \\
+        --jobs-models direct:meta,openai/gpt-6-luna-pro \\
         --jobs-db data/jobhub.db --real-jobs 50 --out bakeoff.json
 """
 import argparse
@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from jobhub_poc import job_requirements, resume_parse, tailoring  # noqa: E402
-from jobhub_poc.ai import openrouter  # noqa: E402
+from jobhub_poc.ai import direct, openrouter  # noqa: E402
 from jobhub_poc.webapp.job_text import plain_text  # noqa: E402
 
 FIXTURES = Path(__file__).with_name("bakeoff_fixtures.json")
@@ -49,7 +49,11 @@ def resume_as_text(r):
 def _call(model, prompt, schema, task):
     started = time.monotonic()
     try:
-        answer, served, usage = openrouter.ask(model, prompt, schema, task, timeout=300)
+        if model.startswith("direct:"):  # a provider's own API (public job text only; no cost reported)
+            answer, served = direct.ask(model.split(":", 1)[1], prompt, schema, timeout=300, task=task)
+            usage = {}
+        else:
+            answer, served, usage = openrouter.ask(model, prompt, schema, task, timeout=300)
         return {"answer": answer, "served": served, "seconds": time.monotonic() - started,
                 "cost": float(usage.get("cost") or 0), "error": None}
     except Exception as exc:  # noqa: BLE001 -- recorded per case; never includes the key

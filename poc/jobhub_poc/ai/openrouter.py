@@ -7,9 +7,8 @@ request carries provider.data_collection = "deny" (plus zdr when OPENROUTER_ZDR 
 models whose price is paid in training rights (e.g. Meta's "-contributor" tier) are refused
 here, whatever the config says. Public job postings ("jobs") may use any model.
 
-A model that's busy, down or answers with something that isn't the JSON asked for is
-skipped for the next one. If every model was only busy or unreachable, the task waits
-(Unavailable); if they answered badly, it fails like any other bad answer."""
+ai/llm.py walks the chain: a model that's busy, down or answers with something that isn't
+the JSON asked for is skipped for the next one."""
 import json
 import re
 
@@ -37,9 +36,10 @@ def chain(task):
     models = config.AI_MODELS_WRITE if task in SENSITIVE else config.AI_MODELS_JOBS
     models = [m for m in models if m]
     if task in SENSITIVE:
-        refused = [m for m in models if TRAINS_ON_PROMPTS.search(m)]
+        refused = [m for m in models if TRAINS_ON_PROMPTS.search(m) or m.startswith("direct:")]
         if refused:
-            raise RuntimeError(f"refusing to send resume data to {', '.join(refused)}: it trains on prompts")
+            raise RuntimeError(f"refusing to send resume data to {', '.join(refused)}: "
+                               "it trains on prompts or is a direct provider (public job text only)")
     return models
 
 
@@ -66,10 +66,13 @@ def model_name():
     return models[0] if models else ""
 
 
+
 def ask(model, prompt, schema, task, timeout):
     """One model, one try: (answer, the model that served it, usage incl. cost in USD)."""
     if task in SENSITIVE and TRAINS_ON_PROMPTS.search(model):
         raise RuntimeError(f"refusing to send resume data to {model}: it trains on prompts")
+    if not config.OPENROUTER_API_KEY:
+        raise OpenRouterUnavailable("OPENROUTER_API_KEY is not set")
     provider = {"require_parameters": True}
     if task in SENSITIVE:
         provider["data_collection"] = "deny"
@@ -104,24 +107,3 @@ def ask(model, prompt, schema, task, timeout):
     if not isinstance(answer, dict):
         raise _BadAnswer(f"{model}: answer wasn't a JSON object")
     return answer, body.get("model") or model, body.get("usage") or {}
-
-
-def generate(prompt, schema, *, timeout=300, task="write"):
-    """(answer, the model that gave it)."""
-    if not config.OPENROUTER_API_KEY:
-        raise OpenRouterUnavailable("OPENROUTER_API_KEY is not set")
-    models = chain(task)
-    if not models:
-        raise OpenRouterUnavailable(f"no models configured for {task} tasks")
-    busy, bad = [], []
-    for model in models:
-        try:
-            answer, served, _usage = ask(model, prompt, schema, task, timeout)
-            return answer, served
-        except OpenRouterUnavailable as exc:
-            busy.append(str(exc))
-        except _BadAnswer as exc:
-            bad.append(str(exc))
-    if bad:
-        raise RuntimeError("; ".join(bad + busy))
-    raise OpenRouterUnavailable("; ".join(busy))

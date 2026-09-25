@@ -44,17 +44,33 @@ def generate(prompt, schema, *, timeout=300, task="write"):
         answer = backend.generate(prompt, schema, timeout=timeout)
         _last_model = backend.model_name()
         return answer
-    try:
-        answer, _last_model = backend.generate(prompt, schema, timeout=timeout, task=task)
-    except Unavailable:
-        if task in SENSITIVE:
-            raise
-        from jobhub_poc.ai import direct  # public job text only
+    from jobhub_poc.ai import direct
+    # The chain for this task, in order: OpenRouter models, and (public job text only)
+    # "direct:<name>" providers. chain() refuses a resume chain that names anything that
+    # trains on prompts or a direct provider.
+    busy, bad = [], []
+    for entry in backend.chain(task):
         try:
-            answer, _last_model = direct.generate(prompt, schema, timeout=timeout, task=task)
-        except direct.DirectUnavailable:
-            raise Unavailable("OpenRouter and the direct providers are all unavailable") from None
-    return answer
+            if entry.startswith("direct:"):
+                answer, _last_model = direct.ask(entry.split(":", 1)[1], prompt, schema, timeout=timeout, task=task)
+            else:
+                answer, _last_model, _usage = backend.ask(entry, prompt, schema, task, timeout)
+            return answer
+        except Unavailable as exc:
+            busy.append(str(exc))
+        except RuntimeError as exc:
+            bad.append(str(exc))
+    if not busy and not bad:
+        raise Unavailable(f"no models configured for {task} tasks")
+    if bad:
+        raise RuntimeError("; ".join(bad + busy))
+    if task in SENSITIVE:
+        raise Unavailable("; ".join(busy))
+    try:  # public job text: the last-resort direct providers
+        answer, _last_model = direct.generate(prompt, schema, timeout=timeout, task=task)
+        return answer
+    except direct.DirectUnavailable:
+        raise Unavailable("every model and direct provider is unavailable: " + "; ".join(busy)) from None
 
 
 def model_name():

@@ -489,3 +489,30 @@ def test_only_parameters_the_model_accepts_are_sent(monkeypatch, requests_mock):
     llm.generate("x", {})
     body = requests_mock.last_request.json()
     assert body["temperature"] == 0 and "reasoning" not in body
+
+
+def test_job_text_can_go_to_metas_own_api_first(monkeypatch, requests_mock):
+    _openrouter(monkeypatch, jobs=("direct:meta", "openai/test-a"))
+    for k, v in (("META_API_KEY", "meta-key"), ("META_BASE_URL", "https://api.meta.test/v1"),
+                 ("META_MODEL", "muse-test-contributor"), ("META_JSON", "schema"), ("META_REASONING_EFFORT", "minimal")):
+        monkeypatch.setenv(k, v)
+    meta = requests_mock.post("https://api.meta.test/v1/chat/completions", json=_answer('{"ok": 5}'))
+    assert llm.generate("job text", {"type": "object"}, task="jobs") == {"ok": 5}
+    body = meta.last_request.json()
+    assert body["model"] == "muse-test-contributor" and body["reasoning_effort"] == "minimal"
+    assert body["response_format"]["json_schema"]["schema"] == {"type": "object"}
+    assert meta.last_request.headers["Authorization"] == "Bearer meta-key"
+    assert llm.model_name() == "meta/muse-test-contributor"
+
+    # Meta busy: the next entry in the chain (OpenRouter) answers.
+    requests_mock.post("https://api.meta.test/v1/chat/completions", status_code=503)
+    requests_mock.post(OPENROUTER, json=_answer('{"ok": 6}'))
+    assert llm.generate("job text", {}, task="jobs") == {"ok": 6}
+
+
+def test_a_resume_chain_naming_a_direct_provider_is_refused(monkeypatch, requests_mock):
+    _openrouter(monkeypatch, write=("direct:meta", "openai/test-a"))
+    monkeypatch.setenv("META_API_KEY", "meta-key")
+    with pytest.raises(RuntimeError, match="public job text only"):
+        llm.generate("resume text", {}, task="write")
+    assert requests_mock.call_count == 0
