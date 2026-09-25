@@ -29,7 +29,14 @@ POSTED_WITHIN_OPTIONS = [
     (7, "Last week"),
     (30, "Last month"),
 ]
-WORK_MODES = {"remote": 1, "onsite": 0}
+WORK_MODES = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site"}
+# From each job's reading (job_reading.py, Jev); jobs not read yet only match "any".
+LEVELS = {"intern": "Intern", "junior": "Entry / junior", "mid": "Mid-level", "senior": "Senior",
+          "lead": "Lead / principal", "manager": "Manager", "director": "Director+"}
+ROLE_FAMILIES = {"engineering": "Engineering", "data": "Data & ML", "design": "Design", "product": "Product",
+                 "sales": "Sales", "marketing": "Marketing", "operations": "Operations", "finance": "Finance & legal",
+                 "hr": "People & HR", "support": "Customer support"}
+_READ = "(SELECT json_extract(r.data_json, '$.{field}') FROM job_requirements r WHERE r.job_dedupe_key = jobs.dedupe_key)"
 PAGE_SIZES = (10, 25, 50, 100)
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 100
@@ -41,14 +48,16 @@ VIEW_DEDUPE_WINDOW = timedelta(hours=1)
 NEW_WINDOW = timedelta(hours=24)
 
 
-_PARAMS = ("q", "location", "work_mode", "sort", "posted_within", "page", "page_size")
+_PARAMS = ("q", "location", "work_mode", "level", "role", "sort", "posted_within", "page", "page_size")
 
 
 @dataclass(frozen=True)
 class ListQuery:
     q: str = ""                 # title or company contains
     location: str = ""
-    work_mode: str = ""         # "", "remote" or "onsite"
+    work_mode: str = ""         # "", or a WORK_MODES key
+    level: str = ""             # "", or a LEVELS key
+    role: str = ""              # "", or a ROLE_FAMILIES key
     sort: str = "freshness"
     posted_within: int = 0
     page: int = 1
@@ -73,6 +82,8 @@ def parse_list_args(args) -> ListQuery:
         q=(args.get("q") or args.get("title") or "").strip()[:_MAX_TEXT],
         location=(args.get("location") or "").strip()[:_MAX_TEXT],
         work_mode=args.get("work_mode") if args.get("work_mode") in WORK_MODES else "",
+        level=args.get("level") if args.get("level") in LEVELS else "",
+        role=args.get("role") if args.get("role") in ROLE_FAMILIES else "",
         sort=args.get("sort") if args.get("sort") in SORTS else "freshness",
         posted_within=int(posted) if posted.isdigit() and int(posted) in dict(POSTED_WITHIN_OPTIONS) else 0,
         page=_positive_int(args.get("page"), 1),
@@ -117,9 +128,19 @@ def query_jobs(conn, q: ListQuery, now=None) -> ListResult:
     if q.location:
         where += " AND location LIKE ?"
         params.append(f"%{q.location}%")
-    if q.work_mode:
-        where += " AND is_remote = ?"
-        params.append(WORK_MODES[q.work_mode])
+    mode = _READ.format(field="work_mode")
+    if q.work_mode == "remote":  # the source's remote flag, or the reading
+        where += f" AND (is_remote = 1 OR {mode} = 'remote')"
+    elif q.work_mode == "hybrid":
+        where += f" AND {mode} = 'hybrid'"
+    elif q.work_mode == "onsite":
+        where += f" AND is_remote = 0 AND COALESCE({mode}, 'onsite') IN ('onsite', 'unclear')"
+    if q.level:
+        where += f" AND {_READ.format(field='seniority')} = ?"
+        params.append(q.level)
+    if q.role:
+        where += f" AND {_READ.format(field='role_family')} = ?"
+        params.append(q.role)
     if q.posted_within:
         where += f" AND {POSTED_OR_SEEN} >= ?"
         params.append((now - timedelta(days=q.posted_within)).isoformat())

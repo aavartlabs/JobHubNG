@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jobhub_poc import job_requirements, resume_parse, tailoring  # noqa: E402
+from jobhub_poc import db, job_reading, job_requirements, resume_parse, tailoring  # noqa: E402
 from jobhub_poc.ai import direct, openrouter  # noqa: E402
 from jobhub_poc.webapp.job_text import plain_text  # noqa: E402
 
@@ -105,7 +105,31 @@ def parse_case(model, resume):
     return run
 
 
+_JEV_DB = None
+
+
+def jev_job_case(title, text):
+    """model "jev": job_reading.read end to end -- the AI_MODELS_JOBS draft, then Jev's
+    decisions, with a vocabulary that grows over the run (an in-memory database)."""
+    global _JEV_DB
+    if _JEV_DB is None:
+        _JEV_DB = sqlite3.connect(":memory:")
+        db.init_db(_JEV_DB)
+    started = time.monotonic()
+    try:
+        data, label = job_reading.read(_JEV_DB, title, text)
+    except Exception as exc:  # noqa: BLE001
+        return {"seconds": time.monotonic() - started, "cost": 0.0, "error": f"{type(exc).__name__}: {exc}"[:200]}
+    return {"seconds": time.monotonic() - started, "cost": 0.0, "error": None, "served": label,
+            "skills_kept": len(data["required_skills"]) + len(data["preferred_skills"]), "invented_skills": 0,
+            "required": data["required_skills"], "preferred": data["preferred_skills"],
+            "seniority": data["seniority"], "work_mode": data.get("work_mode"),
+            "role_family": data.get("role_family"), "min_years": data["min_years"]}
+
+
 def job_case(model, title, text):
+    if model == "jev":
+        return jev_job_case(title, text)
     run = _call(model, job_requirements.PROMPT.format(title=title, text=text), job_requirements.SCHEMA, "jobs")
     if run["answer"] is None:
         return run
@@ -114,7 +138,8 @@ def job_case(model, title, text):
     proposed = len({s.strip().lower() for s in (raw.get("required_skills") or []) + (raw.get("preferred_skills") or [])
                     if isinstance(s, str) and s.strip()})
     kept = len(norm["required_skills"]) + len(norm["preferred_skills"])
-    run.update(skills_kept=kept, invented_skills=proposed - kept, seniority=norm["seniority"], min_years=norm["min_years"])
+    run.update(skills_kept=kept, invented_skills=proposed - kept, seniority=norm["seniority"], min_years=norm["min_years"],
+               required=norm["required_skills"], preferred=norm["preferred_skills"])
     return run
 
 

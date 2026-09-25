@@ -26,9 +26,12 @@ from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
 from jobhub_poc.webapp.job_text import format_description
 from jobhub_poc.webapp.jobs_listing import (
+    LEVELS,
     PAGE_SIZES,
     POSTED_WITHIN_OPTIONS,
+    ROLE_FAMILIES,
     TRACK_STATUSES,
+    WORK_MODES,
     list_query_string,
     parse_list_args,
     present_job,
@@ -160,6 +163,9 @@ def list_jobs():
         "jobs.html",
         wide=True,  # base.html: the list + pane need more than the default 5xl column
         q=q,
+        work_modes=WORK_MODES,
+        levels=LEVELS,
+        role_families=ROLE_FAMILIES,
         jobs=jobs,
         result=result,
         first=(result.page - 1) * q.page_size + 1 if result.total else 0,

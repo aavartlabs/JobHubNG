@@ -24,8 +24,7 @@
         </label>
         <select name="work_mode" aria-label="Remote or on-site" class="mt-0 sm:max-w-none">
           <option value="" {{ 'selected' if not q.work_mode }}>Any mode</option>
-          <option value="remote" {{ 'selected' if q.work_mode == 'remote' }}>Remote only</option>
-          <option value="onsite" {{ 'selected' if q.work_mode == 'onsite' }}>On-site only</option>
+          {% for key, label in work_modes.items() %}<option value="{{ key }}" {{ 'selected' if q.work_mode == key }}>{{ label }}</option>{% endfor %}
         </select>
         <button type="submit" class="btn">Search</button>
       </div>
@@ -40,8 +39,16 @@
     </div>
   </section>
 
-  <div class="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:grid-cols-4 lg:flex lg:items-center lg:justify-end">
+  <div class="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:grid-cols-3 lg:flex lg:items-center lg:justify-end">
     <span class="col-span-2 hidden text-sm font-medium text-muted sm:col-span-1 lg:mr-auto lg:block">Refine</span>
+    <select name="level" aria-label="Level" class="mt-0 sm:max-w-none lg:w-40">
+      <option value="" {{ 'selected' if not q.level }}>Any level</option>
+      {% for key, label in levels.items() %}<option value="{{ key }}" {{ 'selected' if q.level == key }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="role" aria-label="Role type" class="mt-0 sm:max-w-none lg:w-44">
+      <option value="" {{ 'selected' if not q.role }}>Any role type</option>
+      {% for key, label in role_families.items() %}<option value="{{ key }}" {{ 'selected' if q.role == key }}>{{ label }}</option>{% endfor %}
+    </select>
     <select name="posted_within" aria-label="Posted within" class="mt-0 sm:max-w-none lg:w-44">
       {% for days, label in posted_within_options %}<option value="{{ days }}" {{ 'selected' if q.posted_within == days }}>{{ label }}</option>{% endfor %}
     </select>

@@ -247,3 +247,20 @@ def test_every_unread_listed_job_is_queued_once_in_the_background(conn):
     assert queue_reads.queue(conn) == 1
     assert queue_reads.queue(conn) == 1  # still unread, but not queued twice
     assert [tuple(r) for r in conn.execute("SELECT ref, priority FROM ai_tasks")] == [("k2", 0)]
+
+
+def test_list_filters_use_each_jobs_reading(conn):
+    from jobhub_poc.webapp.jobs_listing import parse_list_args, query_jobs
+    for jid in (1, 2, 3):
+        _seed_job(conn, jid)
+    job_requirements.store(conn, "k1", {"work_mode": "hybrid", "seniority": "senior", "role_family": "engineering"}, "jev")
+    job_requirements.store(conn, "k2", {"work_mode": "onsite", "seniority": "junior", "role_family": "sales"}, "jev")
+    conn.execute("UPDATE jobs SET is_remote = 1 WHERE id = 3")  # not read yet; the source says remote
+    conn.commit()
+
+    def ids(**args):
+        return sorted(r["id"] for r in query_jobs(conn, parse_list_args(args)).rows)
+    assert ids(work_mode="hybrid") == [1]
+    assert ids(work_mode="remote") == [3]
+    assert ids(work_mode="onsite") == [2]
+    assert ids(level="senior") == [1] and ids(role="sales") == [2] and ids(level="nonsense") == [1, 2, 3]
