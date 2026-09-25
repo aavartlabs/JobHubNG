@@ -1,6 +1,6 @@
 """Honest tailoring: the user's checked resume, reorganised for one job.
 
-The local LLM may only *select, reorder and lightly reword* what is already in the resume,
+The writing model may only *select, reorder and lightly reword* what is already in the resume,
 and draft a short cover note from it. It never decides what is true: verify() -- plain code
 -- checks every fact the model wrote against the resume and puts the original wording back
 wherever it can't be found there. Per piece of text:

@@ -1,4 +1,4 @@
-{# While the local LLM tailors the resume; app.js polls tailor.status and swaps this in. #}
+{# While the writing model tailors the resume; app.js polls tailor.status and swaps this in. #}
 {% if done %}
 <div class="rounded-lg border border-[#bbf7d0] bg-[#f0fdf4] p-4 text-sm text-[#166534]" data-reload-page>
   ✓ Your tailored resume is ready. <a href="{{ url_for('tailor.review', job_id=job.id) }}">Show it</a>

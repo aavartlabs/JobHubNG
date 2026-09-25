@@ -1,5 +1,5 @@
 """Uploaded resume text -> the structured resume the user reviews and edits (the single
-source of truth for matching and tailoring). The local LLM only *copies* what is there;
+source of truth for matching and tailoring). The writing model only *copies* what is there;
 normalise() then keeps it honest: skills must appear in the text, and bullets that don't
 appear word-for-word are flagged for the user to check."""
 import re

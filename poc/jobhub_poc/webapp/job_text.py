@@ -87,7 +87,7 @@ def format_description(text):
 
 def plain_text(text, limit=12000):
     """The description as plain text (entities decoded, tags dropped, whitespace tidied),
-    for the local LLM to read."""
+    for the AI models to read."""
     if not text:
         return ""
     text = _decode(str(text)).replace("\r\n", "\n").replace("\r", "\n")

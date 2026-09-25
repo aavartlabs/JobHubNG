@@ -70,7 +70,7 @@ AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "4096"))
 # How hard reasoning models think before answering (sent only to models that take it):
 # "low" keeps judgments and rewrites quick; the honesty checks run on the answer either way.
 AI_REASONING_EFFORT = os.environ.get("AI_REASONING_EFFORT", "low")
-# How many AI tasks run at once (ai/worker.py). 1 suits a single local GPU (Ollama); hosted
+# How many AI tasks run at once (ai/worker.py). Hosted
 # models take several requests at once, so the server runs more.
 AI_WORKERS = int(os.environ.get("AI_WORKERS", "1"))
 # When OpenRouter is down, public job text may go straight to these (ai/direct.py; each needs

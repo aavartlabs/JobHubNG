@@ -274,16 +274,7 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
     `JOBSHUB_DRILL_*_HOST=hostinger`.
   - **Scheduling:** cron via `scripts/cron_job.sh` (no user linger there), which alerts
     the admin on failure. `SCRAPER_HOST=local` runs the pi05 steps on the same host.
-  - **AI:** `AI_BACKEND=openrouter` (`ai/llm.py`, `ai/openrouter.py`).
-    - Each call is `task="write"` (resume data) or `"jobs"` (public postings).
-    - Resume data goes only with `data_collection=deny`; `-contributor` (train-on-prompts)
-      models are refused in code.
-    - Only public job text may fall back to direct DeepSeek/Meta APIs (`ai/direct.py`)
-      when OpenRouter is down.
-    - Model chains `AI_MODELS_WRITE` / `AI_MODELS_JOBS` are chosen with
-      `scripts/ai_bakeoff.py`, which is scored by the site's own honesty checks.
-    - TypeSafe Jev for judgments is Phase B.
-    - The consent text changes with the backend (`resume_consent.py`, `RESUME_CONSENT_SINCE`).
+  - **AI:** described under "Resume features" below; the same on every host.
 
 ## Backups (MinIO on pi06, since 2026-09-24)
 
@@ -393,22 +384,53 @@ logs` is lost whenever a deploy recreates the container.
 `/profile`: upload PDF/DOCX (≤5 MB, identified by magic bytes, consent checkbox) →
 `resume_text.extract_text` → encrypted row in `resumes` (Fernet, `crypto.py`, key
 `RESUME_ENCRYPTION_KEY` in `.env`; unset = feature off) → `ai_tasks` queue → container
-`jobhub-ai` (`ai/worker.py`) calls the **local LLM** (Ollama, `OLLAMA_URL`/`OLLAMA_MODEL`,
-gemma4:e2b on harita's GPU — resumes never leave the LAN) → `resume_parse.normalise` keeps it
-honest (skills must appear in the text; bullets not found verbatim are flagged ⚠) → the user
-reviews/edits it, and that edited version is the source of truth for later matching and
-tailoring. harita may be off: tasks wait, the UI says so. Delete button and admin deletion
-purge it (`routes_profile.purge_user_resume_data`).
+`jobhub-ai` (`ai/worker.py`, `AI_WORKERS` threads) has the writing model structure it →
+`resume_parse.normalise` keeps it honest (skills must appear in the text; bullets not found
+verbatim are flagged ⚠) → the user reviews/edits it, and that edited version is the source of
+truth for later matching and tailoring. AI services unreachable: tasks wait (backing off), the
+UI says so. Delete button and admin deletion purge it (`routes_profile.purge_user_resume_data`).
 
-**Match score (phase 2).** When a user with a checked resume opens a job (priority 5) or sees
-it in a list (priority 1), an `extract_job` task has the LLM read the posting into
-`job_requirements` (cached per dedupe_key; `job_requirements.normalise` keeps only skills that
-appear in the posting text and years it actually states). `matching.match` then scores
-**deterministically, no LLM**: required skills 45, preferred 15, experience 20, seniority 10,
+**AI (since 2026-09-25; Ollama removed): Jev decides, Muse finds, Luna writes, code has the
+final say.**
+- **Jev** (TypeSafe, `ai/typesafe.py`; every question set and threshold in `ai/judgments.py`)
+  answers choice / noul / score questions in about 1 s per request.
+- **General models** (`ai/llm.py`) run as a chain per task. `task="write"` (resume data):
+  `AI_MODELS_WRITE` through OpenRouter (`ai/openrouter.py`), `data_collection=deny`, with
+  `-contributor` (train-on-prompts) models and `direct:` providers refused in code.
+  `task="jobs"` (public postings): `AI_MODELS_JOBS`, which may start with `direct:meta`
+  (Meta's own API, `ai/direct.py`, Muse Spark contributor: public job text only).
+- **Choosing and checking:** chains are picked with `scripts/ai_bakeoff.py`, scored by the
+  site's own honesty checks. The consent wording names TypeSafe and OpenRouter
+  (`resume_consent.py`; `RESUME_CONSENT_SINCE` re-asks after a change).
+
+**Match score (phase 2; Jev since 2026-09-25).**
+- **Job reading** (`job_reading.py`, an `extract_job` task, for **every** listed job:
+  `ai/queue_reads.py` runs after each pipeline load at priority 0; opening one queues it at
+  5, a list at 1):
+  1. The job chain (Muse) drafts; `job_requirements.normalise` keeps only skills written in
+     the posting.
+  2. `skills_vocab` adds known skills found in the text (job-derived only).
+  3. **Jev** decides required / preferred / mentioned / absent per candidate, plus
+     seniority, work mode, employment, role family, and years among the numbers the text
+     states.
+  4. Confirmed skills grow the vocabulary.
+
+  It falls back to the draft when Jev is down. The readings feed the /jobs filters (work
+  mode incl. hybrid, level, role type; `jobs_listing.py`).
+- **Match evidence** (`match_evidence.py`, a `match` task): Jev scores how strongly the resume
+  shows each asked-for skill, and picks the user's own bullet as the reason.
+  - It sees no name, contact or links, and only with current consent.
+  - Stored **Fernet-encrypted** in `match_evidence`, valid only for that resume and reading.
+  - Without it (no key, stale consent, failed), matching is literal as before.
+- **Scoring:** `matching.match` then scores **deterministically**: required skills 45,
+  preferred 15, experience 20, seniority 10,
 location 10 → Strong ≥75 / Good ≥55 / Stretch ≥40 / Not a fit, with reasons. Caps: >60% of
 must-haves missing → at most Stretch; <3 requirements found → at most Good, marked rough.
 Shown as `_match.html` in the pane/page (app.js polls `/jobs/<id>/match` while it's 202) and a
-badge on list rows.
+badge on list rows. Evidence levels give partial credit, and "listed but not shown in a role"
+is said. **Match scores are never stored**; they're recomputed per view. `loader/purge.tidy`
+(nightly) drops finished AI tasks after 30 days, job views after 180, and readings and match
+evidence of gone jobs.
 
 **Tailoring, apply kit, tracker (phase 3).** `POST /jobs/<id>/tailor` queues a `tailor` task;
 the LLM (`tailoring.PROMPT`) may only select, reorder and lightly reword the checked resume and
@@ -422,8 +444,9 @@ in `tailored_resumes`; the user can edit it (their words, like /profile). Downlo
 Pi), for tailored and original resumes (`routes_tailor.py`). The job page's "Your application"
 box (`_apply_kit.html`) holds these plus the **tracker**: after an Apply click it asks "Did you
 apply?"; `saved_jobs.status` = saved/applied/interviewing/offer/rejected (`db._migrate` adds
-it), shown and changed on **My jobs** (`/saved`, `?status=` filter). Measured 2026-09-24 on
-gemma4:e2b: 1–4 s per tailoring, 0 fabrications in 16 resume×job runs after verify.
+it), shown and changed on **My jobs** (`/saved`, `?status=` filter). Tailoring runs on the
+write chain (GPT-6 Luna Pro → DeepSeek V4 Flash). Bake-off 2026-09-25: p50 7 s, 0 ungrounded
+leftovers in 16 runs.
 
 **Admin console (`/admin`)** is separate from site users: an `app_users` row in `jobhub.db`,
 Flask's own session cookie (`jobhub_admin`), CSRF tokens on every POST, and a per-IP +

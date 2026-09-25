@@ -1,4 +1,4 @@
-"""What a job asks for, read from its description by the local LLM (ai/worker.py) and cached
+"""What a job asks for, read from its description (job_reading.py: Muse drafts, Jev decides) and cached
 per job in job_requirements, for matching.py. Kept honest the same way as resumes: a skill
 is kept only if it appears in the job text, and "N+ years" only if the text says so."""
 import json

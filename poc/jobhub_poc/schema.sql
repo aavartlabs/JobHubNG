@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS resumes (
     updated_at          TEXT NOT NULL
 );
 
--- A user's resume tailored for one job (tailoring.py): made by the local LLM, checked by
+-- A user's resume tailored for one job (tailoring.py): made by the writing model, checked by
 -- tailoring.verify, then reviewed and possibly edited by the user. Resume content, so
 -- Fernet-encrypted like resumes. status: ready (as verified) | edited (the user saved it).
 CREATE TABLE IF NOT EXISTS tailored_resumes (
