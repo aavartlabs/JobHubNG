@@ -405,9 +405,18 @@ truth for later matching and tailoring. AI services unreachable: tasks wait (bac
 UI says so. Delete button and admin deletion purge it (`routes_profile.purge_user_resume_data`).
 
 **AI: two setups from one code base (2026-09-25).**
-- **Prod (pi09): `AI_BACKEND=ollama`** (the default). The local gemma4:e2b on Sanjay's
-  laptop does everything, one task at a time; there's no Jev key, so readings are the
-  model's own and matching is literal. Consent wording: "processed on JobsHub's own machines".
+- **Prod (pi09): `AI_BACKEND=ollama` plus Jev (since 2026-09-26).**
+  - **Model:** gemma4:26b on an always-on desktop GPU of Sanjay's, reached over Tailscale.
+    `OLLAMA_NUM_CTX=16384` is sent with every request, because the desktop's Ollama app
+    overrides the server's own context setting. `think=false` is always sent, because qwen3
+    models otherwise break the JSON.
+  - **Jev:** makes the judgments, and match evidence sends TypeSafe the work history and
+    skills, never the name or contact details.
+  - **Consent wording:** "read on JobsHub's own machines" plus TypeSafe (`resume_consent.py`).
+    `RESUME_CONSENT_SINCE` was set at switch-on, so existing resume holders are asked again.
+  - **Speed:** parse ~3 s, job reading ~2–7 s, tailoring ~4 s.
+  - **Reading every job:** off (`AI_READ_ALL_JOBS`), so the Level, Role type and Hybrid
+    filters stay hidden until readings cover 80% of jobs.
 - **Dev (testprepup): hosted and fully built, but `AI_PAUSED=1`.** No paid AI calls until
   there's funding. Sanjay's call after about $5.45 of Meta spend in one day of testing, all
   on this project's key, far above list price for the token counts shown. Unpausing
