@@ -64,7 +64,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 AI_MODELS_WRITE = [m.strip() for m in os.environ.get(
     "AI_MODELS_WRITE", "openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash").split(",") if m.strip()]
 AI_MODELS_JOBS = [m.strip() for m in os.environ.get(
-    "AI_MODELS_JOBS", "meta/muse-spark-1.3-contributor,deepseek/deepseek-v4-flash").split(",") if m.strip()]
+    "AI_MODELS_JOBS", "openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash").split(",") if m.strip()]
 OPENROUTER_ZDR = os.environ.get("OPENROUTER_ZDR", "") == "1"  # only zero-data-retention endpoints for resume data
 OPENROUTER_STRICT = os.environ.get("OPENROUTER_STRICT", "") == "1"  # strict schema (needs strict-compatible schemas)
 AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "4096"))
