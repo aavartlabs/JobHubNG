@@ -40,12 +40,16 @@ def export_delta(conn, since, terms, locations, out_path, cap=0, extra_terms=())
 
     extra_terms are the active alerts' titles/keywords (T14), matched against title *or*
     description, so an alert can fire on jobs the site's own search terms don't cover.
+
+    Rows changed since the watermark are sent in full even if not seen again (enrich.py
+    fills in jobs pi09 still shows between sightings); they keep their own last_seen_at,
+    so they still age out of pi09 on time, and they don't move the watermark.
     """
     query = "SELECT * FROM jobs"
     params = ()
     if since:
-        query += " WHERE last_seen_at > ?"
-        params = (since,)
+        query += " WHERE last_seen_at > ? OR updated_at > ?"
+        params = (since, since)
     query += " ORDER BY last_seen_at DESC, id"
 
     watermark = since
@@ -53,7 +57,7 @@ def export_delta(conn, since, terms, locations, out_path, cap=0, extra_terms=())
     exported = touched = 0
     with gzip.open(out_path, "wt") as out:
         for row in conn.execute(query, params):
-            if watermark is None or row["last_seen_at"] > watermark:
+            if (watermark is None or row["last_seen_at"] > watermark) and (not since or row["last_seen_at"] > since):
                 watermark = row["last_seen_at"]
             term = _first_match(row["title"], terms)
             if term is None and extra_terms:

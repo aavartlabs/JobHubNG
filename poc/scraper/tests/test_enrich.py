@@ -171,3 +171,20 @@ def test_a_job_missing_from_the_latest_sweep_is_fetched_and_filled_when_seen_aga
     ancient = _sr_job("sr-ancient", url="https://api.smartrecruiters.com/v1/companies/C/postings/8", title="Old Engineer")
     ingest(conn, [ancient], max_posted_age_days=0, now=NOW - timedelta(days=30))
     assert ("C", "8") not in [c for c in enrich.candidates(conn, 7, NOW, seen_within_days=15)]
+
+
+def test_a_description_filled_between_sightings_still_reaches_pi09(conn, tmp_path):
+    """pi09 shows a job for serving_retention_days after its last sighting; a description
+    found in that time is exported without waiting for EverJobs to list it again."""
+    gone_quiet = _sr_job("sr-q", url="https://api.smartrecruiters.com/v1/companies/C/postings/9", title="Data Engineer")
+    ingest(conn, [gone_quiet], max_posted_age_days=60, now=NOW - timedelta(hours=12))
+    ingest(conn, [_sr_job()], max_posted_age_days=60, now=NOW)            # this sweep lacks it
+    since = NOW.isoformat()                                                # pi09 synced up to this sweep
+    enrich.enrich(conn, 10, 7, 0, now=NOW + timedelta(minutes=5),
+                  fetch=_fake(("ok", "Job Description:\n<p>z</p>", "https://jobs.smartrecruiters.com/C/9-x")))
+    out = tmp_path / "d.jsonl.gz"
+    result = export_delta(conn, since, ("engineer",), (), out)
+    sent = {json.loads(line)["dedupe_key"]: json.loads(line) for line in gzip.open(out, "rt")}
+    assert sent["sr-q"]["job"]["description"] == "Job Description:\n<p>z</p>"
+    assert sent["sr-q"]["last_seen_at"] == (NOW - timedelta(hours=12)).isoformat()   # still ages out on time
+    assert result["watermark"] == since                                              # watermark untouched
