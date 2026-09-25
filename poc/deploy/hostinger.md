@@ -116,13 +116,19 @@ Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge
 - **Load:** `docker stats` within the caps (everjobs peaked at 2.6 GB on pi05; cap 3 GB), and
   the neighbours' health stays green.
 
-## 4. Cron (IST; check `timedatectl` and convert if the server isn't on IST)
+## 4. Cron
+
+The server's clock is **UTC** (checked 2026-09-25), so these are the IST times converted:
+- pipeline at 00/06/12/18 IST;
+- backup at 02:30 IST;
+- drill on Sunday at 04:00 IST (Saturday 22:30 UTC);
+- cold export at 03:30 IST on the 2nd.
 
 ```cron
-0 0,6,12,18 * * * cd ~/aavartlabs/jobshub && scripts/cron_job.sh pipeline env SCRAPER_HOST=local scripts/run_pipeline_warehouse.sh
-30 2 * * *        cd ~/aavartlabs/jobshub && scripts/cron_job.sh backup env JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env scripts/nightly_backup_local.sh
-0 4 * * 0         cd ~/aavartlabs/jobshub && scripts/cron_job.sh restore-drill env JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env JOBSHUB_DRILL_APP_HOST=hostinger JOBSHUB_DRILL_WAREHOUSE_HOST=hostinger .venv/bin/python -m jobhub_poc.ops.restore_drill
-30 3 1 * *        cd ~/aavartlabs/jobshub && scripts/cron_job.sh cold-export bash -c 'cd scraper && JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env .venv/bin/python cold_export.py'
+30 0,6,12,18 * * * cd ~/aavartlabs/jobshub && scripts/cron_job.sh pipeline env SCRAPER_HOST=local scripts/run_pipeline_warehouse.sh
+0 21 * * *        cd ~/aavartlabs/jobshub && scripts/cron_job.sh backup env JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env scripts/nightly_backup_local.sh
+30 22 * * 6       cd ~/aavartlabs/jobshub && scripts/cron_job.sh restore-drill env JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env JOBSHUB_DRILL_APP_HOST=hostinger JOBSHUB_DRILL_WAREHOUSE_HOST=hostinger .venv/bin/python -m jobhub_poc.ops.restore_drill
+0 22 1 * *        cd ~/aavartlabs/jobshub && scripts/cron_job.sh cold-export bash -c 'cd scraper && JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env .venv/bin/python cold_export.py'
 ```
 
 A failed job sends the admin a Telegram message (`cron_job.sh` → `ops.alert_admin`).
