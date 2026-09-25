@@ -194,6 +194,24 @@ CREATE TABLE IF NOT EXISTS match_evidence (
     PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
 );
 
+-- Skill name variants -> one standard name (skills.py), added in batches by the LLM
+-- (ai/skill_index.py) on top of skills.SEED, reviewable at /admin/skills. Skill strings
+-- only. source: llm | admin.
+CREATE TABLE IF NOT EXISTS skill_aliases (
+    variant     TEXT PRIMARY KEY,
+    canonical   TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
+-- Pairs an admin removed at /admin/skills: never proposed or merged again.
+CREATE TABLE IF NOT EXISTS skill_alias_rejections (
+    variant     TEXT NOT NULL,
+    canonical   TEXT NOT NULL,
+    rejected_at TEXT NOT NULL,
+    PRIMARY KEY (variant, canonical)
+);
+
 -- AI work queue (ai/tasks.py, run by ai/worker.py).
 CREATE TABLE IF NOT EXISTS ai_tasks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,

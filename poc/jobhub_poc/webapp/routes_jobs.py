@@ -20,7 +20,7 @@ from urllib.parse import quote, urlparse
 
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
-from jobhub_poc import config, crypto, job_requirements, match_evidence, matching
+from jobhub_poc import config, crypto, job_requirements, match_evidence, matching, skills
 from jobhub_poc.job_links import human_url
 from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
@@ -89,7 +89,7 @@ def _match_context(conn, resume, job, priority):
     state, evidence = match_evidence.state(conn, _user_id(), job["key"], resume, reqs, priority)
     if state == "pending":
         return {"match_state": "pending", "match": None}
-    return {"match_state": "ready", "match": matching.match(resume, reqs, job, evidence)}
+    return {"match_state": "ready", "match": matching.match(resume, reqs, job, evidence, skills.current(conn))}
 
 
 def _detail(conn, job_id, record_view):
@@ -146,7 +146,7 @@ def list_jobs():
             if j["key"] in reqs:
                 state, evidence = match_evidence.state(conn, _user_id(), j["key"], resume, reqs[j["key"]], 1)
                 if state != "pending":
-                    fit = matching.match(resume, reqs[j["key"]], j, evidence)
+                    fit = matching.match(resume, reqs[j["key"]], j, evidence, skills.current(conn))
                     j["match"] = {"score": fit["score"], "verdict": fit["verdict"], "label": fit["label"]}
             else:
                 tasks.enqueue(conn, "extract_job", ref=j["key"], priority=1)

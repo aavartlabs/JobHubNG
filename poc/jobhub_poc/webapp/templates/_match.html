@@ -26,11 +26,12 @@
       <p class="my-1 text-sm">{{ match.advice }}</p>
       {% if match.matched_required or match.missing_required or match.matched_preferred %}
       <ul class="mt-2 mb-0 space-y-1 text-sm text-ink">
-        {% if match.matched_required %}<li>✓ <strong>You have:</strong> {{ match.matched_required | join(", ") }}</li>{% endif %}
+        {% macro skill_list(items) %}{% for s in items %}{{ s }}{% if match.wrote and match.wrote[s] %} <span class="text-muted">(you wrote: {{ match.wrote[s] }})</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% endmacro %}
+        {% if match.matched_required %}<li>✓ <strong>You have:</strong> {{ skill_list(match.matched_required) }}</li>{% endif %}
         {% for skill, line in match.lines.items() %}{% if loop.index <= 3 %}
         <li class="ml-5 text-muted"><em>{{ skill }}</em>: “{{ line }}”</li>{% endif %}{% endfor %}
         {% if match.missing_required %}<li>✗ <strong>Not in your resume:</strong> {{ match.missing_required | join(", ") }}</li>{% endif %}
-        {% if match.matched_preferred %}<li>＋ <strong>Nice-to-haves you have:</strong> {{ match.matched_preferred | join(", ") }}</li>{% endif %}
+        {% if match.matched_preferred %}<li>＋ <strong>Nice-to-haves you have:</strong> {{ skill_list(match.matched_preferred) }}</li>{% endif %}
       </ul>
       {% endif %}
       {% for note in match.notes %}<p class="my-1 text-sm text-ink">• {{ note }}</p>{% endfor %}

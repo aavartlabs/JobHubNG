@@ -11,6 +11,7 @@ experience -- evidence the user already has, never assumed."""
 import re
 from datetime import date
 
+from jobhub_poc import skills
 from jobhub_poc.resume_review import parse_month
 
 WEIGHTS = {"required": 45, "preferred": 15, "experience": 20, "seniority": 10, "location": 10}
@@ -27,42 +28,50 @@ VERDICTS = [  # (minimum score, key, label, advice)
     (40, "stretch", "Stretch", "Apply if you're keen — address the gaps in your application."),
     (0, "weak", "Not a fit", "Probably not worth it unless you know something the posting doesn't say."),
 ]
-# Same thing, different spellings. Both sides are normalised through this.
-SYNONYMS = {
-    "k8s": "kubernetes", "golang": "go", "js": "javascript", "ts": "typescript", "postgres": "postgresql",
-    "gcp": "google cloud", "google cloud platform": "google cloud", "amazon web services": "aws",
-    "ms excel": "excel", "microsoft excel": "excel", "ml": "machine learning", "ai": "artificial intelligence",
-    "ci/cd": "ci cd", "cicd": "ci cd", "node": "node.js", "nodejs": "node.js", "react.js": "react", "reactjs": "react",
-}
 LEVELS = {"intern": 0, "junior": 1, "mid": 2, "senior": 3, "lead": 4, "manager": 4, "director": 5}
 _TITLE_LEVELS = [(r"\b(intern|trainee|apprentice)\b", 0), (r"\b(junior|jr|associate|graduate)\b", 1),
                  (r"\b(director|vp|vice president|head|chief|cto|ceo)\b", 5),
                  (r"\b(lead|principal|staff|architect|manager)\b", 4), (r"\b(senior|sr)\b", 3)]
 
 
-def norm_skill(skill):
-    s = re.sub(r"\s+", " ", re.sub(r"[^\w+#./ -]", " ", (skill or "").lower())).strip(" .-")
-    return SYNONYMS.get(s, s)
+def norm_skill(skill, index=None):
+    """The skill's standard name (skills.py): "K8s" -> "kubernetes", "Dockers" -> "docker"."""
+    return (index or skills.SEED_INDEX).canonical(skill)
 
 
-def _evidence(resume):
-    skills = {norm_skill(s) for s in resume.get("skills") or []}
+def _evidence(resume, index):
+    """The resume's skills and the 1-4 word phrases of its headline, summary, titles and
+    bullets, by standard name -> the user's own wording (for "you wrote ...")."""
+    listed = {}
+    for s in resume.get("skills") or []:
+        listed.setdefault(index.canonical(s), s)
     parts = [resume.get("summary") or "", resume.get("headline") or ""]
     for role in resume.get("roles") or []:
         parts.append(role.get("title") or "")
         parts += [b.get("text") or "" for b in role.get("bullets") or []]
-    blob = " " + re.sub(r"\s+", " ", " ".join(parts).lower()) + " "
-    return skills, blob
+    phrases = {}
+    for part in parts:
+        words = [w for w in re.split(r"[^\w+#./-]+", part) if w]
+        for n in (4, 3, 2, 1):
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i:i + n])
+                phrases.setdefault(index.canonical(phrase), phrase)
+    return listed, phrases
 
 
-def _has(skill, skills, blob):
-    n = norm_skill(skill)
-    if not n:
-        return False
-    if n in skills:
-        return True
-    variants = {n} | {k for k, v in SYNONYMS.items() if v == n}
-    return any(re.search(rf"(?<![\w+#]){re.escape(v)}(?![\w+#])", blob) for v in variants)
+def _has(skill, index, listed, phrases):
+    """(matched, the user's wording or None)."""
+    c = index.canonical(skill)
+    if not c:
+        return False, None
+    if c in listed:
+        return True, listed[c]
+    if c in phrases:
+        return True, phrases[c]
+    for mine in listed.values():  # a typo in the user's skill list ("Kuberentes")
+        if index.same(skill, mine):
+            return True, mine
+    return False, None
 
 
 def years_of_experience(resume, today=None):
@@ -112,17 +121,23 @@ def resume_level(resume, years):
     return 1 if years < 2 else 2 if years < 5 else 3
 
 
-def match(resume, requirements, job, evidence=None):
-    """{score, verdict, label, advice, parts:{...}, matched/missing lists, notes[], lines{}}.
-    `evidence`: match_evidence's judgment for this resume and job, or None (literal)."""
-    skills, blob = _evidence(resume)
+def match(resume, requirements, job, evidence=None, index=None):
+    """{score, verdict, label, advice, parts:{...}, matched/missing lists, notes[], lines{},
+    wrote{}}. `evidence`: match_evidence's judgment for this resume and job, or None
+    (literal). `index`: skills.Index (skills.current(conn)); the curated seed if None."""
+    index = index or skills.SEED_INDEX
+    listed, phrases = _evidence(resume, index)
     parts, notes = {}, []
     judged = (evidence or {}).get("skills") or {}
+    wrote = {}
 
     def credit(skill):
         if skill in judged:
             return _credit(judged[skill].get("level") or 0.0)
-        return 1.0 if _has(skill, skills, blob) else 0.0
+        found, mine = _has(skill, index, listed, phrases)
+        if found and mine and skills.normalise(mine) != skills.normalise(skill):
+            wrote[skill] = mine
+        return 1.0 if found else 0.0
 
     def used(skill):
         return credit(skill) >= 0.85
@@ -192,7 +207,7 @@ def match(resume, requirements, job, evidence=None):
         return {"score": None, "verdict": "unknown", "label": "Not enough detail",
                 "advice": "The posting doesn't say enough to compare.", "parts": parts,
                 "matched_required": [], "missing_required": [], "matched_preferred": [], "notes": notes,
-                "lines": {}, "judged": bool(judged)}
+                "lines": {}, "wrote": {}, "judged": bool(judged)}
     _, key, label, advice = next(v for v in VERDICTS if score >= v[0])
     if req and len(missing_req) / len(req) > 0.6 and key in ("strong", "good"):
         key, label, advice = VERDICTS[2][1:]  # most must-haves missing: never better than a stretch
@@ -209,4 +224,5 @@ def match(resume, requirements, job, evidence=None):
     return {"score": score, "verdict": key, "label": label, "advice": advice, "parts": parts,
             "matched_required": matched_req, "missing_required": missing_req,
             "matched_preferred": matched_pref, "notes": notes, "lines": lines,
+            "wrote": {k: v for k, v in wrote.items() if k in matched_req or k in matched_pref},
             "judged": bool(judged)}
