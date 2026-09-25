@@ -52,7 +52,7 @@ Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge
      | `OPENROUTER_API_KEY` | from harita `~/.env.openrouter` |
      | `AI_MODELS_WRITE`, `AI_MODELS_JOBS` | from the bake-off |
      | `DEEPSEEK_API_KEY` | from `~/.env.deepseek` |
-     | `META_API_KEY`, `META_BASE_URL`, `META_MODEL` | from `~/.env.meta`, and add `meta` to `DIRECT_JOBS_PROVIDERS` |
+     | `META_API_KEY` | from `~/.env.meta`; plus `META_BASE_URL=https://api.meta.ai/v1`, `META_MODEL=muse-spark-1.3-contributor`, `META_JSON=schema`, `META_REASONING_EFFORT=minimal`. `AI_MODELS_JOBS=direct:meta,openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash`. Muse contributor trains on prompts, so it gets public job text only (enforced in code). |
      | `TYPESAFE_API_KEY` | from `~/.env.typesafe.ai` (Phase B) |
      | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | the **dev bot's** |
      | `RESUME_ENCRYPTION_KEY` | kept as on pi09, so copied resumes still decrypt |
@@ -67,7 +67,12 @@ Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge
    with `uv` (`~/.local/bin/uv`, user-level): `uv venv --python /usr/bin/python3 .venv &&
    uv pip install --python .venv/bin/python -r requirements.txt`, and the same in
    `scraper/`.
-4. **mc:** `~/bin/mc` (linux-amd64, the same final release as on pi09). Check R2 with
+4. **mc:** `~/bin/mc`, linux-amd64, the same release as pi09 (`RELEASE.2025-08-13T08-35-41Z`).
+   MinIO no longer serves free `mc` downloads: that path returns 410, and only the paid
+   AIStor client is offered. So it's built from source in a throwaway container:
+   `podman run --rm -v $PWD:/out golang:1.24 sh -c 'git clone --depth 1 --branch
+   RELEASE.2025-08-13T08-35-41Z https://github.com/minio/mc /src && cd /src &&
+   CGO_ENABLED=0 go build -trimpath -o /out/mc .'`, then copy it to the server. Check R2 with
    `backup_to_minio.sh` on a scratch DB: upload, `stat` shows the sha256, download,
    `integrity_check`.
 5. **Venvs:** see step 3's note (uv).
