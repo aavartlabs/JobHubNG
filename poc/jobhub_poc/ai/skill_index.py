@@ -1,12 +1,11 @@
 """Weekly batch: grow skill_aliases (skills.py) from the skills job postings actually use, so
-"Terraform Cloud" / "TerraformCloud" or "ReactJS" / "React.js" become one skill.
+"Argo CD" / "ArgoCD" or "Databases" / "Database" become one skill.
 
 1. Collect the distinct skills in job readings (job_requirements; job text only -- never
    resumes), each by its current standard name.
-2. Group likely variants in code: a one- or two-letter difference (names of 5+ characters),
-   one being the other's acronym (IaC <-> infrastructure as code), or one containing the
-   other plus a filler word. Pairs in skills.DIFFERENT or rejected at /admin/skills are never
-   grouped.
+2. Group likely variants in code (linked()): the same letters but for spacing, a plural, or a
+   rare typo of a common spelling. Never acronyms (curated in skills.SEED). Pairs in
+   skills.DIFFERENT or rejected at /admin/skills are never grouped.
 3. Ask the LLM, per group, which names are the same skill and which is the standard one.
 4. Keep a merge only if the LLM says so AND the pair has that textual link, then store it
    (source=llm).
@@ -28,7 +27,7 @@ SCHEMA = {"type": "object", "properties": {"same": {"type": "array", "items": {"
     "standard": {"type": "string"}, "variants": {"type": "array", "items": {"type": "string"}}},
     "required": ["standard", "variants"]}}}, "required": ["same"]}
 PROMPT = """These are names of skills from job postings. Some may be spellings of the SAME skill
-(e.g. "ReactJS" and "React.js"; "IaC" and "infrastructure as code"). Others only look alike
+(e.g. "Argo CD" and "ArgoCD"; "Kubernetes" and "Kuberentes"). Others only look alike
 and are DIFFERENT skills (e.g. "Java" and "JavaScript"; "C" and "C#"; "SQL" and "NoSQL").
 List only the groups you are sure are the same skill, each with its most standard name.
 Leave out anything you are unsure about.
@@ -52,21 +51,40 @@ def _distance(a, b, limit=2):
     return prev[-1]
 
 
-def _acronym(short, long):
-    words = [w for w in long.split() if w not in ("of", "and", "as", "the", "a", "an", "for", "to")]
-    return len(words) >= 2 and short.replace(" ", "") == "".join(w[0] for w in words)
+def _tails(a, b):
+    """What's left of each after their common start."""
+    n = 0
+    while n < min(len(a), len(b)) and a[n] == b[n]:
+        n += 1
+    return a[n:], b[n:]
 
 
-def linked(a, b):
-    """The textual link a merge must have besides the LLM's word."""
+TYPO_RARITY = 5  # a typo is at most 1/5 as common as the spelling it's a typo of
+
+
+def linked(a, b, counts=None):
+    """The textual link a merge must have besides the LLM's word. The small local model agrees
+    far too easily (on prod data: azureml = azure, ethercat = ethernet, ssd = server side
+    development), so the code is strict:
+    - the same letters but for spacing ("argo cd" / "argocd");
+    - a plural ("databases" / "database"); any other different ending (-ml, -js, -al, -ion)
+      is a different word;
+    - a typo inside the word -- only when that spelling is rare next to the other one (counts:
+      how often each appears in job readings), since real typos are rare and real words aren't.
+    Acronyms are never merged here: two or three letters mean too many things. They belong in
+    skills.SEED, curated."""
     if frozenset((a, b)) in skills.DIFFERENT:
         return False
-    short, long = sorted((a, b), key=len)
-    if min(len(a), len(b)) >= 5 and _distance(a, b) <= 2:
+    if a.replace(" ", "") == b.replace(" ", ""):
         return True
-    if _acronym(short, long):
-        return True
-    return short.replace(" ", "") == long.replace(" ", "")  # "terraformcloud" vs "terraform cloud"
+    ta, tb = _tails(a, b)
+    if max(len(ta), len(tb)) <= 3:  # "ec" / "ecs" (ECS is AWS's container service): not a plural
+        return min(len(a), len(b)) >= 3 and {ta, tb} in ({"", "s"}, {"", "es"})
+    shorter = min(len(a), len(b))
+    if shorter < 5 or _distance(a, b) > (2 if shorter >= 8 else 1):
+        return False
+    ca, cb = (counts or {}).get(a, 0), (counts or {}).get(b, 0)
+    return bool(ca and cb) and min(ca, cb) * TYPO_RARITY <= max(ca, cb)
 
 
 def collect(conn, index):
@@ -94,9 +112,8 @@ def groups(names, rejected=frozenset(), max_size=8):
     for n in items:
         by_initial.setdefault(n[0], []).append(n)
     for a in items:
-        candidates = by_initial.get(a[0], []) + [b for b in items if len(b) <= 6 and _acronym(b, a)]
-        for b in candidates:
-            if b == a or frozenset((a, b)) in rejected or not linked(a, b):
+        for b in by_initial.get(a[0], []):
+            if b == a or frozenset((a, b)) in rejected or not linked(a, b, names):
                 continue
             parent[root(a)] = root(b)
     out = {}
@@ -105,7 +122,7 @@ def groups(names, rejected=frozenset(), max_size=8):
     return [g for g in out.values() if 2 <= len(g) <= max_size]
 
 
-def accepted_pairs(answer, group, index, rejected=frozenset()):
+def accepted_pairs(answer, group, index, rejected=frozenset(), counts=None):
     """(variant, standard) pairs from the LLM's answer that are in the group and linked."""
     members = set(group)
     pairs = []
@@ -115,7 +132,7 @@ def accepted_pairs(answer, group, index, rejected=frozenset()):
             continue
         for v in same.get("variants") or []:
             v = index.canonical(v)
-            if v in members and v != standard and frozenset((v, standard)) not in rejected and linked(v, standard):
+            if v in members and v != standard and frozenset((v, standard)) not in rejected and linked(v, standard, counts):
                 pairs.append((v, standard))
     return pairs
 
@@ -123,7 +140,8 @@ def accepted_pairs(answer, group, index, rejected=frozenset()):
 def run(conn, max_groups=300, dry_run=False, generate=None):
     index = skills.current(conn)
     rejected = {frozenset(r) for r in conn.execute("SELECT variant, canonical FROM skill_alias_rejections")}
-    todo = groups(collect(conn, index), rejected)[:max_groups]
+    counts = collect(conn, index)
+    todo = groups(counts, rejected)[:max_groups]
     stats = {"groups": len(todo), "asked": 0, "added": 0}
     now = datetime.now(timezone.utc).isoformat()
     for group in todo:
@@ -135,7 +153,7 @@ def run(conn, max_groups=300, dry_run=False, generate=None):
         except RuntimeError:
             continue
         stats["asked"] += 1
-        for variant, standard in accepted_pairs(answer, group, index, rejected):
+        for variant, standard in accepted_pairs(answer, group, index, rejected, counts):
             stats["added"] += 1
             if not dry_run:
                 conn.execute("INSERT OR IGNORE INTO skill_aliases (variant, canonical, source, created_at) VALUES (?, ?, 'llm', ?)",

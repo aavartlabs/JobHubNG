@@ -41,6 +41,8 @@ SEED = {
     "next js": "next.js", "node js": "nodejs", "springboot": "spring boot", "spring framework": "spring",
     "ms office": "microsoft office", "gitlab ci": "gitlab ci cd", "jenkins pipelines": "jenkins", "agile scrum": "scrum",
     "scrum master": "scrum", "pmp certification": "pmp", "project management professional": "pmp",
+    "tdd": "test driven development", "structured query language": "sql", "master of business administration": "mba",
+    "bdd": "behavior driven development", "behaviour driven development": "behavior driven development",
 }
 # Never the same skill, however alike they look (checked by the batch and the typo layer).
 DIFFERENT = {frozenset(p) for p in [

@@ -21,21 +21,36 @@ def fresh_index():
 
 def test_linked_needs_a_textual_link():
     assert skill_index.linked("terraform cloud", "terraformcloud")
-    assert skill_index.linked("gcp", "google cloud platform")
-    assert skill_index.linked("kuberentes", "kubernetes")
+    assert skill_index.linked("argo cd", "argocd") and skill_index.linked("audits", "audit")
+    assert skill_index.linked("automated test frameworks", "automated test framework")
     assert not skill_index.linked("java", "javascript")      # denylisted
     assert not skill_index.linked("scala", "scalar")          # denylisted
-    assert not skill_index.linked("go", "git")                 # short
-    assert not skill_index.linked("python", "pytorch")         # too far apart
+    assert not skill_index.linked("go", "git")
+    assert not skill_index.linked("python", "pytorch")
+    # Seen on prod data (gemma4:e2b said yes to all of these): a different ending is a different word...
+    for a, b in [("azureml", "azure"), ("angularjs", "angular"), ("analytical", "analytics"),
+                 ("orchestrator", "orchestration")]:
+        assert not skill_index.linked(a, b), (a, b)
+    # ...and acronyms are never merged by the batch (SSD is a drive; SCM is also source control).
+    assert not skill_index.linked("ssd", "server side development")
+    assert not skill_index.linked("ec", "ecs") and skill_index.linked("api", "apis")
+    assert not skill_index.linked("gcp", "google cloud platform")
+
+
+def test_a_typo_must_be_rare_next_to_the_spelling_it_is_a_typo_of():
+    assert skill_index.linked("kuberentes", "kubernetes", {"kubernetes": 40, "kuberentes": 1})
+    assert not skill_index.linked("kuberentes", "kubernetes")                       # no counts: no typo merges
+    assert not skill_index.linked("ethercat", "ethernet", {"ethercat": 2, "ethernet": 3})  # both real words
+    assert not skill_index.linked("data analytics", "data analysis", {"data analytics": 30, "data analysis": 25})
+    assert not skill_index.linked("agents", "alerts", {"agents": 1, "alerts": 50})   # 2 letters in a short word
 
 
 def test_groups_puts_variants_together_and_leaves_rejected_pairs_apart():
-    names = {"terraform cloud": 3, "terraformcloud": 1, "python": 5, "gcp": 1, "google cloud plattform": 1}
+    names = {"terraform cloud": 3, "terraformcloud": 1, "python": 5, "gcp": 1, "google cloud platform": 1}
     found = sorted(sorted(g) for g in skill_index.groups(names))
-    assert ["terraform cloud", "terraformcloud"] in found
-    assert not any("python" in g for g in found)
+    assert found == [["terraform cloud", "terraformcloud"]]
     rejected = {frozenset(("terraform cloud", "terraformcloud"))}
-    assert not any("terraformcloud" in g for g in skill_index.groups(names, rejected))
+    assert skill_index.groups(names, rejected) == []
 
 
 def test_accepted_pairs_keeps_only_linked_members_of_the_group():
