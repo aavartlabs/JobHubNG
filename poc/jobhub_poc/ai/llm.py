@@ -10,12 +10,14 @@ Unavailable when no model can be reached -- the task waits, it doesn't fail. The
 checks (resume_parse, job_requirements, tailoring.verify) run on the answer whichever model
 gave it."""
 
+import threading
+
 SENSITIVE = frozenset({"write"})  # tasks that carry resume data
 TASKS = frozenset({"write", "jobs"})
 
-# The model that gave the last answer (the worker is single-threaded), recorded with
-# what it produced (job_requirements, tailored_resumes).
-_last_model = None
+# The model that gave this thread's last answer, recorded with what it produced
+# (job_requirements, tailored_resumes). Per thread: the worker runs several at once.
+_state = threading.local()
 
 
 class Unavailable(RuntimeError):
@@ -36,13 +38,12 @@ def available(timeout=3):
 
 
 def generate(prompt, schema, *, timeout=300, task="write"):
-    global _last_model
     if task not in TASKS:
         raise ValueError(f"unknown task kind {task!r}")
     backend = _backend()
     if backend.__name__.endswith("ollama"):  # on the LAN: nothing leaves it, whatever the task
         answer = backend.generate(prompt, schema, timeout=timeout)
-        _last_model = backend.model_name()
+        _state.model = backend.model_name()
         return answer
     from jobhub_poc.ai import direct
     # The chain for this task, in order: OpenRouter models, and (public job text only)
@@ -52,9 +53,9 @@ def generate(prompt, schema, *, timeout=300, task="write"):
     for entry in backend.chain(task):
         try:
             if entry.startswith("direct:"):
-                answer, _last_model = direct.ask(entry.split(":", 1)[1], prompt, schema, timeout=timeout, task=task)
+                answer, _state.model = direct.ask(entry.split(":", 1)[1], prompt, schema, timeout=timeout, task=task)
             else:
-                answer, _last_model, _usage = backend.ask(entry, prompt, schema, task, timeout)
+                answer, _state.model, _usage = backend.ask(entry, prompt, schema, task, timeout)
             return answer
         except Unavailable as exc:
             busy.append(str(exc))
@@ -67,11 +68,11 @@ def generate(prompt, schema, *, timeout=300, task="write"):
     if task in SENSITIVE:
         raise Unavailable("; ".join(busy))
     try:  # public job text: the last-resort direct providers
-        answer, _last_model = direct.generate(prompt, schema, timeout=timeout, task=task)
+        answer, _state.model = direct.generate(prompt, schema, timeout=timeout, task=task)
         return answer
     except direct.DirectUnavailable:
         raise Unavailable("every model and direct provider is unavailable: " + "; ".join(busy)) from None
 
 
 def model_name():
-    return _last_model or _backend().model_name()
+    return getattr(_state, "model", None) or _backend().model_name()

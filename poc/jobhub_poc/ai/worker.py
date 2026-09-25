@@ -2,10 +2,11 @@
 host is unreachable it waits and checks again (backing off to a minute); queued work is
 kept, never dropped. Container `jobhub-ai`: `python -m jobhub_poc.ai.worker`."""
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 
-from jobhub_poc import crypto, db, job_requirements, resume_consent, resume_parse, tailoring
+from jobhub_poc import config, crypto, db, job_requirements, resume_consent, resume_parse, tailoring
 from jobhub_poc.webapp.job_text import plain_text
 from jobhub_poc.ai import llm, tasks
 
@@ -109,18 +110,18 @@ def run_once(conn):
     return True
 
 
-def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+def _loop(n):
+    """One worker thread: its own database connection, the same queue as the others (claim
+    is a single atomic UPDATE, so two threads never take the same task)."""
     conn = db.get_connection()
-    db.init_db(conn)
-    tasks.requeue_stale(conn)
     wait = 5
     while True:
         if tasks.pending_count(conn) == 0:
             time.sleep(3)
             continue
         if not llm.available():
-            log.info("LLM unreachable; %d task(s) waiting", tasks.pending_count(conn))
+            if n == 0:
+                log.info("LLM unreachable; %d task(s) waiting", tasks.pending_count(conn))
             time.sleep(wait)
             wait = min(wait * 2, 60)
             continue
@@ -130,6 +131,23 @@ def main():
                 pass
         except llm.Unavailable:
             log.info("LLM went away mid-task; will retry")
+
+
+def main():
+    """AI_WORKERS threads (hosted models answer in seconds but can take many requests at
+    once: a job list queues ~25 job reads, which one thread would do one after another)."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    conn = db.get_connection()
+    db.init_db(conn)
+    tasks.requeue_stale(conn)
+    conn.close()
+    count = max(1, config.AI_WORKERS)
+    log.info("AI worker: %d thread(s)", count)
+    threads = [threading.Thread(target=_loop, args=(n,), daemon=True, name=f"ai-{n}") for n in range(count)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
 
 if __name__ == "__main__":
