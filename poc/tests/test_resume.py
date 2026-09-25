@@ -553,3 +553,16 @@ def test_turning_jev_on_with_the_local_model_asks_for_consent_again(conn, reques
     assert client.post("/profile/consent", data={"consent": "on"}).status_code == 302
     assert "changed how we read resumes" not in client.get("/profile").get_data(as_text=True)
     assert match_evidence.state(conn, owner, "k1", {"skills": ["Go"]}, reqs, 5) == ("pending", None)
+
+
+def test_ollama_asks_for_the_configured_context_and_no_thinking(monkeypatch, requests_mock):
+    from jobhub_poc.ai import ollama
+    monkeypatch.setattr(config, "OLLAMA_URL", "http://llm.test:11434")
+    requests_mock.post("http://llm.test:11434/api/generate", json={"response": '{"ok": 1}'})
+    monkeypatch.setattr(config, "OLLAMA_NUM_CTX", 0)
+    ollama.generate("x", {})
+    assert requests_mock.last_request.json()["think"] is False
+    assert "num_ctx" not in requests_mock.last_request.json()["options"]
+    monkeypatch.setattr(config, "OLLAMA_NUM_CTX", 16384)
+    ollama.generate("x", {})
+    assert requests_mock.last_request.json()["options"]["num_ctx"] == 16384

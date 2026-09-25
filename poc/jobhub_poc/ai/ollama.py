@@ -35,7 +35,8 @@ def generate(prompt, schema, *, model=None, timeout=300):
             # think=False: "thinking" models (qwen3) otherwise spend the answer on reasoning and
             # return broken JSON; models without thinking (gemma4) ignore it.
             json={"model": model or config.OLLAMA_MODEL, "prompt": prompt, "format": schema,
-                  "stream": False, "think": False, "options": {"temperature": 0}},
+                  "stream": False, "think": False,
+                  "options": {"temperature": 0, **({"num_ctx": config.OLLAMA_NUM_CTX} if config.OLLAMA_NUM_CTX else {})}},
             timeout=timeout,
         )
     except requests.RequestException as exc:

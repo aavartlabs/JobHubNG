@@ -63,6 +63,8 @@ WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 AI_BACKEND = os.environ.get("AI_BACKEND", "ollama")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
+# Context window asked for on every request (tokens); unset = the Ollama server's own setting.
+OLLAMA_NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX") or 0)
 AI_PAUSED = os.environ.get("AI_PAUSED", "") == "1"
 AI_READ_ALL_JOBS = os.environ.get("AI_READ_ALL_JOBS", "") == "1"
 TYPESAFE_API_KEY = os.environ.get("TYPESAFE_API_KEY", "")
