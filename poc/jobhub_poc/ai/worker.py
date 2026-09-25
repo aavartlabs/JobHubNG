@@ -2,6 +2,7 @@
 host is unreachable it waits and checks again (backing off to a minute); queued work is
 kept, never dropped. Container `jobhub-ai`: `python -m jobhub_poc.ai.worker`."""
 import logging
+import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -134,7 +135,13 @@ def _loop(n):
         if config.AI_PAUSED:  # paid AI switched off: queued work simply waits
             time.sleep(60)
             continue
-        if tasks.pending_count(conn) == 0:
+        try:
+            pending = tasks.pending_count(conn)
+        except sqlite3.OperationalError as exc:  # "database is locked" while another writer commits
+            log.warning("queue check failed (%s); retrying", exc)
+            time.sleep(5)
+            continue
+        if pending == 0:
             time.sleep(3)
             continue
         if not llm.available():

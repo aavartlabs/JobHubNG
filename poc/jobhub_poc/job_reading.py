@@ -56,13 +56,25 @@ def learn(conn, skills):
     conn.commit()
 
 
-def seed_vocab(conn):
-    """First run: every skill already read from job postings (never from resumes)."""
-    if conn.execute("SELECT 1 FROM skills_vocab LIMIT 1").fetchone():
+def seed_vocab(conn, complete=False):
+    """First run: every skill already read from job postings (never from resumes), counted in
+    memory and written in ONE transaction -- a commit per reading starved other connections
+    (the worker died on "database is locked" on the Pi). complete=True adds whatever an
+    interrupted seed missed, leaving existing rows (and their counts) as they are."""
+    if not complete and conn.execute("SELECT 1 FROM skills_vocab LIMIT 1").fetchone():
         return
+    counts, display = {}, {}
     for (data,) in conn.execute("SELECT data_json FROM job_requirements").fetchall():
         d = json.loads(data)
-        learn(conn, (d.get("required_skills") or []) + (d.get("preferred_skills") or []))
+        for s in (d.get("required_skills") or []) + (d.get("preferred_skills") or []):
+            k = _key(s)
+            if k and len(k) <= 50 and len(k.split()) <= 5:
+                counts[k] = counts.get(k, 0) + 1
+                display.setdefault(k, s)
+    now = datetime.now(timezone.utc).isoformat()
+    conn.executemany("INSERT INTO skills_vocab (skill, display, seen, added_at) VALUES (?, ?, ?, ?) "
+                     "ON CONFLICT (skill) DO NOTHING", [(k, display[k], n, now) for k, n in counts.items()])
+    conn.commit()
 
 
 def year_options(text):

@@ -288,3 +288,18 @@ def test_reading_every_job_is_opt_in_and_off_while_paused(conn, monkeypatch, cap
     monkeypatch.setattr(config, "AI_PAUSED", True)
     queue_reads.main()
     assert capsys.readouterr().out.count("not queueing") == 2
+
+
+def test_vocab_seed_writes_once_and_completes_an_interrupted_seed(conn):
+    import json as _json
+    from jobhub_poc import job_reading
+    for i, skills_ in enumerate([["Kubernetes", "Go"], ["Kubernetes", "Terraform"]]):
+        conn.execute("INSERT INTO job_requirements VALUES (?, ?, 'm', 'x')", (f"k{i}", _json.dumps({"required_skills": skills_})))
+    conn.commit()
+    conn.execute("INSERT INTO skills_vocab (skill, display, seen, added_at) VALUES ('go', 'Go', 7, 'x')")  # interrupted seed
+    conn.commit()
+    job_reading.seed_vocab(conn)  # not empty: the normal call leaves it
+    assert conn.execute("SELECT COUNT(*) FROM skills_vocab").fetchone()[0] == 1
+    job_reading.seed_vocab(conn, complete=True)
+    rows = dict(conn.execute("SELECT skill, seen FROM skills_vocab").fetchall())
+    assert rows == {"go": 7, "kubernetes": 2, "terraform": 1}
