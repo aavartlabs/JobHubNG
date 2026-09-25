@@ -32,8 +32,10 @@ def generate(prompt, schema, *, model=None, timeout=300):
     try:
         resp = requests.post(
             f"{config.OLLAMA_URL.rstrip('/')}/api/generate",
+            # think=False: "thinking" models (qwen3) otherwise spend the answer on reasoning and
+            # return broken JSON; models without thinking (gemma4) ignore it.
             json={"model": model or config.OLLAMA_MODEL, "prompt": prompt, "format": schema,
-                  "stream": False, "options": {"temperature": 0}},
+                  "stream": False, "think": False, "options": {"temperature": 0}},
             timeout=timeout,
         )
     except requests.RequestException as exc:
