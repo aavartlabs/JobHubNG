@@ -19,6 +19,8 @@ from jobhub_poc import config
 from jobhub_poc.ai.llm import SENSITIVE, Unavailable
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
+MODELS_URL = "https://openrouter.ai/api/v1/models"
+_supported = {}  # model -> the request parameters it accepts (OpenRouter's public model list)
 # Models that pay for their price with the right to train on prompts and outputs.
 TRAINS_ON_PROMPTS = re.compile(r"-contributor(\b|$)|:free$")
 
@@ -41,6 +43,20 @@ def chain(task):
     return models
 
 
+def supported(model):
+    """The parameters `model` accepts, or None if the list can't be fetched. Fetched once per
+    process: with require_parameters, sending one a model lacks (e.g. temperature to a
+    reasoning model) leaves no provider to serve it."""
+    if not _supported:
+        try:
+            resp = requests.get(MODELS_URL, timeout=10)
+            resp.raise_for_status()
+            _supported.update({m["id"]: set(m.get("supported_parameters") or []) for m in resp.json()["data"]})
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            return None
+    return _supported.get(model)
+
+
 def available(timeout=3):
     return bool(config.OPENROUTER_API_KEY and config.AI_MODELS_WRITE)
 
@@ -59,6 +75,12 @@ def ask(model, prompt, schema, task, timeout):
         provider["data_collection"] = "deny"
         if config.OPENROUTER_ZDR:
             provider["zdr"] = True
+    params = supported(model)
+    extra = {}
+    if params is None or "temperature" in params:
+        extra["temperature"] = 0
+    if config.AI_REASONING_EFFORT and params and "reasoning" in params:
+        extra["reasoning"] = {"effort": config.AI_REASONING_EFFORT}
     try:
         resp = requests.post(URL, timeout=timeout, headers={
             "Authorization": f"Bearer {config.OPENROUTER_API_KEY}", "X-Title": "JobsHub"}, json={
@@ -66,8 +88,7 @@ def ask(model, prompt, schema, task, timeout):
             "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_schema",
                                 "json_schema": {"name": "answer", "strict": config.OPENROUTER_STRICT, "schema": schema}},
-            "temperature": 0, "max_tokens": config.AI_MAX_TOKENS, "provider": provider,
-            "usage": {"include": True}})
+            "max_tokens": config.AI_MAX_TOKENS, "provider": provider, "usage": {"include": True}, **extra})
     except requests.RequestException as exc:  # never echo it: the headers hold the key
         raise OpenRouterUnavailable(f"{model}: unreachable ({type(exc).__name__})") from None
     if resp.status_code in (402, 408, 429) or resp.status_code >= 500:

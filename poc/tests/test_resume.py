@@ -473,3 +473,19 @@ def test_changing_the_ai_backend_asks_for_consent_again(conn, requests_mock, mon
     assert row["consent_at"] >= "2026-09-25" and row["parse_status"] == "queued"
     assert conn.execute("SELECT status FROM ai_tasks ORDER BY id DESC").fetchone()[0] == "queued"
     assert "changed how we read resumes" not in client.get("/profile").get_data(as_text=True)
+
+
+def test_only_parameters_the_model_accepts_are_sent(monkeypatch, requests_mock):
+    from jobhub_poc.ai import openrouter
+    _openrouter(monkeypatch)
+    monkeypatch.setattr(openrouter, "_supported", {  # as OpenRouter's model list gives them
+        "openai/test-a": {"response_format", "reasoning", "max_tokens"},
+        "deepseek/test-b": {"response_format", "temperature"}})
+    requests_mock.post(OPENROUTER, json=_answer('{"ok": 1}'))
+    llm.generate("x", {})
+    body = requests_mock.last_request.json()
+    assert "temperature" not in body and body["reasoning"] == {"effort": "low"}  # a reasoning model
+    monkeypatch.setattr(config, "AI_MODELS_WRITE", ["deepseek/test-b"])
+    llm.generate("x", {})
+    body = requests_mock.last_request.json()
+    assert body["temperature"] == 0 and "reasoning" not in body

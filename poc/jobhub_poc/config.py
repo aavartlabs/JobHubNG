@@ -68,6 +68,9 @@ AI_MODELS_JOBS = [m.strip() for m in os.environ.get(
 OPENROUTER_ZDR = os.environ.get("OPENROUTER_ZDR", "") == "1"  # only zero-data-retention endpoints for resume data
 OPENROUTER_STRICT = os.environ.get("OPENROUTER_STRICT", "") == "1"  # strict schema (needs strict-compatible schemas)
 AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "4096"))
+# How hard reasoning models think before answering (sent only to models that take it):
+# "low" keeps judgments and rewrites quick; the honesty checks run on the answer either way.
+AI_REASONING_EFFORT = os.environ.get("AI_REASONING_EFFORT", "low")
 # When OpenRouter is down, public job text may go straight to these (ai/direct.py; each needs
 # <NAME>_API_KEY / _BASE_URL / _MODEL in .env). Never resume data.
 DIRECT_JOBS_PROVIDERS = [p.strip() for p in os.environ.get("DIRECT_JOBS_PROVIDERS", "deepseek").split(",") if p.strip()]

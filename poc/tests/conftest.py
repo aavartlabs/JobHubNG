@@ -30,3 +30,12 @@ def turnstile_calls(monkeypatch):
 
     monkeypatch.setattr(turnstile, "verify", fake_verify)
     return calls
+
+
+@pytest.fixture(autouse=True)
+def _no_openrouter_model_list(monkeypatch):
+    """ai/openrouter.py fetches OpenRouter's public model list to see which parameters a model
+    takes; tests never go to the network for it (as if unknown, unless a test fills it)."""
+    from jobhub_poc.ai import openrouter
+    monkeypatch.setattr(openrouter, "_supported", {})
+    monkeypatch.setattr(openrouter, "supported", lambda model: openrouter._supported.get(model) if openrouter._supported else None)
