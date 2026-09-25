@@ -247,6 +247,10 @@ def test_every_unread_listed_job_is_queued_once_in_the_background(conn):
     assert queue_reads.queue(conn) == 1
     assert queue_reads.queue(conn) == 1  # still unread, but not queued twice
     assert [tuple(r) for r in conn.execute("SELECT ref, priority FROM ai_tasks")] == [("k2", 0)]
+    job_requirements.store(conn, "k2", {}, "gemma4:e2b")  # read before Jev
+    conn.execute("DELETE FROM ai_tasks")
+    conn.commit()
+    assert queue_reads.queue(conn) == 0 and queue_reads.queue(conn, reread_old=True) == 1
 
 
 def test_list_filters_use_each_jobs_reading(conn):
