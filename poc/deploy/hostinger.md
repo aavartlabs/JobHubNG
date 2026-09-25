@@ -63,17 +63,20 @@ Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge
      - `MINIO_ENDPOINT=https://<account>.r2.cloudflarestorage.com`
      - `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` (the R2 token's pair)
      - `MINIO_BUCKET`
+   The server's Python has no `ensurepip`, and adding it needs sudo. So the venvs are made
+   with `uv` (`~/.local/bin/uv`, user-level): `uv venv --python /usr/bin/python3 .venv &&
+   uv pip install --python .venv/bin/python -r requirements.txt`, and the same in
+   `scraper/`.
 4. **mc:** `~/bin/mc` (linux-amd64, the same final release as on pi09). Check R2 with
    `backup_to_minio.sh` on a scratch DB: upload, `stat` shows the sha256, download,
    `integrity_check`.
-5. **Venvs:** `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, and the
-   same in `scraper/`.
+5. **Venvs:** see step 3's note (uv).
 6. **Seed the databases:** SQLite online-backup copies of pi09's `jobhub.db` and `auth.db`
    and pi05's `warehouse.db`, copied over, then `PRAGMA integrity_check`. Dev data is
    disposable: it's replaced by fresh copies at the switch.
 7. **Containers:**
    ```bash
-   C="docker compose -f docker-compose.yml -f docker-compose.hostinger.yml"
+   C="docker compose -f docker-compose.yml -f docker-compose.hostinger.yml"   # project name jobhub-poc, set in the override
    $C build && $C up -d
    ```
    This starts web, auth-service, telegram, ai and everjobs. The tunnel and WhatsApp are

@@ -6,6 +6,10 @@
 # reaches the site through Cloudflare and the host's shared edge-nginx, which proxies to
 # jobhub-web:3000 over the "edge" network (deploy/nginx/). No tunnel on this host.
 # Docker-published ports bypass ufw, so loopback binds are the firewall here.
+# Same project name as on pi09 (its folder, jobhub-poc): the ai service runs the image
+# built for web, which compose names <project>-web.
+name: jobhub-poc
+
 services:
   web:
     ports: !override
