@@ -38,6 +38,12 @@ LEVELS = {"intern": "Intern", "junior": "Entry / junior", "mid": "Mid-level", "s
 ROLE_FAMILIES = {"engineering": "Engineering", "data": "Data & ML", "design": "Design", "product": "Product",
                  "sales": "Sales", "marketing": "Marketing", "operations": "Operations", "finance": "Finance & legal",
                  "hr": "People & HR", "support": "Customer support"}
+# A filter that needs readings is offered only while most listed jobs have that field read;
+# otherwise it hides nearly every job. (Prod on the local model reads few jobs, and only Jev
+# gives work mode and role family.) name -> the reading's field.
+READING_FILTERS = {"hybrid": "work_mode", "level": "seniority", "role": "role_family"}
+READING_FILTER_COVERAGE = 0.8
+_coverage = {"key": None, "usable": frozenset()}
 _READ = "(SELECT json_extract(r.data_json, '$.{field}') FROM job_requirements r WHERE r.job_dedupe_key = jobs.dedupe_key)"
 PAGE_SIZES = (10, 25, 50, 100)
 DEFAULT_PAGE_SIZE = 25
@@ -441,3 +447,29 @@ def track_state(conn, user_id, dedupe_key):
     clicked = conn.execute("SELECT 1 FROM job_interactions WHERE owner_auth_user_id = ? AND job_dedupe_key = ? "
                            "AND action = 'click_apply' LIMIT 1", (user_id, dedupe_key)).fetchone()
     return (row["status"] if row else None), clicked is not None
+
+
+def reading_filters(conn):
+    """The READING_FILTERS names that work on this site's data now (recounted when the
+    number of jobs or readings changes)."""
+    key = conn.execute("SELECT (SELECT COUNT(*) FROM jobs), (SELECT COUNT(*) FROM job_requirements), "
+                       "(SELECT MAX(extracted_at) FROM job_requirements)").fetchone()
+    key = tuple(key)
+    if _coverage["key"] != key:
+        total = key[0] or 0
+        usable = set()
+        for name, field in READING_FILTERS.items():
+            read = conn.execute(
+                "SELECT COUNT(*) FROM jobs j JOIN job_requirements r ON r.job_dedupe_key = j.dedupe_key "
+                f"WHERE json_extract(r.data_json, '$.{field}') IS NOT NULL").fetchone()[0]
+            if total and read / total >= READING_FILTER_COVERAGE:
+                usable.add(name)
+        _coverage.update(key=key, usable=frozenset(usable))
+    return _coverage["usable"]
+
+
+def without_unusable_filters(conn, q):
+    """q minus reading-based filters that can't work yet (an old link, or the API)."""
+    usable = reading_filters(conn)
+    return replace(q, level=q.level if "level" in usable else "", role=q.role if "role" in usable else "",
+                   work_mode="" if q.work_mode == "hybrid" and "hybrid" not in usable else q.work_mode)

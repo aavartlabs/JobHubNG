@@ -38,8 +38,10 @@ from jobhub_poc.webapp.jobs_listing import (
     parse_list_args,
     present_job,
     query_jobs,
+    reading_filters,
     record,
     safe_back_query,
+    without_unusable_filters,
     save_job,
     saved_jobs,
     saved_keys,
@@ -133,7 +135,8 @@ def list_jobs():
         return redirect(url_for("jobs.job_page", job_id=int(old_link)))
 
     conn = current_app.get_db()
-    q = parse_list_args(request.args)
+    q = without_unusable_filters(conn, parse_list_args(request.args))
+    usable = reading_filters(conn)
     resume = _user_resume(conn)
     # "Jobs for you": a signed-in user with a resume lands on their roles in their places,
     # unless they asked for everything (?all=1) or typed a search of their own.
@@ -177,9 +180,9 @@ def list_jobs():
         "jobs.html",
         wide=True,  # base.html: the list + pane need more than the default 5xl column
         q=q,
-        work_modes=WORK_MODES,
-        levels=LEVELS,
-        role_families=ROLE_FAMILIES,
+        work_modes={k: v for k, v in WORK_MODES.items() if k != "hybrid" or "hybrid" in usable},
+        levels=LEVELS if "level" in usable else {},
+        role_families=ROLE_FAMILIES if "role" in usable else {},
         jobs=jobs,
         result=result,
         first=(result.page - 1) * q.page_size + 1 if result.total else 0,

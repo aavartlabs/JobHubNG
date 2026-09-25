@@ -2,15 +2,16 @@ from flask import Blueprint, current_app, jsonify, request
 
 from jobhub_poc.job_links import human_url
 from jobhub_poc.webapp.auth import access_state, login_url, verify_url
-from jobhub_poc.webapp.jobs_listing import parse_list_args, query_jobs, record
+from jobhub_poc.webapp.jobs_listing import parse_list_args, query_jobs, record, without_unusable_filters
 
 bp = Blueprint("api", __name__)
 
 
 @bp.route("/api/jobs")
 def list_jobs_json():
-    q = parse_list_args(request.args)
-    result = query_jobs(current_app.get_db(), q)
+    conn = current_app.get_db()
+    q = without_unusable_filters(conn, parse_list_args(request.args))
+    result = query_jobs(conn, q)
     jobs = [
         {
             "id": r["id"],
