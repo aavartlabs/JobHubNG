@@ -20,7 +20,7 @@
         <label class="relative col-span-2 mb-0 sm:col-span-1">
           <span class="sr-only">Location</span>
           <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">{{ icon("pin", "size-4") }}</span>
-          <input type="search" name="location" value="{{ q.location }}" placeholder="Location" list="top-locations" class="mt-0 pl-9 sm:max-w-none">
+          <input type="search" name="location" value="{{ q.location }}" placeholder="Locations, e.g. Bengaluru, Pune, Remote" list="top-locations" class="mt-0 pl-9 sm:max-w-none">
         </label>
         <select name="work_mode" aria-label="Remote or on-site" class="mt-0 sm:max-w-none">
           <option value="" {{ 'selected' if not q.work_mode }}>Any mode</option>
@@ -39,6 +39,7 @@
     </div>
   </section>
 
+  {% if result.corrections %}<p class="mb-2 text-sm text-muted">Showing results for {% for typed, fixed in result.corrections %}<strong>{{ fixed | title }}</strong> (you typed {{ typed }}){% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
   <div class="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:grid-cols-3 lg:flex lg:items-center lg:justify-end">
     <span class="col-span-2 hidden text-sm font-medium text-muted sm:col-span-1 lg:mr-auto lg:block">Refine</span>
     <select name="level" aria-label="Level" class="mt-0 sm:max-w-none lg:w-40">

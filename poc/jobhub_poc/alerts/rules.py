@@ -44,6 +44,7 @@ def _location_matches(wanted, job):
     location = job.get("location") or ""
     for term in wanted:
         term = term.strip().lower()
+        term = places.correct(term) or term  # "Bengluru" -> "bengaluru"
         if term == "remote" and _is_remote(job):
             return True
         if _any_word(places.spellings(term), location):

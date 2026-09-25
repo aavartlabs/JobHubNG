@@ -117,6 +117,7 @@ class ListResult:
     companies: int     # distinct companies among all matches, not just this page
     locations: int
     new_today: int     # first seen by JobsHub in the last 24 hours
+    corrections: tuple = ()  # (what was typed, the place searched instead), e.g. ("Bengluru", "bengaluru")
 
 
 def query_jobs(conn, q: ListQuery, now=None) -> ListResult:
@@ -127,10 +128,22 @@ def query_jobs(conn, q: ListQuery, now=None) -> ListResult:
     if q.q:
         where += " AND (title LIKE ? OR company_name LIKE ?)"
         params += [f"%{q.q}%", f"%{q.q}%"]
-    if q.location:  # "India" also finds "Bengaluru, Karnataka"; "Bangalore" finds "Bengaluru"
-        names = places.spellings(q.location) or (q.location,)
-        where += " AND (" + " OR ".join("location LIKE ?" for _ in names) + ")"
-        params += [f"%{n}%" for n in names]
+    corrections = ()
+    if q.location:
+        # Several places, any of them ("Bengaluru, Pune, Remote"); "India" also finds its cities,
+        # "Bangalore" finds "Bengaluru"; misspellings are corrected (places.parse).
+        wanted, corrections = places.parse(q.location, _known_locations(conn))
+        clauses = []
+        for place in wanted:
+            if place == "remote":
+                clauses.append("is_remote = 1 OR location LIKE ?")
+                params.append("%remote%")
+                continue
+            names = places.spellings(place) or (place,)
+            clauses += ["location LIKE ?"] * len(names)
+            params += [f"%{n}%" for n in names]
+        if clauses:
+            where += " AND (" + " OR ".join(f"({c})" for c in clauses) + ")"
     mode = _READ.format(field="work_mode")
     if q.work_mode == "remote":  # the source's remote flag, or the reading
         where += f" AND (is_remote = 1 OR {mode} = 'remote')"
@@ -160,7 +173,13 @@ def query_jobs(conn, q: ListQuery, now=None) -> ListResult:
         f"SELECT * FROM jobs {where} ORDER BY {SORTS[q.sort]} LIMIT ? OFFSET ?",
         [*params, q.page_size, (page - 1) * q.page_size],
     ).fetchall()
-    return ListResult(rows, total, page, total_pages, companies, locations, new_today)
+    return ListResult(rows, total, page, total_pages, companies, locations, new_today, tuple(corrections))
+
+
+def _known_locations(conn):
+    """City names that occur in the data (the first part of the commonest locations), so a
+    misspelling of any of them can be corrected too."""
+    return [loc.split(",")[0].strip() for loc in site_figures(conn)["top_locations"]]
 
 
 # ---- site-wide figures for the hero and the location suggestions (cached per process) ----
