@@ -9,23 +9,43 @@
 #                        serving filter in config/pipeline.ini
 # 3. pull + load      -> scp the delta, upsert into jobhub.db, advance the watermark
 # 4. purge + alerts   -> locally, as before
+#
+# SCRAPER_HOST=local runs the scraper steps on this machine (scraper/ next to the app, its
+# own venv) with plain copies instead of ssh/scp -- both tiers on one host. The two
+# databases and the delta/watermark hand-over are the same either way.
 set -euo pipefail
 
+SCRAPER_HOST=${SCRAPER_HOST:-pi05}
 PI05_DIR=${PI05_DIR:-jobhub-poc}  # relative: ssh commands start in the remote home
 APP_DIR=${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
-REMOTE_DELTA=/tmp/jobhub_delta.jsonl.gz
-TERMS_FILE=/tmp/jobhub_alert_terms.json
+REMOTE_DELTA=${REMOTE_DELTA:-/tmp/jobhub_delta.jsonl.gz}
+TERMS_FILE=${TERMS_FILE:-/tmp/jobhub_alert_terms.json}
 LOCAL_DELTA=$(mktemp /tmp/jobhub_delta.XXXXXX.jsonl.gz)
-NEW_IDS=/tmp/jobhub_poc_new_ids.json
+NEW_IDS=${NEW_IDS:-/tmp/jobhub_poc_new_ids.json}
 trap 'rm -f "${LOCAL_DELTA}"' EXIT
 cd "${APP_DIR}"
 
-echo "== 1/4: warehouse ingest on pi05 =="
-ssh pi05 "cd ${PI05_DIR}/scraper && .venv/bin/python ingest.py"
-echo "== 1b/4: enrich on pi05 =="
-ssh pi05 "cd ${PI05_DIR}/scraper && .venv/bin/python enrich.py" || echo "enrich failed (continuing without it)"
+# Run a command in the scraper directory, wherever the scraper lives.
+on_scraper() {
+    if [ "${SCRAPER_HOST}" = "local" ]; then
+        (cd "${APP_DIR}/scraper" && bash -c "$1")
+    else
+        ssh "${SCRAPER_HOST}" "cd ${PI05_DIR}/scraper && $1"
+    fi
+}
+to_scraper() {  # <local file> <path on the scraper host>
+    if [ "${SCRAPER_HOST}" = "local" ]; then [ "$1" = "$2" ] || cp "$1" "$2"; else scp -q "$1" "${SCRAPER_HOST}:$2"; fi
+}
+from_scraper() {  # <path on the scraper host> <local file>
+    if [ "${SCRAPER_HOST}" = "local" ]; then cp "$1" "$2"; else scp -q "${SCRAPER_HOST}:$1" "$2"; fi
+}
 
-echo "== 2/4: export delta on pi05 =="
+echo "== 1/4: warehouse ingest on ${SCRAPER_HOST} =="
+on_scraper ".venv/bin/python ingest.py"
+echo "== 1b/4: enrich on ${SCRAPER_HOST} =="
+on_scraper ".venv/bin/python enrich.py" || echo "enrich failed (continuing without it)"
+
+echo "== 2/4: export delta on ${SCRAPER_HOST} =="
 SINCE=$(.venv/bin/python -m jobhub_poc.loader.load_delta --print-watermark)
 # Active alerts' titles/keywords widen what pi05 exports (T14). When that set changes
 # (an alert was added or edited), re-scan the whole warehouse so matching jobs it already
@@ -36,13 +56,13 @@ if [ "${TERMS_FP}" != "${PREV_TERMS_FP}" ]; then
     echo "alert terms changed (${PREV_TERMS_FP:-none} -> ${TERMS_FP}): full re-scan"
     SINCE=""
 fi
-scp -q "${TERMS_FILE}" "pi05:${TERMS_FILE}"
-EXPORT_JSON=$(ssh pi05 "cd ${PI05_DIR}/scraper && .venv/bin/python export.py --out ${REMOTE_DELTA} --extra-terms-file ${TERMS_FILE} ${SINCE:+--since '${SINCE}'}")
+to_scraper "${TERMS_FILE}" "${TERMS_FILE}"
+EXPORT_JSON=$(on_scraper ".venv/bin/python export.py --out ${REMOTE_DELTA} --extra-terms-file ${TERMS_FILE} ${SINCE:+--since '${SINCE}'}")
 echo "${EXPORT_JSON}"
 WATERMARK=$(printf '%s' "${EXPORT_JSON}" | .venv/bin/python -c 'import json,sys; print(json.loads(sys.stdin.read().strip().splitlines()[-1])["watermark"] or "")')
 
 echo "== 3/4: pull + load delta =="
-scp -q "pi05:${REMOTE_DELTA}" "${LOCAL_DELTA}"
+from_scraper "${REMOTE_DELTA}" "${LOCAL_DELTA}"
 .venv/bin/python -m jobhub_poc.loader.load_delta "${LOCAL_DELTA}" ${WATERMARK:+--watermark "${WATERMARK}"} \
     --terms-fingerprint "${TERMS_FP}" --new-ids-out "${NEW_IDS}"
 
