@@ -9,8 +9,10 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def enqueue(conn, kind, owner=None, ref=None, priority=0):
-    """Task id; an identical task still queued or running is reused, not duplicated."""
+def enqueue(conn, kind, owner=None, ref=None, priority=0, commit=True):
+    """Task id; an identical task still queued or running is reused, not duplicated.
+    commit=False for bulk queueing: the caller commits once (a commit per task locked the
+    database for minutes on the Pi when every job was queued)."""
     row = conn.execute(
         "SELECT id FROM ai_tasks WHERE kind = ? AND owner_auth_user_id IS ? AND ref IS ? "
         "AND status IN ('queued', 'running')", (kind, owner, ref)).fetchone()
@@ -20,7 +22,8 @@ def enqueue(conn, kind, owner=None, ref=None, priority=0):
     task_id = conn.execute(
         "INSERT INTO ai_tasks (kind, owner_auth_user_id, ref, priority, status, attempts, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)", (kind, owner, ref, priority, now, now)).lastrowid
-    conn.commit()
+    if commit:
+        conn.commit()
     return task_id
 
 

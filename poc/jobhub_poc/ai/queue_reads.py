@@ -25,8 +25,9 @@ def unread(conn, limit=None, reread_old=False):
 
 def queue(conn, limit=None, reread_old=False):
     keys = unread(conn, limit, reread_old)
-    for key in keys:
-        tasks.enqueue(conn, "extract_job", ref=key, priority=0)
+    for key in keys:  # one transaction: other connections wait for one commit, not thousands
+        tasks.enqueue(conn, "extract_job", ref=key, priority=0, commit=False)
+    conn.commit()
     return len(keys)
 
 
