@@ -23,6 +23,19 @@
 </section>
 {% endif %}
 
+{% if prefs %}
+<section class="card mb-5 p-5 sm:p-6" id="preferences">
+  <h2 class="mt-0">Your job preferences</h2>
+  <p class="text-sm text-muted">/jobs opens on jobs for these roles and places. Separate several with commas.</p>
+  <form method="post" action="{{ url_for('profile.preferences') }}">
+    <label>Roles <input type="text" name="roles" value="{{ prefs.roles | join(', ') }}" placeholder="e.g. SRE, DevOps"></label>
+    <label>Places <input type="text" name="locations" value="{{ prefs.locations | join(', ') | title }}" placeholder="e.g. Bengaluru, Pune"></label>
+    <label class="font-normal"><input type="checkbox" name="include_remote" {{ 'checked' if prefs.include_remote }}> Include remote jobs</label>
+    <button type="submit" class="btn">Save preferences</button>
+  </form>
+</section>
+{% endif %}
+
 <section class="card mb-5 p-5 sm:p-6">
   {% if resume %}
     <p class="mt-0"><strong>{{ resume.filename }}</strong> · uploaded {{ resume.uploaded_at[:10] }}

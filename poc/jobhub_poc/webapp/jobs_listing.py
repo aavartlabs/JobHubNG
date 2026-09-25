@@ -50,7 +50,7 @@ VIEW_DEDUPE_WINDOW = timedelta(hours=1)
 NEW_WINDOW = timedelta(hours=24)
 
 
-_PARAMS = ("q", "location", "work_mode", "level", "role", "sort", "posted_within", "page", "page_size")
+_PARAMS = ("mine", "q", "location", "work_mode", "level", "role", "sort", "posted_within", "page", "page_size")
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,8 @@ class ListQuery:
     posted_within: int = 0
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
+    mine: str = ""              # "1": "Jobs for you" (the user's job_preferences); set by the route
+    titles: tuple = ()          # title terms for "Jobs for you" -- never read from the URL
 
 
 def _positive_int(raw, default, maximum=None):
@@ -90,6 +92,7 @@ def parse_list_args(args) -> ListQuery:
         posted_within=int(posted) if posted.isdigit() and int(posted) in dict(POSTED_WITHIN_OPTIONS) else 0,
         page=_positive_int(args.get("page"), 1),
         page_size=_positive_int(args.get("page_size"), DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE),
+        mine="1" if args.get("mine") == "1" else "",
     )
 
 
@@ -128,6 +131,9 @@ def query_jobs(conn, q: ListQuery, now=None) -> ListResult:
     if q.q:
         where += " AND (title LIKE ? OR company_name LIKE ?)"
         params += [f"%{q.q}%", f"%{q.q}%"]
+    if q.titles:  # "Jobs for you": any of the user's roles and their title family
+        where += " AND (" + " OR ".join("title LIKE ?" for _ in q.titles) + ")"
+        params += [f"%{t}%" for t in q.titles]
     corrections = ()
     if q.location:
         # Several places, any of them ("Bengaluru, Pune, Remote"); "India" also finds its cities,

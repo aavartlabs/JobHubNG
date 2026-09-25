@@ -39,6 +39,9 @@
     </div>
   </section>
 
+  {% if for_you %}<p class="mb-2 rounded-lg bg-surface px-3 py-2 text-sm"><strong>Jobs for you:</strong>
+    {{ for_you.roles | join(", ") or "any role" }} · {{ (for_you.locations + (["Remote"] if for_you.include_remote else [])) | join(", ") | title or "anywhere" }}
+    · <a href="{{ url_for('profile.profile') }}#preferences">Edit</a> · <a href="{{ url_for('jobs.list_jobs', all=1) }}">Show all jobs</a></p>{% endif %}
   {% if result.corrections %}<p class="mb-2 text-sm text-muted">Showing results for {% for typed, fixed in result.corrections %}<strong>{{ fixed | title }}</strong> (you typed {{ typed }}){% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
   <div class="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:grid-cols-3 lg:flex lg:items-center lg:justify-end">
     <span class="col-span-2 hidden text-sm font-medium text-muted sm:col-span-1 lg:mr-auto lg:block">Refine</span>

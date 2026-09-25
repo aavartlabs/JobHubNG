@@ -212,6 +212,16 @@ CREATE TABLE IF NOT EXISTS skill_alias_rejections (
     PRIMARY KEY (variant, canonical)
 );
 
+-- A user's "Jobs for you" (job_preferences.py): the roles and places /jobs shows by default.
+-- Proposed from the resume until saved on /profile. Plain, like an alert's filters.
+CREATE TABLE IF NOT EXISTS job_preferences (
+    owner_auth_user_id  TEXT PRIMARY KEY,
+    roles_json          TEXT NOT NULL,
+    locations_json      TEXT NOT NULL,
+    include_remote      INTEGER NOT NULL DEFAULT 1,
+    updated_at          TEXT NOT NULL
+);
+
 -- AI work queue (ai/tasks.py, run by ai/worker.py).
 CREATE TABLE IF NOT EXISTS ai_tasks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,

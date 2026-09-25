@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from jobhub_poc import config, crypto, resume_consent, resume_review
+from jobhub_poc import config, crypto, job_preferences, resume_consent, resume_review
 from jobhub_poc.ai import llm, tasks
 from jobhub_poc.resume_text import MIME, ResumeUnreadable, detect_kind, extract_text
 from jobhub_poc.webapp.auth import login_required
@@ -50,6 +50,8 @@ def _page(error=None, status=200, notice=None):
                         "experience": "Experience", "education": "Education", "links": "Links"},
         enabled=crypto.enabled(), ai_online=llm.available() if task else True,
         consent_text=resume_consent.text(),
+        prefs=(job_preferences.get(conn, g.current_user["id"])
+               or (job_preferences.propose(structured) if structured else None)),
         consent_current=bool(row is not None and resume_consent.is_current(row["consent_at"])),
         max_mb=config.MAX_RESUME_BYTES // (1024 * 1024), max_bytes=config.MAX_RESUME_BYTES,
     ), status
@@ -113,6 +115,16 @@ def upload():
     conn.commit()
     tasks.enqueue(conn, "parse_resume", owner=g.current_user["id"], priority=10)
     return redirect(url_for("profile.profile"))
+
+
+@bp.route("/profile/preferences", methods=["POST"])
+@login_required
+def preferences():
+    """The roles and places /jobs shows by default ("Jobs for you")."""
+    split = lambda raw: [x.strip() for x in (raw or "").split(",") if x.strip()]  # noqa: E731
+    job_preferences.save(current_app.get_db(), g.current_user["id"], split(request.form.get("roles")),
+                         split(request.form.get("locations")), request.form.get("include_remote") == "on")
+    return redirect(url_for("profile.profile", notice="Saved. /jobs now shows jobs for these roles and places."))
 
 
 @bp.route("/profile/consent", methods=["POST"])

@@ -18,9 +18,11 @@ need a signed-in, verified account.
 """
 from urllib.parse import quote, urlparse
 
+from dataclasses import replace
+
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
-from jobhub_poc import config, crypto, job_requirements, match_evidence, matching, skills
+from jobhub_poc import config, crypto, job_preferences, job_requirements, match_evidence, matching, skills
 from jobhub_poc.job_links import human_url
 from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
@@ -132,6 +134,17 @@ def list_jobs():
 
     conn = current_app.get_db()
     q = parse_list_args(request.args)
+    resume = _user_resume(conn)
+    # "Jobs for you": a signed-in user with a resume lands on their roles in their places,
+    # unless they asked for everything (?all=1) or typed a search of their own.
+    for_you = None
+    if resume is not None and not request.args.get("all") and (q.mine or q == parse_list_args({})):
+        for_you = job_preferences.get(conn, _user_id()) or job_preferences.propose(resume)
+        if for_you["roles"] or for_you["locations"]:
+            q = replace(q, mine="1", titles=tuple(job_preferences.title_terms(for_you["roles"])),
+                        location=job_preferences.location_text(for_you))
+        else:
+            for_you = None
     result = query_jobs(conn, q)
     jobs = [present_job(r) for r in result.rows]
     saved = saved_keys(conn, _user_id(), [j["key"] for j in jobs])
@@ -139,7 +152,6 @@ def list_jobs():
         j["saved"] = j["key"] in saved
     # Match badges for users with a resume; jobs not analysed yet are queued behind any job
     # someone is looking at right now (priority 1 < 5).
-    resume = _user_resume(conn)
     if resume is not None:
         reqs = job_requirements.get_many(conn, [j["key"] for j in jobs])
         for j in jobs:
@@ -150,6 +162,8 @@ def list_jobs():
                     j["match"] = {"score": fit["score"], "verdict": fit["verdict"], "label": fit["label"]}
             else:
                 tasks.enqueue(conn, "extract_job", ref=j["key"], priority=1)
+        if for_you:  # best matches first on each page of "Jobs for you"
+            jobs.sort(key=lambda j: -(j.get("match") or {}).get("score", -1) if (j.get("match") or {}).get("score") is not None else 1)
     list_qs = list_query_string(q, page=result.page)
 
     # The PC pane: the job asked for, else the first on this page. Only an explicit
@@ -176,7 +190,8 @@ def list_jobs():
         selected=selected,
         site=site_figures(conn),
         popular=config.POPULAR_SEARCHES,
-        filtered=q != parse_list_args({}),
+        filtered=q != parse_list_args({}) and not for_you,
+        for_you=for_you,
         posted_within_options=POSTED_WITHIN_OPTIONS,
         page_sizes=PAGE_SIZES,
     )
