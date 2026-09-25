@@ -1,5 +1,5 @@
 """A signed-in user's resume (/profile): upload (PDF/DOCX, with consent), automatic
-structuring by the local LLM (queued, see ai/worker.py), review and edit, download, delete.
+structuring by the LLM (ai/llm.py, queued, see ai/worker.py), review and edit, download, delete.
 The structured resume the user saves here is the single source of truth for matching and
 tailoring -- nothing downstream may add facts that aren't in it.
 
@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from jobhub_poc import config, crypto, resume_review
-from jobhub_poc.ai import ollama, tasks
+from jobhub_poc import config, crypto, resume_consent, resume_review
+from jobhub_poc.ai import llm, tasks
 from jobhub_poc.resume_text import MIME, ResumeUnreadable, detect_kind, extract_text
 from jobhub_poc.webapp.auth import login_required
 
@@ -48,7 +48,9 @@ def _page(error=None, status=200, notice=None):
         notes=resume_review.review(structured) if structured else {},
         section_titles={"basics": "Basics", "summary": "Summary", "skills": "Skills",
                         "experience": "Experience", "education": "Education", "links": "Links"},
-        enabled=crypto.enabled(), ai_online=ollama.available() if task else True,
+        enabled=crypto.enabled(), ai_online=llm.available() if task else True,
+        consent_text=resume_consent.text(),
+        consent_current=bool(row is not None and resume_consent.is_current(row["consent_at"])),
         max_mb=config.MAX_RESUME_BYTES // (1024 * 1024), max_bytes=config.MAX_RESUME_BYTES,
     ), status
 
@@ -76,8 +78,10 @@ def upload():
         return _page("Resume upload isn't switched on yet.", 503)
     conn = current_app.get_db()
     previous = _resume_row(conn)
-    # Consent is asked once; replacing the file relies on the consent already given.
-    if request.form.get("consent") != "on" and not (previous and previous["consent_at"]):
+    # Consent is asked once per set of terms; replacing the file relies on the consent already
+    # given, unless the terms changed since (resume_consent.py).
+    agreed_before = bool(previous and resume_consent.is_current(previous["consent_at"]))
+    if request.form.get("consent") != "on" and not agreed_before:
         return _page("Please confirm you agree to how we use your resume.", 400)
     file = request.files.get("resume")
     data = file.read(config.MAX_RESUME_BYTES + 1) if file else b""
@@ -94,7 +98,7 @@ def upload():
         return _page(str(exc), 400)
 
     now = _now()
-    consent_at = previous["consent_at"] if previous and previous["consent_at"] else now
+    consent_at = previous["consent_at"] if agreed_before else now
     filename = re.sub(r"[^\w.\- ]", "_", (file.filename or f"resume.{kind}"))[:120]
     conn.execute(
         """INSERT INTO resumes (owner_auth_user_id, filename, mime, size_bytes, file_enc, text_enc,
@@ -109,6 +113,27 @@ def upload():
     conn.commit()
     tasks.enqueue(conn, "parse_resume", owner=g.current_user["id"], priority=10)
     return redirect(url_for("profile.profile"))
+
+
+@bp.route("/profile/consent", methods=["POST"])
+@login_required
+def consent():
+    """Agree to changed terms without uploading again; AI work on the resume resumes."""
+    if request.form.get("consent") != "on":
+        return _page("Please tick the box to agree, or delete your resume.", 400)
+    conn = current_app.get_db()
+    row = _resume_row(conn)
+    if row is None:
+        return redirect(url_for("profile.profile"))
+    conn.execute("UPDATE resumes SET consent_at = ?, updated_at = ? WHERE owner_auth_user_id = ?",
+                 (_now(), _now(), g.current_user["id"]))
+    if row["parse_status"] == "failed" and not row["structured_enc"]:
+        conn.execute("UPDATE resumes SET parse_status = 'queued', parse_error = NULL WHERE owner_auth_user_id = ?",
+                     (g.current_user["id"],))
+        conn.commit()
+        tasks.enqueue(conn, "parse_resume", owner=g.current_user["id"], priority=10)
+    conn.commit()
+    return redirect(url_for("profile.profile", notice="Thanks. Your resume is back in use."))
 
 
 def _lines(value, limit, width):
@@ -204,4 +229,4 @@ def task_status(task_id):
     task = tasks.get(current_app.get_db(), task_id, g.current_user["id"])
     if task is None:
         return jsonify({"code": "NOT_FOUND"}), 404
-    return jsonify({"status": task["status"], "ai_online": ollama.available() if task["status"] == "queued" else True})
+    return jsonify({"status": task["status"], "ai_online": llm.available() if task["status"] == "queued" else True})

@@ -5,9 +5,10 @@ import json
 import requests
 
 from jobhub_poc import config
+from jobhub_poc.ai.llm import Unavailable
 
 
-class OllamaUnavailable(RuntimeError):
+class OllamaUnavailable(Unavailable):
     """Not configured or not reachable (e.g. harita asleep): the task should wait, not fail."""
 
 
@@ -18,6 +19,10 @@ def available(timeout=3):
         return requests.get(f"{config.OLLAMA_URL.rstrip('/')}/api/version", timeout=timeout).ok
     except requests.RequestException:
         return False
+
+
+def model_name():
+    return config.OLLAMA_MODEL
 
 
 def generate(prompt, schema, *, model=None, timeout=300):

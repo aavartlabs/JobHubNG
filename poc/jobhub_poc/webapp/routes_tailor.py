@@ -16,8 +16,8 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, Response, abort, current_app, g, redirect, render_template, request, url_for
 
-from jobhub_poc import crypto, resume_render, tailoring
-from jobhub_poc.ai import ollama, tasks
+from jobhub_poc import crypto, resume_consent, resume_render, tailoring
+from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import login_required
 from jobhub_poc.webapp.jobs_listing import present_job
 
@@ -73,6 +73,10 @@ def _job_or_404(conn, job_id):
 def start(job_id):
     conn = current_app.get_db()
     row = _job_or_404(conn, job_id)
+    consent = conn.execute("SELECT consent_at FROM resumes WHERE owner_auth_user_id = ?",
+                           (g.current_user["id"],)).fetchone()
+    if consent is not None and not resume_consent.is_current(consent["consent_at"]):
+        return redirect(url_for("profile.profile", notice="Please agree to how we now use your resume first."))
     if _resume(conn, g.current_user["id"]) is not None:
         tasks.enqueue(conn, "tailor", owner=g.current_user["id"], ref=row["dedupe_key"], priority=8)
     return redirect(url_for("tailor.review", job_id=job_id))
@@ -89,7 +93,7 @@ def review(job_id):
     return render_template(
         "tailor.html", job=present_job(row), resume=_resume(conn, user_id), record=record, tailored=tailored,
         can_apply=urlparse(row["apply_url"] or "").scheme in ("http", "https"),
-        pending=pending, ai_online=ollama.available() if pending else True,
+        pending=pending, ai_online=llm.available() if pending else True,
         contact=(tailored or {}).get("contact") or g.current_user.get("email", ""),
         notice=request.args.get("notice"))
 
@@ -100,7 +104,7 @@ def status(job_id):
     conn = current_app.get_db()
     row = _job_or_404(conn, job_id)
     if _pending(conn, g.current_user["id"], row["dedupe_key"]):
-        return render_template("_tailor_pending.html", job=present_job(row), ai_online=ollama.available()), 202
+        return render_template("_tailor_pending.html", job=present_job(row), ai_online=llm.available()), 202
     return render_template("_tailor_pending.html", job=present_job(row), done=True), 200
 
 

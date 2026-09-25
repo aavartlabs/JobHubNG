@@ -22,7 +22,7 @@ from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_te
 
 from jobhub_poc import config, crypto, job_requirements, matching
 from jobhub_poc.job_links import human_url
-from jobhub_poc.ai import ollama, tasks
+from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
 from jobhub_poc.webapp.job_text import format_description
 from jobhub_poc.webapp.jobs_listing import (
@@ -321,5 +321,5 @@ def job_match(job_id):
         abort(404)
     job = present_job(row)
     context = _match_context(conn, _user_resume(conn), job, priority=5)
-    html = render_template("_match.html", job=job, ai_online=ollama.available(), **context)
+    html = render_template("_match.html", job=job, ai_online=llm.available(), **context)
     return html, 202 if context["match_state"] == "pending" else 200

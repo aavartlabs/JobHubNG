@@ -4,10 +4,11 @@ import io
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import requests
 from cryptography.fernet import Fernet
 
 from jobhub_poc import config, crypto, resume_parse
-from jobhub_poc.ai import ollama, tasks, worker
+from jobhub_poc.ai import llm, ollama, tasks, worker
 from jobhub_poc.resume_text import ResumeUnreadable, detect_kind, extract_text
 from jobhub_poc.webapp.app import create_app
 
@@ -165,7 +166,7 @@ def _store_resume(conn, user="u1"):
 
 def test_worker_structures_and_stores_encrypted(conn, monkeypatch):
     task = _store_resume(conn)
-    monkeypatch.setattr(ollama, "generate", lambda prompt, schema, **kw: {
+    monkeypatch.setattr(llm, "generate", lambda prompt, schema, **kw: {
         "name": "Asha Rao", "headline": "SRE", "summary": "", "skills": ["AWS"], "links": [], "education": [],
         "roles": [{"title": "SRE", "company": "Acme Pay", "start": "2021", "end": "Present",
                    "bullets": ["Cut monthly AWS spend by 22% by right-sizing EC2."]}]})
@@ -181,14 +182,14 @@ def test_worker_waits_when_the_llm_is_away_and_gives_up_after_errors(conn, monke
 
     def away(*a, **k):
         raise ollama.OllamaUnavailable("harita asleep")
-    monkeypatch.setattr(ollama, "generate", away)
+    monkeypatch.setattr(llm, "generate", away)
     with pytest.raises(ollama.OllamaUnavailable):
         worker.run_once(conn)
     assert conn.execute("SELECT status, attempts FROM ai_tasks WHERE id = ?", (task,)).fetchone()[:] == ("queued", 0)
 
     def broken(*a, **k):
         raise RuntimeError("bad json")
-    monkeypatch.setattr(ollama, "generate", broken)
+    monkeypatch.setattr(llm, "generate", broken)
     while worker.run_once(conn):
         pass
     assert conn.execute("SELECT status FROM ai_tasks WHERE id = ?", (task,)).fetchone()[0] == "failed"
@@ -291,7 +292,7 @@ def test_upload_is_off_without_a_key(conn, requests_mock, monkeypatch):
 def test_review_form_saves_edits_and_keeps_flags_honest(conn, requests_mock, monkeypatch):
     client = _client(conn, requests_mock)
     _upload(client)
-    monkeypatch.setattr(ollama, "generate", lambda *a, **k: {
+    monkeypatch.setattr(llm, "generate", lambda *a, **k: {
         "name": "Asha", "headline": "SRE", "summary": "", "skills": ["AWS"], "links": [], "education": [],
         "roles": [{"title": "SRE", "company": "Acme Pay", "start": "2021", "end": "Present",
                    "bullets": ["Ran Kubernetes clusters serving 40 microservices.", "Invented bullet."]}]})
@@ -351,3 +352,85 @@ def test_consent_is_asked_once(conn, requests_mock):
     assert 'name="consent" value="on"' in page and "You agreed to how we use your resume" in page
     assert _upload(client, consent=False).status_code == 302  # a new version needs no new tick
     assert conn.execute("SELECT consent_at FROM resumes").fetchone()[0] == first
+
+
+def _workers_ai(monkeypatch):
+    monkeypatch.setattr(config, "AI_BACKEND", "workers_ai")
+    monkeypatch.setattr(config, "WORKERS_AI_ACCOUNT_ID", "acct")
+    monkeypatch.setattr(config, "WORKERS_AI_GATEWAY", "gw")
+    monkeypatch.setattr(config, "WORKERS_AI_TOKEN", "tok")
+    monkeypatch.setattr(config, "WORKERS_AI_MODEL", "@cf/test/model")
+    return "https://gateway.ai.cloudflare.com/v1/acct/gw/workers-ai/@cf/test/model"
+
+
+def test_backend_is_chosen_by_config(monkeypatch):
+    monkeypatch.setattr(config, "AI_BACKEND", "workers_ai")
+    monkeypatch.setattr(config, "WORKERS_AI_TOKEN", "")
+    assert llm.available() is False
+    with pytest.raises(llm.Unavailable):
+        llm.generate("x", {})
+    _workers_ai(monkeypatch)
+    assert llm.available() is True and llm.model_name() == "@cf/test/model"
+    monkeypatch.setattr(config, "AI_BACKEND", "ollama")
+    monkeypatch.setattr(config, "OLLAMA_URL", "")
+    assert llm.available() is False and llm.model_name() == config.OLLAMA_MODEL
+
+
+def test_workers_ai_asks_for_json_and_no_gateway_logs(monkeypatch, requests_mock):
+    url = _workers_ai(monkeypatch)
+    requests_mock.post(url, json={"success": True, "result": {"response": {"ok": True}}})
+    assert llm.generate("resume text", {"type": "object"}) == {"ok": True}
+    req = requests_mock.last_request
+    assert req.headers["cf-aig-collect-log"] == "false" and req.headers["Authorization"] == "Bearer tok"
+    body = req.json()
+    assert body["response_format"] == {"type": "json_schema", "json_schema": {"type": "object"}}
+    assert body["temperature"] == 0 and body["messages"][0]["content"] == "resume text"
+    requests_mock.post(url, json={"result": {"response": '{"ok": 1}'}})  # some models answer a string
+    assert llm.generate("x", {}) == {"ok": 1}
+
+
+def test_workers_ai_busy_waits_but_bad_answers_fail(monkeypatch, requests_mock):
+    url = _workers_ai(monkeypatch)
+    for status in (429, 503):
+        requests_mock.post(url, status_code=status, text="busy")
+        with pytest.raises(llm.Unavailable):
+            llm.generate("x", {})
+    requests_mock.post(url, exc=requests.ConnectionError("down"))
+    with pytest.raises(llm.Unavailable) as err:
+        llm.generate("x", {})
+    assert "tok" not in str(err.value)
+    requests_mock.post(url, status_code=400, text="bad schema")
+    with pytest.raises(RuntimeError) as err:
+        llm.generate("x", {})
+    assert not isinstance(err.value, llm.Unavailable)
+    requests_mock.post(url, json={"result": {"response": "not json"}})
+    with pytest.raises(RuntimeError):
+        llm.generate("x", {})
+
+
+def test_changing_the_ai_backend_asks_for_consent_again(conn, requests_mock, monkeypatch):
+    client = _client(conn, requests_mock)
+    _upload(client)
+    conn.execute("UPDATE resumes SET consent_at = '2026-09-01T10:00:00+00:00'")  # agreed to the old terms
+    conn.commit()
+    _workers_ai(monkeypatch)
+    monkeypatch.setattr(config, "RESUME_CONSENT_SINCE", "2026-09-25T00:00:00+00:00")
+
+    page = client.get("/profile").get_data(as_text=True)
+    assert "changed how we read resumes" in page and "Cloudflare" in page
+    assert 'name="consent" value="on"' not in page  # the old tick doesn't carry over
+    assert _upload(client, consent=False).status_code == 400
+
+    # Work queued under the old terms isn't done, and isn't retried.
+    monkeypatch.setattr(llm, "generate", lambda *a, **k: pytest.fail("the LLM must not see this resume"))
+    while worker.run_once(conn):
+        pass
+    assert conn.execute("SELECT status FROM ai_tasks ORDER BY id DESC").fetchone()[0] == "failed"
+    assert "agree to how we now use" in conn.execute("SELECT parse_error FROM resumes").fetchone()[0]
+
+    assert client.post("/profile/consent", data={}).status_code == 400
+    assert client.post("/profile/consent", data={"consent": "on"}).status_code == 302
+    row = conn.execute("SELECT consent_at, parse_status FROM resumes").fetchone()
+    assert row["consent_at"] >= "2026-09-25" and row["parse_status"] == "queued"
+    assert conn.execute("SELECT status FROM ai_tasks ORDER BY id DESC").fetchone()[0] == "queued"
+    assert "changed how we read resumes" not in client.get("/profile").get_data(as_text=True)

@@ -108,7 +108,7 @@ from cryptography.fernet import Fernet
 from docx import Document
 
 from jobhub_poc import config, crypto, db, job_requirements
-from jobhub_poc.ai import ollama, tasks, worker
+from jobhub_poc.ai import llm, ollama, tasks, worker
 from jobhub_poc.webapp.app import create_app
 
 SESSION = "jobhub-auth.session_token"
@@ -149,7 +149,7 @@ def _client(conn, requests_mock, user="u1"):
 
 def _tailor(conn, client, monkeypatch, raw=None):
     client.post("/jobs/1/tailor")
-    monkeypatch.setattr(ollama, "generate", lambda *a, **k: raw or _raw())
+    monkeypatch.setattr(llm, "generate", lambda *a, **k: raw or _raw())
     assert worker.run_once(conn)
 
 
@@ -158,15 +158,15 @@ def test_tailoring_is_queued_made_checked_and_stored_encrypted(conn, requests_mo
     c = _client(conn, requests_mock)
     assert "Tailor my resume for this job" in c.get("/jobs/1").get_data(as_text=True)
     c.post("/jobs/1/tailor")
-    monkeypatch.setattr(ollama, "available", lambda *a, **k: True)
+    monkeypatch.setattr(llm, "available", lambda *a, **k: True)
     page = c.get("/jobs/1/tailor").get_data(as_text=True)
     assert "Tailoring your resume" in page and "data-match-pending" in page
-    monkeypatch.setattr(ollama, "available", lambda *a, **k: False)
+    monkeypatch.setattr(llm, "available", lambda *a, **k: False)
     assert "back online" in c.get("/jobs/1/tailor").get_data(as_text=True)
     assert c.get("/jobs/1/tailor/status").status_code == 202
 
     bad = _raw(roles=[{"id": "r1", "bullets": [{"id": "r1b1", "text": "Ran 20 Kubernetes clusters on GCP."}]}])
-    monkeypatch.setattr(ollama, "generate", lambda *a, **k: bad)
+    monkeypatch.setattr(llm, "generate", lambda *a, **k: bad)
     assert worker.run_once(conn)
     row = conn.execute("SELECT * FROM tailored_resumes").fetchone()
     assert row["status"] == "ready" and b"Kubernetes" not in row["data_enc"]
@@ -255,3 +255,14 @@ def test_old_databases_get_the_tracker_columns():
     db.init_db(old)
     db.init_db(old)
     assert dict(old.execute("SELECT status, status_at FROM saved_jobs").fetchone()) == {"status": "saved", "status_at": None}
+
+
+def test_tailoring_waits_for_consent_to_changed_terms(conn, requests_mock, monkeypatch, key):
+    _seed_job(conn); _store_resume(conn)
+    conn.execute("UPDATE resumes SET consent_at = '2026-09-01T10:00:00+00:00'")
+    conn.commit()
+    monkeypatch.setattr(config, "AI_BACKEND", "workers_ai")
+    monkeypatch.setattr(config, "RESUME_CONSENT_SINCE", "2026-09-25T00:00:00+00:00")
+    resp = _client(conn, requests_mock).post("/jobs/1/tailor")
+    assert resp.status_code == 302 and "/profile" in resp.headers["Location"]
+    assert conn.execute("SELECT COUNT(*) FROM ai_tasks").fetchone()[0] == 0

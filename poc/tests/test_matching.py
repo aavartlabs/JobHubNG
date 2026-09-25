@@ -6,7 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from jobhub_poc import config, crypto, job_requirements
-from jobhub_poc.ai import ollama, tasks, worker
+from jobhub_poc.ai import llm, ollama, tasks, worker
 from jobhub_poc.matching import match, norm_skill, years_of_experience
 from jobhub_poc.webapp.app import create_app
 
@@ -89,7 +89,7 @@ def _seed_job(conn, jid=1, desc="We need Kubernetes and Terraform experts with 5
 def test_worker_extracts_and_caches_requirements(conn, monkeypatch):
     _seed_job(conn)
     tasks.enqueue(conn, "extract_job", ref="k1")
-    monkeypatch.setattr(ollama, "generate", lambda *a, **k: {
+    monkeypatch.setattr(llm, "generate", lambda *a, **k: {
         "required_skills": ["Kubernetes", "Terraform", "Cobol"], "preferred_skills": [],
         "min_years_experience": 5, "seniority": "senior"})
     assert worker.run_once(conn)

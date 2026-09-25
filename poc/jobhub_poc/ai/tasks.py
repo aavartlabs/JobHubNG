@@ -39,11 +39,11 @@ def finish(conn, task_id):
     conn.commit()
 
 
-def fail(conn, task_id, error):
-    """Back to the queue until MAX_ATTEMPTS, then failed for good."""
+def fail(conn, task_id, error, final=False):
+    """Back to the queue until MAX_ATTEMPTS (or at once, if `final`), then failed for good."""
     conn.execute(
         "UPDATE ai_tasks SET status = CASE WHEN attempts < ? THEN 'queued' ELSE 'failed' END, "
-        "error = ?, updated_at = ? WHERE id = ?", (MAX_ATTEMPTS, str(error)[:500], _now(), task_id))
+        "error = ?, updated_at = ? WHERE id = ?", (0 if final else MAX_ATTEMPTS, str(error)[:500], _now(), task_id))
     conn.commit()
 
 

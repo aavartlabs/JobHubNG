@@ -10,6 +10,19 @@
   <div class="card p-5"><p class="my-0">Resume features aren't switched on yet.</p></div>
 {% else %}
 
+{% if resume and not consent_current %}
+<section class="card mb-5 border-brand p-5 sm:p-6" id="consent-update">
+  <h2 class="mt-0">We've changed how we read resumes</h2>
+  <p>Until you agree, we won't use AI on your resume: no reading a new upload, no tailoring.
+    Matching keeps using the resume you already checked.</p>
+  <form method="post" action="{{ url_for('profile.consent') }}">
+    <label class="font-normal"><input type="checkbox" name="consent" required> I agree that {{ consent_text }}</label>
+    <button type="submit" class="btn">Agree</button>
+  </form>
+  <p class="mb-0 text-sm text-muted">Or delete your resume at the bottom of this page.</p>
+</section>
+{% endif %}
+
 <section class="card mb-5 p-5 sm:p-6">
   {% if resume %}
     <p class="mt-0"><strong>{{ resume.filename }}</strong> · uploaded {{ resume.uploaded_at[:10] }}
@@ -33,8 +46,7 @@
     <label>{{ "Replace your resume" if resume else "Upload your resume" }} (PDF or Word .docx, up to {{ max_mb }} MB)
       <input type="file" name="resume" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
     </label>
-    {% set consent_text = "JobsHub stores my resume (encrypted) and uses it to match me with jobs and to tailor it for jobs I choose. It's processed on JobsHub's own machines, not sent to other companies, and I can delete it any time." %}
-    {% if resume and resume.consent_at %}
+    {% if resume and consent_current %}
       {# Agreed once already: don't make them re-read and re-tick it for every new version. #}
       <input type="hidden" name="consent" value="on">
       <details class="mb-3 text-sm text-muted"><summary class="cursor-pointer">✓ You agreed to how we use your resume on {{ resume.consent_at[:10] }}</summary>

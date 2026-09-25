@@ -56,6 +56,18 @@ WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 # resume parsing / matching / tailoring stay queued ("AI offline"); nothing else depends on it.
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
+# Which LLM (ai/llm.py): "ollama" (above) or "workers_ai" -- Cloudflare Workers AI through an
+# AI Gateway (ai/workers_ai.py). Unset parts = "AI offline", as with Ollama.
+AI_BACKEND = os.environ.get("AI_BACKEND", "ollama")
+WORKERS_AI_ACCOUNT_ID = os.environ.get("WORKERS_AI_ACCOUNT_ID", "")
+WORKERS_AI_GATEWAY = os.environ.get("WORKERS_AI_GATEWAY", "")
+WORKERS_AI_TOKEN = os.environ.get("WORKERS_AI_TOKEN", "")
+WORKERS_AI_GATEWAY_TOKEN = os.environ.get("WORKERS_AI_GATEWAY_TOKEN", "")  # only for an authenticated gateway
+WORKERS_AI_MODEL = os.environ.get("WORKERS_AI_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
+WORKERS_AI_MAX_TOKENS = int(os.environ.get("WORKERS_AI_MAX_TOKENS", "4096"))
+# Resume consent given before this ISO time no longer counts (resume_consent.py); set it to
+# the moment AI_BACKEND changes. Unset = the backend's own date.
+RESUME_CONSENT_SINCE = os.environ.get("RESUME_CONSENT_SINCE", "")
 # Fernet key (base64) that encrypts uploaded resumes and everything derived from them
 # (crypto.py). Unset = resume upload is switched off. Keep a copy offline: without it the
 # encrypted rows in jobhub.db and its backups can't be read.
