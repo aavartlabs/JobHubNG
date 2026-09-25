@@ -5,27 +5,14 @@ OR within a filter, AND across filters: titles ("SRE", "DevOps") AND locations
 all matches nothing -- a filterless alert must never mean "every job".
 
 Terms match whole words, case-insensitively: "java" doesn't match "JavaScript", "sre"
-doesn't match "Treasurer". Locations also match their common alternative names.
+doesn't match "Treasurer". Locations also match their other names, and "India" its cities
+(places.py).
 """
 import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-# A wanted location -> every spelling a job's location text might use for it.
-_LOCATION_ALIASES = {
-    "bangalore": ("bangalore", "bengaluru"),
-    "bengaluru": ("bangalore", "bengaluru"),
-    "mumbai": ("mumbai", "bombay"),
-    "bombay": ("mumbai", "bombay"),
-    "gurgaon": ("gurgaon", "gurugram"),
-    "gurugram": ("gurgaon", "gurugram"),
-    "kolkata": ("kolkata", "calcutta"),
-    "calcutta": ("kolkata", "calcutta"),
-    "chennai": ("chennai", "madras"),
-    "madras": ("chennai", "madras"),
-    "ncr": ("ncr", "delhi", "gurgaon", "gurugram", "noida", "ghaziabad", "faridabad"),
-}
-
+from jobhub_poc import places
 
 @dataclass(frozen=True)
 class Rule:
@@ -59,7 +46,7 @@ def _location_matches(wanted, job):
         term = term.strip().lower()
         if term == "remote" and _is_remote(job):
             return True
-        if _any_word(_LOCATION_ALIASES.get(term, (term,)), location):
+        if _any_word(places.spellings(term), location):
             return True
     return False
 

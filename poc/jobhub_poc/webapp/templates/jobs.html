@@ -28,7 +28,7 @@
         </select>
         <button type="submit" class="btn">Search</button>
       </div>
-      <datalist id="top-locations">{% for loc in site.top_locations %}<option value="{{ loc }}">{% endfor %}</datalist>
+      <datalist id="top-locations"><option value="India">{% for loc in site.top_locations %}<option value="{{ loc }}">{% endfor %}</datalist>
       {% if popular %}
       {# Phone: one line that scrolls sideways inside itself; wider: wraps. #}
       <p class="-mx-1 mt-2.5 mb-0 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 text-sm [scrollbar-width:none] sm:mt-3 sm:flex-wrap sm:overflow-visible sm:pb-0">

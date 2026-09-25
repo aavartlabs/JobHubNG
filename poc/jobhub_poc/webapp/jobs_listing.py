@@ -15,6 +15,8 @@ from urllib.parse import parse_qs, urlencode
 
 from flask import g
 
+from jobhub_poc import places
+
 # Posted date when the source gave a usable one, else when we first saw the job.
 POSTED_OR_SEEN = "COALESCE(posted_at, first_seen_at)"
 SORTS = {
@@ -125,9 +127,10 @@ def query_jobs(conn, q: ListQuery, now=None) -> ListResult:
     if q.q:
         where += " AND (title LIKE ? OR company_name LIKE ?)"
         params += [f"%{q.q}%", f"%{q.q}%"]
-    if q.location:
-        where += " AND location LIKE ?"
-        params.append(f"%{q.location}%")
+    if q.location:  # "India" also finds "Bengaluru, Karnataka"; "Bangalore" finds "Bengaluru"
+        names = places.spellings(q.location) or (q.location,)
+        where += " AND (" + " OR ".join("location LIKE ?" for _ in names) + ")"
+        params += [f"%{n}%" for n in names]
     mode = _READ.format(field="work_mode")
     if q.work_mode == "remote":  # the source's remote flag, or the reading
         where += f" AND (is_remote = 1 OR {mode} = 'remote')"
