@@ -1,4 +1,5 @@
-"""CLI (pi05): fetch one EverJobs sweep and upsert it, unfiltered, into warehouse.db.
+"""CLI (pi05): fetch one EverJobs sweep, plus the job-board APIs in [sources] of
+config/pipeline.ini (api_sources.py), and upsert them, unfiltered, into warehouse.db.
 
 The successor to dump_jobs.py. Nothing is filtered or capped here -- the serving filter is
 applied later, at export (T5) -- and no dump file is written unless
@@ -60,10 +61,23 @@ def rotate_raw_dumps(directory, keep_days, now=None):
     return removed
 
 
-def main(fetch=None, now=None):
+def _fetch_from_sources(cfg):
+    import config  # noqa: F401 -- loads scraper/.env (the API keys)
+    from api_sources import fetch_all
+    return fetch_all(cfg.sources)
+
+
+def main(fetch=None, now=None, fetch_sources=None):
     cfg = load_pipeline_config()
     now = now or datetime.now(timezone.utc)
     jobs = (fetch or _fetch_from_everjobs)()
+    source_stats = {}
+    if cfg.sources.enabled:
+        try:
+            extra, source_stats = (fetch_sources or _fetch_from_sources)(cfg)
+        except Exception as exc:  # noqa: BLE001 -- the APIs are extra; the sweep still goes in
+            extra, source_stats = [], {"error": type(exc).__name__}
+        jobs = list(jobs) + extra
     raw_dir = os.environ.get("WAREHOUSE_RAW_DUMP_DIR", RAW_DUMP_DIR)
     if cfg.retention.keep_raw_dumps_days > 0:
         _write_raw(jobs, now)
@@ -75,8 +89,8 @@ def main(fetch=None, now=None):
         stats["archived"] = purge_warehouse(conn, cfg.retention.warehouse_retention_days, now)
     finally:
         conn.close()
-    print(json.dumps({"ingested_at": now.isoformat(), **stats}))
-    return stats
+    print(json.dumps({"ingested_at": now.isoformat(), **stats, "sources": source_stats}))
+    return {**stats, "sources": source_stats}
 
 
 if __name__ == "__main__":

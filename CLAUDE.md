@@ -80,6 +80,20 @@ remain only for the rollback path.
   `google,naukri,linkedin,indeed,glassdoor`), not by the client. `query`/`results` are **not
   honored** — every call returns the whole sweep (2026-09-23: 15,203 jobs, ~3 min;
   ingest peak RSS ~570 MB; ~11k distinct fresh jobs ≈ 129 MB warehouse).
+- **Job boards block EverJobs** (log of 2026-09-25): Naukri 406, Indeed 403, Glassdoor 403,
+  Google 0, LinkedIn about 15 jobs. So the sweep is company career pages, mostly US and EU,
+  with India about 4–5%. **Adzuna and Careerjet are fetched directly** by
+  `scraper/api_sources.py` at ingest (`[sources]` in pipeline.ini; keys `ADZUNA_APP_ID/_KEY`
+  and `CAREERJET_AFFID` in `scraper/.env`), because EverJobs' own connectors for them are
+  broken:
+  - **Adzuna:** its `in` country endpoint.
+  - **Careerjet:** the legacy http API, which needs a `Referer`. Its v4 API needs a
+    registered IP.
+
+  They're official APIs with short descriptions (Adzuna ≤500 characters, Careerjet a
+  snippet). They're mapped to EverJobs' shape, so the usual same-id / same title+company+city
+  merging applies. "developer / architect / programmer / tester" joined `[serving]
+  search_terms` (Indian IT titles were being dropped).
 - **SmartRecruiters jobs (≈1 in 5, 2026-09-24)** arrive from EverJobs with **no description** and
   the public Posting API URL (`api.smartrecruiters.com/v1/companies/<C>/postings/<ID>`, a JSON
   page) as their link. `jobhub_poc/job_links.human_url` rewrites it to

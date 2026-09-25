@@ -17,11 +17,20 @@ _ENV_PREFIX = "JOBHUB_PIPELINE_"
 _DEFAULT_SEARCH_TERMS = (
     "engineer,product manager,data analyst,data scientist,designer,marketing,sales,"
     "customer success,operations,finance,human resources,devops,quality assurance,"
-    "content,recruiter,manager,analyst,consultant,intern,director"
+    "content,recruiter,manager,analyst,consultant,intern,director,"
+    "developer,architect,programmer,tester"
+)
+# What the job-board APIs (scraper/api_sources.py) are asked for, each run: roles common in
+# India's IT job market. Each query is one request per source.
+_DEFAULT_SOURCE_QUERIES = (
+    "software engineer,developer,java developer,python developer,full stack developer,"
+    "data engineer,data analyst,data scientist,machine learning engineer,devops engineer,"
+    "cloud engineer,qa engineer,test engineer,sap consultant,salesforce developer,"
+    "business analyst,product manager,project manager,cyber security,frontend developer"
 )
 
 # section -> key -> (kind, default). kind: "days" / "count" are ints >= 0,
-# "terms" is a non-empty list, "list" may be empty.
+# "terms" is a non-empty list, "list" may be empty, "text" is one non-empty value.
 _SCHEMA = {
     "ingest": {"max_posted_age_days": ("days", "60")},
     "retention": {
@@ -40,6 +49,16 @@ _SCHEMA = {
         "max_per_run": ("count", "600"),
         "retry_after_days": ("days", "7"),
         "delay_ms": ("count", "500"),
+    },
+    "sources": {
+        "enabled": ("list", ""),
+        "queries": ("terms", _DEFAULT_SOURCE_QUERIES),
+        "adzuna_country": ("text", "in"),
+        "adzuna_requests_per_run": ("count", "20"),
+        "careerjet_locale": ("text", "en_IN"),
+        "careerjet_location": ("text", "India"),
+        "careerjet_requests_per_run": ("count", "20"),
+        "delay_ms": ("count", "2500"),
     },
 }
 
@@ -81,6 +100,18 @@ class EnrichConfig:
 
 
 @dataclass(frozen=True)
+class SourcesConfig:
+    enabled: list           # job-board APIs fetched at ingest (scraper/api_sources.py); empty = none
+    queries: list           # one request per query per source, newest jobs first
+    adzuna_country: str     # Adzuna's country code, e.g. "in"
+    adzuna_requests_per_run: int  # keep 4 runs/day under the plan's daily/monthly limits
+    careerjet_locale: str   # e.g. "en_IN"
+    careerjet_location: str
+    careerjet_requests_per_run: int
+    delay_ms: int           # pause between requests to one source
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     ingest: IngestConfig
     retention: RetentionConfig
@@ -88,6 +119,7 @@ class PipelineConfig:
     sync: SyncConfig
     archive: ArchiveConfig
     enrich: EnrichConfig
+    sources: SourcesConfig
 
 
 def _split(raw):
@@ -108,6 +140,10 @@ def _parse(kind, raw, where):
         if value < 0:
             raise ValueError(f"{where} must be 0 or more, got {value}")
         return value
+    if kind == "text":
+        if not raw.strip():
+            raise ValueError(f"{where} must not be empty")
+        return raw.strip()
     values = _split(raw)
     if kind == "terms" and not values:
         raise ValueError(f"{where} must list at least one term")
@@ -148,4 +184,5 @@ def load_pipeline_config(path=None, env=None):
         sync=SyncConfig(**values["sync"]),
         archive=ArchiveConfig(**values["archive"]),
         enrich=EnrichConfig(**values["enrich"]),
+        sources=SourcesConfig(**values["sources"]),
     )
