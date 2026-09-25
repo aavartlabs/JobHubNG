@@ -9,12 +9,15 @@ MIN_CONFIDENCE = 0.5  # a categorical answer below this reads as unknown / uncle
 # ---- Job reading (public job text) --------------------------------------------------------
 
 SKILL_USE = {
-    "required": "The posting says the candidate must have it: required, must-have, essential, or listed "
-                "under requirements or qualifications.",
-    "preferred": "The posting calls it a plus: nice to have, preferred, desirable, bonus.",
-    "mentioned": "It appears in the posting, but not as something asked of the candidate (e.g. the "
-                 "company's own product, a team they work with).",
-    "absent": "The posting doesn't mention it at all.",
+    "required": "The candidate must have it: required, must-have, essential, listed under requirements or "
+                "qualifications, or a core part of the work the role does (e.g. the things they'll design, "
+                "build or operate).",
+    "preferred": "Asked for but not strictly: nice to have, preferred, a plus, 'familiarity with', or one of "
+                 "several accepted options ('X, Y or similar').",
+    "mentioned": "It appears in the posting but isn't asked of the candidate: the company's own products or "
+                 "customers, a team they work with, or technologies they 'may come across'.",
+    "absent": "The posting doesn't mention it, or it isn't a skill, tool, field or qualification at all "
+              "(e.g. 'business impact', 'customer satisfaction').",
 }
 SENIORITY = {
     "intern": "Internship, trainee or working student.",

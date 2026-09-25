@@ -37,6 +37,13 @@ def _norm(s):
     return re.sub(r"\s+", " ", s or "").strip()
 
 
+def written_in(term, haystack):
+    """Is `term` written in `haystack` (lower-cased) as whole words? "EMI" is not in
+    "preeminent"; "C++" and "CI/CD" still match."""
+    term = (term or "").lower()
+    return bool(term) and re.search(rf"(?<![\w]){re.escape(term)}(?![\w])", haystack) is not None
+
+
 _WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
           "eleven", "twelve", "thirteen", "fourteen", "fifteen"]
 
@@ -57,7 +64,7 @@ def normalise(raw, text):
         out = []
         for item in items or []:
             item = _norm(item).strip(" .;:,")[:50]
-            if (item and len(item.split()) <= 5 and item.lower() in haystack
+            if (item and len(item.split()) <= 5 and written_in(item, haystack)
                     and item.lower() not in (x.lower() for x in out)):
                 out.append(item)
         return out[:25]

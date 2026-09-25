@@ -264,3 +264,11 @@ def test_list_filters_use_each_jobs_reading(conn):
     assert ids(work_mode="remote") == [3]
     assert ids(work_mode="onsite") == [2]
     assert ids(level="senior") == [1] and ids(role="sales") == [2] and ids(level="nonsense") == [1, 2, 3]
+
+
+def test_a_skill_counts_as_written_only_as_whole_words():
+    assert not job_requirements.written_in("emi", "our preeminent supply chain")
+    assert job_requirements.written_in("c++", "strong c++ and ci/cd skills") and job_requirements.written_in("ci/cd", "strong c++ and ci/cd skills")
+    out = job_requirements.normalise({"required_skills": ["EMI", "Kafka"], "preferred_skills": []},
+                                     "Our preeminent team uses Kafka daily.")
+    assert out["required_skills"] == ["Kafka"]

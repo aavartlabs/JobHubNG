@@ -90,7 +90,7 @@ def read(conn, title, text):
     seed_vocab(conn)
     candidates, seen = [], set()
     for s in (draft or {}).get("required_skills", []) + (draft or {}).get("preferred_skills", []) + vocab_hits(conn, haystack):
-        if _key(s) not in seen and _key(s) in haystack.lower():
+        if _key(s) not in seen and job_requirements.written_in(_key(s), haystack.lower()):
             seen.add(_key(s))
             candidates.append(s)
     candidates = candidates[:MAX_CANDIDATES]
