@@ -1,4 +1,4 @@
-"""General LLMs through OpenRouter (AI_BACKEND=openrouter): one key, many models, tried in
+"""General LLMs through OpenRouter: one key, many models, tried in
 order per task (AI_MODELS_WRITE / AI_MODELS_JOBS). JSON out against the task's schema,
 temperature 0.
 

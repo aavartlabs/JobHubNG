@@ -1,6 +1,6 @@
-"""The LLM the resume and job features use, chosen by AI_BACKEND: "openrouter" (general models
-through OpenRouter, ai/openrouter.py) or "ollama" (a server on the LAN, for development,
-ai/ollama.py).
+"""The general (writing) LLMs the resume and job features use, through OpenRouter
+(ai/openrouter.py) and, for public job text only, providers' own APIs (ai/direct.py).
+Judgments are Jev's (ai/typesafe.py), not these.
 
 Every call says what it carries: task="write" is resume data (parsing, tailoring) and may
 only go to providers that don't train on it; task="jobs" is public job text and may also
@@ -25,12 +25,8 @@ class Unavailable(RuntimeError):
 
 
 def _backend():
-    from jobhub_poc import config
-    if config.AI_BACKEND == "openrouter":
-        from jobhub_poc.ai import openrouter
-        return openrouter
-    from jobhub_poc.ai import ollama
-    return ollama
+    from jobhub_poc.ai import openrouter
+    return openrouter
 
 
 def available(timeout=3):
@@ -41,10 +37,6 @@ def generate(prompt, schema, *, timeout=300, task="write"):
     if task not in TASKS:
         raise ValueError(f"unknown task kind {task!r}")
     backend = _backend()
-    if backend.__name__.endswith("ollama"):  # on the LAN: nothing leaves it, whatever the task
-        answer = backend.generate(prompt, schema, timeout=timeout)
-        _state.model = backend.model_name()
-        return answer
     from jobhub_poc.ai import direct
     # The chain for this task, in order: OpenRouter models, and (public job text only)
     # "direct:<name>" providers. chain() refuses a resume chain that names anything that

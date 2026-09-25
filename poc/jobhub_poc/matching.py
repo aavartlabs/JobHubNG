@@ -1,6 +1,8 @@
-"""How well a user's checked resume fits a job, and whether to apply. Deterministic, instant
-and explainable -- no LLM here: it compares the structured resume (/profile) with the job's
-cached requirements (job_requirements.py).
+"""How well a user's checked resume fits a job, and whether to apply. Deterministic and
+explainable: the weights, caps and verdicts are code. What counts as "the resume shows this
+skill" comes from Jev's judgment when there is one (match_evidence.py: evidence levels and
+the bullet that shows it), else from literal matching of the structured resume (/profile)
+against the job's cached requirements (job_requirements.py).
 
 Score 0-100: required skills 45, preferred skills 15, experience 20, seniority 10,
 location / work mode 10. Parts the posting says nothing about are left out and the rest
@@ -12,6 +14,13 @@ from datetime import date
 from jobhub_poc.resume_review import parse_month
 
 WEIGHTS = {"required": 45, "preferred": 15, "experience": 20, "seniority": 10, "location": 10}
+# Credit for a skill by Jev's evidence level (0 none, 1 only listed, 2 used in a role, 3 used
+# substantially with results; the score can fall between levels). "Matched" means used.
+USED = 1.5
+
+
+def _credit(level):
+    return 1.0 if level >= 2.5 else 0.85 if level >= USED else 0.4 if level >= 0.5 else 0.0
 VERDICTS = [  # (minimum score, key, label, advice)
     (75, "strong", "Strong match", "Apply — you meet most of what they ask."),
     (55, "good", "Good match", "Worth applying; lead with the matching skills."),
@@ -103,20 +112,35 @@ def resume_level(resume, years):
     return 1 if years < 2 else 2 if years < 5 else 3
 
 
-def match(resume, requirements, job):
-    """{score, verdict, label, advice, parts:{...}, matched/missing lists, notes[]}."""
+def match(resume, requirements, job, evidence=None):
+    """{score, verdict, label, advice, parts:{...}, matched/missing lists, notes[], lines{}}.
+    `evidence`: match_evidence's judgment for this resume and job, or None (literal)."""
     skills, blob = _evidence(resume)
     parts, notes = {}, []
+    judged = (evidence or {}).get("skills") or {}
+
+    def credit(skill):
+        if skill in judged:
+            return _credit(judged[skill].get("level") or 0.0)
+        return 1.0 if _has(skill, skills, blob) else 0.0
+
+    def used(skill):
+        return credit(skill) >= 0.85
 
     req = requirements.get("required_skills") or []
     pref = requirements.get("preferred_skills") or []
-    matched_req = [s for s in req if _has(s, skills, blob)]
+    matched_req = [s for s in req if used(s)]
     missing_req = [s for s in req if s not in matched_req]
-    matched_pref = [s for s in pref if _has(s, skills, blob)]
+    matched_pref = [s for s in pref if used(s)]
     if req:
-        parts["required"] = len(matched_req) / len(req)
+        parts["required"] = sum(credit(s) for s in req) / len(req)
     if pref:
-        parts["preferred"] = len(matched_pref) / len(pref)
+        parts["preferred"] = sum(credit(s) for s in pref) / len(pref)
+    listed_only = [s for s in req + pref if s in judged and 0.4 <= credit(s) < 0.85]
+    if listed_only:
+        notes.append("Listed on your resume but not shown in a role: " + ", ".join(listed_only[:5])
+                     + ". Add a bullet that shows you using " + ("them." if len(listed_only) > 1 else "it."))
+    lines = {s: judged[s]["line_text"] for s in matched_req + matched_pref if judged.get(s, {}).get("line_text")}
 
     years = years_of_experience(resume)
     need = requirements.get("min_years")
@@ -134,7 +158,14 @@ def match(resume, requirements, job):
 
     job_level = LEVELS.get(requirements.get("seniority") or "")
     mine = resume_level(resume, years)
-    if job_level is not None and mine is not None:
+    fit = (evidence or {}).get("seniority_fit")
+    if job_level is not None and fit:
+        parts["seniority"] = 1.0 if fit == "fit" else 0.5
+        if fit == "below":
+            notes.append("This role is more senior than your experience so far.")
+        elif fit == "above":
+            notes.append("This role is more junior than your experience.")
+    elif job_level is not None and mine is not None:
         gap = job_level - mine
         parts["seniority"] = 1.0 if abs(gap) <= 0 else 0.6 if abs(gap) == 1 else 0.2
         if gap >= 2:
@@ -160,10 +191,16 @@ def match(resume, requirements, job):
     if score is None:
         return {"score": None, "verdict": "unknown", "label": "Not enough detail",
                 "advice": "The posting doesn't say enough to compare.", "parts": parts,
-                "matched_required": [], "missing_required": [], "matched_preferred": [], "notes": notes}
+                "matched_required": [], "missing_required": [], "matched_preferred": [], "notes": notes,
+                "lines": {}, "judged": bool(judged)}
     _, key, label, advice = next(v for v in VERDICTS if score >= v[0])
     if req and len(missing_req) / len(req) > 0.6 and key in ("strong", "good"):
         key, label, advice = VERDICTS[2][1:]  # most must-haves missing: never better than a stretch
+    same_field = (evidence or {}).get("same_field")
+    if same_field is not None and same_field < 0.2:
+        notes.append("Your experience is in a different kind of work from this role.")
+        if key in ("strong", "good"):
+            key, label, advice = VERDICTS[2][1:]
     if len(req) + len(pref) < 3:
         # Too little in the posting to be sure: say so, and don't call it "strong".
         notes.append("This posting lists few specific requirements, so this score is rough.")
@@ -171,4 +208,5 @@ def match(resume, requirements, job):
             key, label, advice = VERDICTS[1][1:]
     return {"score": score, "verdict": key, "label": label, "advice": advice, "parts": parts,
             "matched_required": matched_req, "missing_required": missing_req,
-            "matched_preferred": matched_pref, "notes": notes}
+            "matched_preferred": matched_pref, "notes": notes, "lines": lines,
+            "judged": bool(judged)}

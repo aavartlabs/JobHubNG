@@ -52,14 +52,13 @@ AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://localhost:3200")
 # this value; it exists only for Flask's own direct server-to-server call.
 WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 
-# Local LLM for resume features (jobhub_poc/ai/): an Ollama server on the LAN. Unset =
-# resume parsing / matching / tailoring stay queued ("AI offline"); nothing else depends on it.
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
-# Which LLM (ai/llm.py): "ollama" (above, development) or "openrouter" (ai/openrouter.py).
-# Model chains are tried in order. "write" tasks carry resume data: only models that don't
-# train on it (openrouter.py refuses "-contributor" tiers). "jobs" tasks are public postings.
-AI_BACKEND = os.environ.get("AI_BACKEND", "ollama")
+# AI (jobhub_poc/ai/). Jev (TypeSafe) makes the judgments: job reading, matching
+# (ai/typesafe.py, ai/judgments.py). General models write, tried in order per task through
+# OpenRouter (ai/openrouter.py): "write" tasks carry resume data and go only to models that
+# don't train on it ("-contributor" tiers are refused); "jobs" tasks are public postings.
+# Unset keys = "AI offline": tasks wait, and matching falls back to plain word matching.
+TYPESAFE_API_KEY = os.environ.get("TYPESAFE_API_KEY", "")
+TYPESAFE_MODEL = os.environ.get("TYPESAFE_MODEL", "jev-latest")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 AI_MODELS_WRITE = [m.strip() for m in os.environ.get(
     "AI_MODELS_WRITE", "openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash").split(",") if m.strip()]
@@ -77,8 +76,8 @@ AI_WORKERS = int(os.environ.get("AI_WORKERS", "1"))
 # When OpenRouter is down, public job text may go straight to these (ai/direct.py; each needs
 # <NAME>_API_KEY / _BASE_URL / _MODEL in .env). Never resume data.
 DIRECT_JOBS_PROVIDERS = [p.strip() for p in os.environ.get("DIRECT_JOBS_PROVIDERS", "deepseek").split(",") if p.strip()]
-# Resume consent given before this ISO time no longer counts (resume_consent.py); set it to
-# the moment AI_BACKEND changes. Unset = the backend's own date.
+# Resume consent given before this ISO time no longer counts (resume_consent.py): set it to
+# when the consent wording changed. Unset = the wording's own date.
 RESUME_CONSENT_SINCE = os.environ.get("RESUME_CONSENT_SINCE", "")
 # Fernet key (base64) that encrypts uploaded resumes and everything derived from them
 # (crypto.py). Unset = resume upload is switched off. Keep a copy offline: without it the

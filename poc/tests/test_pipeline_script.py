@@ -51,4 +51,5 @@ def test_local_mode_runs_every_step_without_ssh(tmp_path):
     assert any("load_delta /tmp/jobhub_delta." in c and "--watermark w2" in c for c in calls)
     assert f"--out {tmp_path}/delta.jsonl.gz" in scraper[2]
     assert any("jobhub_poc.loader.purge" in c for c in calls) and any("run_alerts" in c for c in calls)
+    assert any("jobhub_poc.ai.queue_reads" in c for c in calls)
     assert "pipeline complete" in result.stdout

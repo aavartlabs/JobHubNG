@@ -20,7 +20,7 @@ from urllib.parse import quote, urlparse
 
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 
-from jobhub_poc import config, crypto, job_requirements, matching
+from jobhub_poc import config, crypto, job_requirements, match_evidence, matching
 from jobhub_poc.job_links import human_url
 from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import access_state, login_required, login_url, verify_url
@@ -73,7 +73,8 @@ def _user_resume(conn):
 
 def _match_context(conn, resume, job, priority):
     """{"match_state": "ready"|"pending"|"no_resume"|None, "match": result or None}. Queues
-    the job's analysis if it isn't cached yet (the local LLM reads it when it can)."""
+    what's missing: the job's reading (job_reading.py), then Jev's judgment of this resume
+    against it (match_evidence.py); plain matching when Jev can't be used."""
     if _user_id() is None:
         return {"match_state": None, "match": None}
     if resume is None:
@@ -82,7 +83,10 @@ def _match_context(conn, resume, job, priority):
     if reqs is None:
         tasks.enqueue(conn, "extract_job", ref=job["key"], priority=priority)
         return {"match_state": "pending", "match": None}
-    return {"match_state": "ready", "match": matching.match(resume, reqs, job)}
+    state, evidence = match_evidence.state(conn, _user_id(), job["key"], resume, reqs, priority)
+    if state == "pending":
+        return {"match_state": "pending", "match": None}
+    return {"match_state": "ready", "match": matching.match(resume, reqs, job, evidence)}
 
 
 def _detail(conn, job_id, record_view):
@@ -137,8 +141,10 @@ def list_jobs():
         reqs = job_requirements.get_many(conn, [j["key"] for j in jobs])
         for j in jobs:
             if j["key"] in reqs:
-                fit = matching.match(resume, reqs[j["key"]], j)
-                j["match"] = {"score": fit["score"], "verdict": fit["verdict"], "label": fit["label"]}
+                state, evidence = match_evidence.state(conn, _user_id(), j["key"], resume, reqs[j["key"]], 1)
+                if state != "pending":
+                    fit = matching.match(resume, reqs[j["key"]], j, evidence)
+                    j["match"] = {"score": fit["score"], "verdict": fit["verdict"], "label": fit["label"]}
             else:
                 tasks.enqueue(conn, "extract_job", ref=j["key"], priority=1)
     list_qs = list_query_string(q, page=result.page)

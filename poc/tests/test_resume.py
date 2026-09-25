@@ -8,7 +8,7 @@ import requests
 from cryptography.fernet import Fernet
 
 from jobhub_poc import config, crypto, resume_parse
-from jobhub_poc.ai import llm, ollama, tasks, worker
+from jobhub_poc.ai import llm, tasks, worker
 from jobhub_poc.resume_text import ResumeUnreadable, detect_kind, extract_text
 from jobhub_poc.webapp.app import create_app
 
@@ -181,9 +181,9 @@ def test_worker_waits_when_the_llm_is_away_and_gives_up_after_errors(conn, monke
     task = _store_resume(conn)
 
     def away(*a, **k):
-        raise ollama.OllamaUnavailable("harita asleep")
+        raise llm.Unavailable("AI services unreachable")
     monkeypatch.setattr(llm, "generate", away)
-    with pytest.raises(ollama.OllamaUnavailable):
+    with pytest.raises(llm.Unavailable):
         worker.run_once(conn)
     assert conn.execute("SELECT status, attempts FROM ai_tasks WHERE id = ?", (task,)).fetchone()[:] == ("queued", 0)
 
@@ -194,24 +194,6 @@ def test_worker_waits_when_the_llm_is_away_and_gives_up_after_errors(conn, monke
         pass
     assert conn.execute("SELECT status FROM ai_tasks WHERE id = ?", (task,)).fetchone()[0] == "failed"
     assert conn.execute("SELECT parse_status FROM resumes").fetchone()[0] == "failed"
-
-
-def test_ollama_client_needs_configuration(monkeypatch):
-    monkeypatch.setattr(config, "OLLAMA_URL", "")
-    assert ollama.available() is False
-    with pytest.raises(ollama.OllamaUnavailable):
-        ollama.generate("x", {})
-
-
-def test_ollama_client_parses_structured_answer(monkeypatch, requests_mock):
-    monkeypatch.setattr(config, "OLLAMA_URL", "http://llm.test:11434")
-    requests_mock.post("http://llm.test:11434/api/generate", json={"response": '{"ok": true}'})
-    assert ollama.generate("x", {"type": "object"}) == {"ok": True}
-    body = requests_mock.last_request.json()
-    assert body["format"] == {"type": "object"} and body["options"]["temperature"] == 0 and body["stream"] is False
-    requests_mock.post("http://llm.test:11434/api/generate", json={"response": "not json"})
-    with pytest.raises(RuntimeError):
-        ollama.generate("x", {})
 
 
 # ---- /profile routes ----
@@ -358,7 +340,6 @@ OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def _openrouter(monkeypatch, write=("openai/test-a", "deepseek/test-b"), jobs=("meta/test-contributor",)):
-    monkeypatch.setattr(config, "AI_BACKEND", "openrouter")
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "or-key")
     monkeypatch.setattr(config, "AI_MODELS_WRITE", list(write))
     monkeypatch.setattr(config, "AI_MODELS_JOBS", list(jobs))
@@ -377,9 +358,7 @@ def test_backend_is_chosen_by_config(monkeypatch):
         llm.generate("x", {})
     _openrouter(monkeypatch)
     assert llm.available() is True and llm.model_name() == "openai/test-a"
-    monkeypatch.setattr(config, "AI_BACKEND", "ollama")
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
-    monkeypatch.setattr(config, "OLLAMA_URL", "")
     assert llm.available() is False
 
 

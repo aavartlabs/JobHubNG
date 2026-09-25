@@ -1,32 +1,23 @@
-"""What a user agrees to before JobsHub's AI reads their resume. The words depend on where the
-model runs (AI_BACKEND): when that changes, consent given to the old words stops counting and
-the user is asked again on /profile before any more AI work on their resume (upload parsing,
-tailoring). A consent is current if it was given on or after the backend's `since`
-(RESUME_CONSENT_SINCE overrides it -- set it to the cutover time when switching)."""
+"""What a user agrees to before JobsHub's AI reads their resume. When the wording changes,
+consent given to the old words stops counting and the user is asked again on /profile before
+any more AI work on their resume (parsing, matching, tailoring). A consent is current if it
+was given on or after SINCE (RESUME_CONSENT_SINCE overrides it: set it to the moment the new
+wording went live)."""
 from jobhub_poc import config
 
-_TERMS = {
-    "ollama": ("", "JobsHub stores my resume (encrypted) and uses it to match me with jobs and to "
-                   "tailor it for jobs I choose. It's processed on JobsHub's own machines, not sent "
-                   "to other companies, and I can delete it any time."),
-    "openrouter": ("2026-09-25", "JobsHub stores my resume (encrypted) and uses it to match me with "
-                                 "jobs and to tailor it for jobs I choose. To do that, its text is read by "
-                                 "AI services JobsHub uses (TypeSafe, and language models reached through "
-                                 "OpenRouter) that don't train on it. It isn't shared with employers or "
-                                 "anyone else, and I can delete it any time."),
-}
-
-
-def _terms():
-    return _TERMS.get(config.AI_BACKEND, _TERMS["ollama"])
+TEXT = ("JobsHub stores my resume (encrypted) and uses it to match me with jobs and to tailor it "
+        "for jobs I choose. To do that, its text is read by AI services JobsHub uses (TypeSafe, and "
+        "language models reached through OpenRouter) that don't train on it. It isn't shared with "
+        "employers or anyone else, and I can delete it any time.")
+SINCE = "2026-09-25"  # the wording above replaced "processed on JobsHub's own machines"
 
 
 def text():
-    return _terms()[1]
+    return TEXT
 
 
 def since():
-    return config.RESUME_CONSENT_SINCE or _terms()[0]
+    return config.RESUME_CONSENT_SINCE or SINCE
 
 
 def is_current(consent_at):

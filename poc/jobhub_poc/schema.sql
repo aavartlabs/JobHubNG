@@ -161,8 +161,8 @@ CREATE TABLE IF NOT EXISTS tailored_resumes (
     PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
 );
 
--- What each job asks for (job_requirements.py), read by the local LLM when someone with a
--- resume looks at the job; cached by the job's dedupe_key. Public job data, not encrypted.
+-- What each job asks for (job_reading.py: Muse drafts, Jev decides), read for every serving
+-- job and cached by the job's dedupe_key. Public job data, not encrypted.
 CREATE TABLE IF NOT EXISTS job_requirements (
     job_dedupe_key  TEXT PRIMARY KEY,
     data_json       TEXT NOT NULL,
@@ -170,7 +170,31 @@ CREATE TABLE IF NOT EXISTS job_requirements (
     extracted_at    TEXT NOT NULL
 );
 
--- AI work queue (ai/tasks.py, run by ai/worker.py against the local LLM).
+-- Skills seen in job postings and confirmed by Jev (job_reading.py): candidates for the next
+-- posting. From job text only -- never from resumes. skill = lower-cased key.
+CREATE TABLE IF NOT EXISTS skills_vocab (
+    skill       TEXT PRIMARY KEY,
+    display     TEXT NOT NULL,
+    seen        INTEGER NOT NULL DEFAULT 1,
+    added_at    TEXT NOT NULL
+);
+
+-- How well one user's resume shows what one job asks for, judged by Jev (match_evidence.py).
+-- Resume-derived, so encrypted like resumes; valid only for the resume and requirements it
+-- was judged against (the two revisions). Scores are still computed at render time from it.
+-- Deleted with the resume, the account, or the job.
+CREATE TABLE IF NOT EXISTS match_evidence (
+    owner_auth_user_id  TEXT NOT NULL,
+    job_dedupe_key      TEXT NOT NULL,
+    resume_rev          TEXT NOT NULL,
+    requirements_rev    TEXT NOT NULL,
+    data_enc            BLOB NOT NULL,
+    model               TEXT NOT NULL,
+    created_at          TEXT NOT NULL,
+    PRIMARY KEY (owner_auth_user_id, job_dedupe_key)
+);
+
+-- AI work queue (ai/tasks.py, run by ai/worker.py).
 CREATE TABLE IF NOT EXISTS ai_tasks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     kind                TEXT NOT NULL,

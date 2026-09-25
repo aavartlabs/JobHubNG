@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
 
   # Runs queued AI tasks (resume parsing now; job matching and tailoring later) against the
-  # local LLM at OLLAMA_URL (poc/.env). Same image as web; while the LLM host is off, tasks
+  # hosted AI services (TypeSafe Jev, OpenRouter, Meta; keys in poc/.env). Same image as web; while they're unreachable, tasks
   # simply wait (jobhub_poc/ai/worker.py).
   ai:
     image: jobhub-poc-web

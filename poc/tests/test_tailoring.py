@@ -108,7 +108,7 @@ from cryptography.fernet import Fernet
 from docx import Document
 
 from jobhub_poc import config, crypto, db, job_requirements
-from jobhub_poc.ai import llm, ollama, tasks, worker
+from jobhub_poc.ai import llm, tasks, worker
 from jobhub_poc.webapp.app import create_app
 
 SESSION = "jobhub-auth.session_token"
@@ -261,7 +261,6 @@ def test_tailoring_waits_for_consent_to_changed_terms(conn, requests_mock, monke
     _seed_job(conn); _store_resume(conn)
     conn.execute("UPDATE resumes SET consent_at = '2026-09-01T10:00:00+00:00'")
     conn.commit()
-    monkeypatch.setattr(config, "AI_BACKEND", "openrouter")
     monkeypatch.setattr(config, "RESUME_CONSENT_SINCE", "2026-09-25T00:00:00+00:00")
     resp = _client(conn, requests_mock).post("/jobs/1/tailor")
     assert resp.status_code == 302 and "/profile" in resp.headers["Location"]

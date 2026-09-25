@@ -6,7 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from jobhub_poc import config, crypto, job_requirements
-from jobhub_poc.ai import llm, ollama, tasks, worker
+from jobhub_poc.ai import llm, tasks, worker
 from jobhub_poc.matching import match, norm_skill, years_of_experience
 from jobhub_poc.webapp.app import create_app
 

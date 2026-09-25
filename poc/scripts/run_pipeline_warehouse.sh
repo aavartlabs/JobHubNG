@@ -68,6 +68,9 @@ from_scraper "${REMOTE_DELTA}" "${LOCAL_DELTA}"
 
 echo "== 4/4: purge + alerts (local) =="
 .venv/bin/python -m jobhub_poc.loader.purge
+# Every listed job gets read (job_reading.py: Muse drafts, Jev decides) in the background,
+# so match badges and filters don't wait for someone to open it.
+.venv/bin/python -m jobhub_poc.ai.queue_reads || echo "queueing job readings failed (continuing)"
 if [ "${SUPPRESS_ALERTS:-0}" = "1" ]; then
     # The first sync after cutover inserts thousands of jobs that aren't really new;
     # announcing them would spam every subscriber. Run it once with SUPPRESS_ALERTS=1.

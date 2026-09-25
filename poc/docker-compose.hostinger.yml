@@ -20,7 +20,7 @@ services:
     mem_limit: 768m
     cpus: 1.0
 
-  ai:  # HTTP calls to Workers AI only (AI_BACKEND=workers_ai)
+  ai:  # HTTP calls to the hosted AI services only
     mem_limit: 256m
     cpus: 0.5
 

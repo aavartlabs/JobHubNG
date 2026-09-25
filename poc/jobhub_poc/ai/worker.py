@@ -6,7 +6,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from jobhub_poc import config, crypto, db, job_requirements, resume_consent, resume_parse, tailoring
+from jobhub_poc import (config, crypto, db, job_reading, job_requirements, match_evidence, resume_consent,
+                        resume_parse, tailoring)
 from jobhub_poc.webapp.job_text import plain_text
 from jobhub_poc.ai import llm, tasks
 
@@ -43,11 +44,25 @@ def extract_job(conn, task):
     text = plain_text(job["description"])
     if len(text) < 100:
         data = {"required_skills": [], "preferred_skills": [], "min_years": None, "seniority": "unknown"}
+        model = "none"
     else:
-        raw = llm.generate(job_requirements.PROMPT.format(title=job["title"], text=text),
-                           job_requirements.SCHEMA, timeout=300, task="jobs")
-        data = job_requirements.normalise(raw, f"{job['title']}\n{text}")
-    job_requirements.store(conn, task["ref"], data, llm.model_name())
+        data, model = job_reading.read(conn, job["title"], text)  # Muse drafts, Jev decides
+    job_requirements.store(conn, task["ref"], data, model)
+
+
+def match(conn, task):
+    """Jev's judgment of how the owner's resume shows what one job asks for (match_evidence)."""
+    owner, key = task["owner_auth_user_id"], task["ref"]
+    row = conn.execute("SELECT structured_enc, consent_at FROM resumes WHERE owner_auth_user_id = ?",
+                       (owner,)).fetchone()
+    job = conn.execute("SELECT title FROM jobs WHERE dedupe_key = ?", (key,)).fetchone()
+    reqs = job_requirements.get_many(conn, [key]).get(key)
+    if row is None or not row["structured_enc"] or job is None or reqs is None:
+        return  # resume deleted, job purged, or not read yet (the page queues it again)
+    _needs_consent(row)
+    resume = crypto.decrypt_json(row["structured_enc"])
+    data, model = match_evidence.judge(resume, reqs, job["title"])
+    match_evidence.store(conn, owner, key, resume, reqs, data, model)
 
 
 def tailor(conn, task):
@@ -78,7 +93,7 @@ def tailor(conn, task):
     conn.commit()
 
 
-HANDLERS = {"parse_resume": parse_resume, "extract_job": extract_job, "tailor": tailor}
+HANDLERS = {"parse_resume": parse_resume, "extract_job": extract_job, "tailor": tailor, "match": match}
 
 
 def run_once(conn):
@@ -125,12 +140,14 @@ def _loop(n):
             time.sleep(wait)
             wait = min(wait * 2, 60)
             continue
-        wait = 5
         try:
             while run_once(conn):
-                pass
-        except llm.Unavailable:
-            log.info("LLM went away mid-task; will retry")
+                wait = 5
+        except llm.Unavailable as exc:
+            # Busy (429) or unreachable: back off instead of retrying at once in a loop.
+            log.info("AI service unavailable (%s); retrying in %d s", str(exc)[:120], wait)
+            time.sleep(wait)
+            wait = min(wait * 2, 60)
 
 
 def main():
