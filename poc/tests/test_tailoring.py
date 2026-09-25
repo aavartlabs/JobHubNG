@@ -266,3 +266,10 @@ def test_tailoring_waits_for_consent_to_changed_terms(conn, requests_mock, monke
     resp = _client(conn, requests_mock).post("/jobs/1/tailor")
     assert resp.status_code == 302 and "/profile" in resp.headers["Location"]
     assert conn.execute("SELECT COUNT(*) FROM ai_tasks").fetchone()[0] == 0
+
+
+def test_job_skill_check_accepts_the_resumes_own_spelling_of_it():
+    from jobhub_poc import tailoring
+    assert tailoring.problems("Shipped services in Docker.", "Shipped services in Dockers.", ["Docker"]) == []
+    assert tailoring.problems("Wrote infrastructure as code.", "Wrote IaC with Terraform.", ["Infrastructure as Code"]) == []
+    assert tailoring.problems("Ran Kubernetes.", "Ran VMs.", ["Kubernetes"]) == ["“Kubernetes”"]

@@ -499,3 +499,26 @@ def test_delete_also_removes_the_users_job_interactions_and_saves(client, conn, 
     assert [r[0] for r in conn.execute("SELECT owner_auth_user_id FROM saved_jobs")] == ["u2"]
     assert conn.execute("SELECT count(*) FROM resumes").fetchone()[0] == 0
     assert conn.execute("SELECT count(*) FROM ai_tasks").fetchone()[0] == 0
+
+
+def test_skill_aliases_page_lists_and_removes_a_wrong_merge(client, conn, requests_mock):
+    from jobhub_poc import skills
+    conn.execute("INSERT INTO skill_aliases VALUES ('terraformcloud', 'terraform cloud', 'llm', '2026-09-26T00:00:00+00:00')")
+    conn.execute("INSERT INTO skill_aliases VALUES ('scalar', 'scala', 'llm', '2026-09-26T01:00:00+00:00')")
+    conn.commit()
+    _logged_in(client, requests_mock)
+    html = client.get("/admin/skills").get_data(as_text=True)
+    assert "terraformcloud" in html and "scalar" in html
+
+    resp = client.post("/admin/skills/remove", data={"csrf_token": _csrf(client, "/admin/skills"), "variant": "scalar"})
+
+    assert resp.status_code == 302
+    assert [r["variant"] for r in conn.execute("SELECT variant FROM skill_aliases")] == ["terraformcloud"]
+    assert [tuple(r) for r in conn.execute("SELECT variant, canonical FROM skill_alias_rejections")] == [("scalar", "scala")]
+    assert skills.current(conn).canonical("scalar") == "scalar"
+
+
+def test_skill_aliases_page_needs_admin_and_csrf(client, conn, requests_mock):
+    assert client.get("/admin/skills").status_code == 302
+    _logged_in(client, requests_mock)
+    assert client.post("/admin/skills/remove", data={"csrf_token": "wrong", "variant": "x"}).status_code == 400

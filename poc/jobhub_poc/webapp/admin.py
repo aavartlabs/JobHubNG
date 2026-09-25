@@ -28,7 +28,7 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from jobhub_poc import admin_codes, auth_admin_client, config
+from jobhub_poc import admin_codes, auth_admin_client, config, skills
 from jobhub_poc.admin_notify import notify_admin
 from jobhub_poc.alerts.senders import get_senders
 from jobhub_poc.auth_admin_client import AuthServiceError
@@ -339,3 +339,35 @@ def delete_user(user_id):
     current_app.logger.info("admin %s deleted user %s", session["admin_username"], user_id)
     flash("User deleted.")
     return redirect(url_for("admin.users"))
+
+
+# ---- skill aliases (skills.py; the LLM-made ones come from ai/skill_index.py) ----
+
+@bp.route("/skills")
+@admin_required
+def skill_aliases():
+    rows = current_app.get_db().execute(
+        "SELECT variant, canonical, source, created_at FROM skill_aliases "
+        "ORDER BY created_at DESC, variant LIMIT 500").fetchall()
+    rejected = current_app.get_db().execute(
+        "SELECT variant, canonical, rejected_at FROM skill_alias_rejections ORDER BY rejected_at DESC LIMIT 100").fetchall()
+    return render_template("admin_skills.html", aliases=rows, rejected=rejected)
+
+
+@bp.route("/skills/remove", methods=["POST"])
+@admin_required
+def remove_skill_alias():
+    """A wrong merge: delete it and remember the pair as 'not the same', so the batch never re-adds it."""
+    variant = request.form.get("variant", "")
+    conn = current_app.get_db()
+    row = conn.execute("SELECT canonical FROM skill_aliases WHERE variant = ?", (variant,)).fetchone()
+    if row is None:
+        abort(404)
+    conn.execute("DELETE FROM skill_aliases WHERE variant = ?", (variant,))
+    conn.execute("INSERT OR REPLACE INTO skill_alias_rejections (variant, canonical, rejected_at) VALUES (?, ?, ?)",
+                 (variant, row["canonical"], _now().isoformat()))
+    conn.commit()
+    skills.reset_cache()
+    current_app.logger.info("admin %s removed skill alias %r -> %r", session["admin_username"], variant, row["canonical"])
+    flash(f"Removed: “{variant}” is no longer read as “{row['canonical']}”.")
+    return redirect(url_for("admin.skill_aliases"))

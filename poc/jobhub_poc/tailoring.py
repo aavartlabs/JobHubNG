@@ -17,6 +17,8 @@ headline stays the user's own. Skills are only reordered, never added."""
 import json
 import re
 
+from jobhub_poc import skills as skill_names
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -105,11 +107,19 @@ def _mentions(term, text):
 def problems(text, source, job_skills=()):
     """What `text` claims that `source` doesn't say (empty list = fine)."""
     found = [f"the number {n}" for n in sorted(_numbers(text) - _numbers(source))]
-    found += [f"“{t}”" for t in sorted(_terms(text)) if not _mentions(t, source)]
+    found += [f"“{t}”" for t in sorted(_terms(text)) if not _has_skill(t, source)]
     for s in job_skills:
-        if _mentions(s, text) and not _mentions(s, source) and f"“{s}”" not in found:
+        if _mentions(s, text) and not _has_skill(s, source) and f"“{s}”" not in found:
             found.append(f"“{s}”")
     return found
+
+
+def _has_skill(skill, source):
+    """The source names this skill in any spelling the skill index knows ("Dockers", "IaC")."""
+    index = skill_names.SEED_INDEX
+    target = index.canonical(skill)
+    spellings = {skill, target, target + "s"} | {v for v, c in index.aliases.items() if c == target}
+    return any(_mentions(v, source) for v in spellings if v)
 
 
 def resume_text(resume):

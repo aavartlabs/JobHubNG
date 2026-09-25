@@ -135,3 +135,8 @@ def current(conn):
         rows = []
     _cache.update(at=time.monotonic(), index=Index({r[0]: r[1] for r in rows}))
     return _cache["index"]
+
+
+def reset_cache():
+    """After an admin change: the next current() re-reads the table."""
+    _cache.update(at=0.0, index=SEED_INDEX)

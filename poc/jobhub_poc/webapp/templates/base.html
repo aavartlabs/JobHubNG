@@ -25,6 +25,7 @@
         <a class="nav-link" href="{{ url_for('jobs.list_jobs') }}">Jobs</a>
         {% if is_admin() %}
           <a class="nav-link" href="{{ url_for('admin.users') }}">Users (admin)</a>
+          <a class="nav-link" href="{{ url_for('admin.skill_aliases') }}">Skills (admin)</a>
           <form method="post" action="{{ url_for('admin.logout') }}" class="inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="nav-link">Admin logout</button>

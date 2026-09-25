@@ -84,4 +84,12 @@ else
     .venv/bin/python -m jobhub_poc.alerts.run_alerts --new-ids "${NEW_IDS}"
 fi
 
+# Weekly (Sunday's first run, or SKILL_INDEX=1): the LLM groups skill-name variants seen in
+# job readings (ai/skill_index.py -> skill_aliases, reviewed at /admin/skills). After the
+# alerts so it never delays them; best effort, capped at an hour; nothing when AI is paused.
+if [ "${SKILL_INDEX:-0}" = "1" ] || { [ "$(date +%u)" = "7" ] && [ "$(date +%H)" -lt 6 ]; }; then
+    echo "== weekly: skill index =="
+    timeout 3600 .venv/bin/python -m jobhub_poc.ai.skill_index || echo "skill index failed (continuing)"
+fi
+
 echo "== pipeline complete =="
