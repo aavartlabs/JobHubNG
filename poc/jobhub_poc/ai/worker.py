@@ -44,7 +44,7 @@ def extract_job(conn, task):
         data = {"required_skills": [], "preferred_skills": [], "min_years": None, "seniority": "unknown"}
     else:
         raw = llm.generate(job_requirements.PROMPT.format(title=job["title"], text=text),
-                              job_requirements.SCHEMA, timeout=300)
+                           job_requirements.SCHEMA, timeout=300, task="jobs")
         data = job_requirements.normalise(raw, f"{job['title']}\n{text}")
     job_requirements.store(conn, task["ref"], data, llm.model_name())
 

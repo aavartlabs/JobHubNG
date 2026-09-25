@@ -354,58 +354,97 @@ def test_consent_is_asked_once(conn, requests_mock):
     assert conn.execute("SELECT consent_at FROM resumes").fetchone()[0] == first
 
 
-def _workers_ai(monkeypatch):
-    monkeypatch.setattr(config, "AI_BACKEND", "workers_ai")
-    monkeypatch.setattr(config, "WORKERS_AI_ACCOUNT_ID", "acct")
-    monkeypatch.setattr(config, "WORKERS_AI_GATEWAY", "gw")
-    monkeypatch.setattr(config, "WORKERS_AI_TOKEN", "tok")
-    monkeypatch.setattr(config, "WORKERS_AI_MODEL", "@cf/test/model")
-    return "https://gateway.ai.cloudflare.com/v1/acct/gw/workers-ai/@cf/test/model"
+OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _openrouter(monkeypatch, write=("openai/test-a", "deepseek/test-b"), jobs=("meta/test-contributor",)):
+    monkeypatch.setattr(config, "AI_BACKEND", "openrouter")
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "or-key")
+    monkeypatch.setattr(config, "AI_MODELS_WRITE", list(write))
+    monkeypatch.setattr(config, "AI_MODELS_JOBS", list(jobs))
+    monkeypatch.setattr(config, "DIRECT_JOBS_PROVIDERS", ["deepseek"])
+
+
+def _answer(content, model="openai/test-a"):
+    return {"model": model, "choices": [{"message": {"content": content}}]}
 
 
 def test_backend_is_chosen_by_config(monkeypatch):
-    monkeypatch.setattr(config, "AI_BACKEND", "workers_ai")
-    monkeypatch.setattr(config, "WORKERS_AI_TOKEN", "")
+    _openrouter(monkeypatch)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
     assert llm.available() is False
     with pytest.raises(llm.Unavailable):
         llm.generate("x", {})
-    _workers_ai(monkeypatch)
-    assert llm.available() is True and llm.model_name() == "@cf/test/model"
+    _openrouter(monkeypatch)
+    assert llm.available() is True and llm.model_name() == "openai/test-a"
     monkeypatch.setattr(config, "AI_BACKEND", "ollama")
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
     monkeypatch.setattr(config, "OLLAMA_URL", "")
-    assert llm.available() is False and llm.model_name() == config.OLLAMA_MODEL
+    assert llm.available() is False
 
 
-def test_workers_ai_asks_for_json_and_no_gateway_logs(monkeypatch, requests_mock):
-    url = _workers_ai(monkeypatch)
-    requests_mock.post(url, json={"success": True, "result": {"response": {"ok": True}}})
-    assert llm.generate("resume text", {"type": "object"}) == {"ok": True}
-    req = requests_mock.last_request
-    assert req.headers["cf-aig-collect-log"] == "false" and req.headers["Authorization"] == "Bearer tok"
-    body = req.json()
-    assert body["response_format"] == {"type": "json_schema", "json_schema": {"type": "object"}}
-    assert body["temperature"] == 0 and body["messages"][0]["content"] == "resume text"
-    requests_mock.post(url, json={"result": {"response": '{"ok": 1}'}})  # some models answer a string
-    assert llm.generate("x", {}) == {"ok": 1}
+def test_resume_data_goes_only_to_providers_that_dont_train_on_it(monkeypatch, requests_mock):
+    _openrouter(monkeypatch)
+    requests_mock.post(OPENROUTER, json=_answer('{"ok": true}'))
+    assert llm.generate("resume text", {"type": "object"}, task="write") == {"ok": True}
+    body = requests_mock.last_request.json()
+    assert body["model"] == "openai/test-a" and body["provider"]["data_collection"] == "deny"
+    assert body["response_format"]["json_schema"]["schema"] == {"type": "object"} and body["temperature"] == 0
+    assert requests_mock.last_request.headers["Authorization"] == "Bearer or-key"
+    assert llm.model_name() == "openai/test-a"
+
+    # A training-for-discount model in the resume chain is refused, whatever the config says.
+    _openrouter(monkeypatch, write=("meta/muse-spark-1.3-contributor",))
+    with pytest.raises(RuntimeError, match="trains on prompts"):
+        llm.generate("resume text", {}, task="write")
+    assert requests_mock.call_count == 1
 
 
-def test_workers_ai_busy_waits_but_bad_answers_fail(monkeypatch, requests_mock):
-    url = _workers_ai(monkeypatch)
-    for status in (429, 503):
-        requests_mock.post(url, status_code=status, text="busy")
-        with pytest.raises(llm.Unavailable):
-            llm.generate("x", {})
-    requests_mock.post(url, exc=requests.ConnectionError("down"))
+def test_public_job_text_may_use_any_model(monkeypatch, requests_mock):
+    _openrouter(monkeypatch)
+    requests_mock.post(OPENROUTER, json=_answer('{"ok": 1}', model="meta/test-contributor"))
+    assert llm.generate("job text", {}, task="jobs") == {"ok": 1}
+    body = requests_mock.last_request.json()
+    assert body["model"] == "meta/test-contributor" and "data_collection" not in body["provider"]
+    assert llm.model_name() == "meta/test-contributor"
+
+
+def test_a_bad_or_busy_model_hands_over_to_the_next(monkeypatch, requests_mock):
+    _openrouter(monkeypatch)
+    requests_mock.post(OPENROUTER, [{"json": _answer("not json")}, {"json": _answer('{"ok": 2}', "deepseek/test-b")}])
+    assert llm.generate("x", {}) == {"ok": 2} and llm.model_name() == "deepseek/test-b"
+    requests_mock.post(OPENROUTER, [{"status_code": 429}, {"json": _answer('{"ok": 3}', "deepseek/test-b")}])
+    assert llm.generate("x", {}) == {"ok": 3}
+    # Every model only busy: the task waits. Every model answering badly: it fails.
+    requests_mock.post(OPENROUTER, status_code=503)
+    with pytest.raises(llm.Unavailable):
+        llm.generate("x", {})
+    requests_mock.post(OPENROUTER, exc=requests.ConnectionError("down"))
     with pytest.raises(llm.Unavailable) as err:
         llm.generate("x", {})
-    assert "tok" not in str(err.value)
-    requests_mock.post(url, status_code=400, text="bad schema")
+    assert "or-key" not in str(err.value)
+    requests_mock.post(OPENROUTER, status_code=400, text="bad schema")
     with pytest.raises(RuntimeError) as err:
         llm.generate("x", {})
     assert not isinstance(err.value, llm.Unavailable)
-    requests_mock.post(url, json={"result": {"response": "not json"}})
-    with pytest.raises(RuntimeError):
-        llm.generate("x", {})
+
+
+def test_direct_providers_only_ever_see_public_job_text(monkeypatch, requests_mock):
+    _openrouter(monkeypatch)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-key")
+    requests_mock.post(OPENROUTER, status_code=503)
+    requests_mock.post("https://api.deepseek.com/chat/completions", json=_answer('{"ok": 4}'))
+    assert llm.generate("job text", {"type": "object"}, task="jobs") == {"ok": 4}
+    assert llm.model_name() == "deepseek/deepseek-chat"
+    sent = requests_mock.last_request.json()
+    assert sent["response_format"] == {"type": "json_object"} and "JSON schema" in sent["messages"][0]["content"]
+    calls = requests_mock.call_count
+    with pytest.raises(llm.Unavailable):  # resume data waits instead of going direct
+        llm.generate("resume text", {}, task="write")
+    assert not any("deepseek.com" in r.url for r in requests_mock.request_history[calls:])
+    from jobhub_poc.ai import direct
+    with pytest.raises(RuntimeError, match="only take public job text"):
+        direct.generate("resume text", {}, task="write")
 
 
 def test_changing_the_ai_backend_asks_for_consent_again(conn, requests_mock, monkeypatch):
@@ -413,11 +452,11 @@ def test_changing_the_ai_backend_asks_for_consent_again(conn, requests_mock, mon
     _upload(client)
     conn.execute("UPDATE resumes SET consent_at = '2026-09-01T10:00:00+00:00'")  # agreed to the old terms
     conn.commit()
-    _workers_ai(monkeypatch)
+    _openrouter(monkeypatch)
     monkeypatch.setattr(config, "RESUME_CONSENT_SINCE", "2026-09-25T00:00:00+00:00")
 
     page = client.get("/profile").get_data(as_text=True)
-    assert "changed how we read resumes" in page and "Cloudflare" in page
+    assert "changed how we read resumes" in page and "OpenRouter" in page
     assert 'name="consent" value="on"' not in page  # the old tick doesn't carry over
     assert _upload(client, consent=False).status_code == 400
 

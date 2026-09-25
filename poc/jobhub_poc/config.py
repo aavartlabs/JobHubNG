@@ -56,15 +56,21 @@ WEB_ORIGIN = os.environ.get("WEB_ORIGIN", "http://localhost:8100")
 # resume parsing / matching / tailoring stay queued ("AI offline"); nothing else depends on it.
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
-# Which LLM (ai/llm.py): "ollama" (above) or "workers_ai" -- Cloudflare Workers AI through an
-# AI Gateway (ai/workers_ai.py). Unset parts = "AI offline", as with Ollama.
+# Which LLM (ai/llm.py): "ollama" (above, development) or "openrouter" (ai/openrouter.py).
+# Model chains are tried in order. "write" tasks carry resume data: only models that don't
+# train on it (openrouter.py refuses "-contributor" tiers). "jobs" tasks are public postings.
 AI_BACKEND = os.environ.get("AI_BACKEND", "ollama")
-WORKERS_AI_ACCOUNT_ID = os.environ.get("WORKERS_AI_ACCOUNT_ID", "")
-WORKERS_AI_GATEWAY = os.environ.get("WORKERS_AI_GATEWAY", "")
-WORKERS_AI_TOKEN = os.environ.get("WORKERS_AI_TOKEN", "")
-WORKERS_AI_GATEWAY_TOKEN = os.environ.get("WORKERS_AI_GATEWAY_TOKEN", "")  # only for an authenticated gateway
-WORKERS_AI_MODEL = os.environ.get("WORKERS_AI_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
-WORKERS_AI_MAX_TOKENS = int(os.environ.get("WORKERS_AI_MAX_TOKENS", "4096"))
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+AI_MODELS_WRITE = [m.strip() for m in os.environ.get(
+    "AI_MODELS_WRITE", "openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash").split(",") if m.strip()]
+AI_MODELS_JOBS = [m.strip() for m in os.environ.get(
+    "AI_MODELS_JOBS", "meta/muse-spark-1.3-contributor,deepseek/deepseek-v4-flash").split(",") if m.strip()]
+OPENROUTER_ZDR = os.environ.get("OPENROUTER_ZDR", "") == "1"  # only zero-data-retention endpoints for resume data
+OPENROUTER_STRICT = os.environ.get("OPENROUTER_STRICT", "") == "1"  # strict schema (needs strict-compatible schemas)
+AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "4096"))
+# When OpenRouter is down, public job text may go straight to these (ai/direct.py; each needs
+# <NAME>_API_KEY / _BASE_URL / _MODEL in .env). Never resume data.
+DIRECT_JOBS_PROVIDERS = [p.strip() for p in os.environ.get("DIRECT_JOBS_PROVIDERS", "deepseek").split(",") if p.strip()]
 # Resume consent given before this ISO time no longer counts (resume_consent.py); set it to
 # the moment AI_BACKEND changes. Unset = the backend's own date.
 RESUME_CONSENT_SINCE = os.environ.get("RESUME_CONSENT_SINCE", "")

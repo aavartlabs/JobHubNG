@@ -9,10 +9,11 @@ _TERMS = {
     "ollama": ("", "JobsHub stores my resume (encrypted) and uses it to match me with jobs and to "
                    "tailor it for jobs I choose. It's processed on JobsHub's own machines, not sent "
                    "to other companies, and I can delete it any time."),
-    "workers_ai": ("2026-09-25", "JobsHub stores my resume (encrypted) and uses it to match me with "
-                                 "jobs and to tailor it for jobs I choose. To do that, its text is read "
-                                 "by an AI model that JobsHub runs on Cloudflare's Workers AI service. "
-                                 "It isn't shared with employers or anyone else, and I can delete it any time."),
+    "openrouter": ("2026-09-25", "JobsHub stores my resume (encrypted) and uses it to match me with "
+                                 "jobs and to tailor it for jobs I choose. To do that, its text is read by "
+                                 "AI services JobsHub uses (TypeSafe, and language models reached through "
+                                 "OpenRouter) that don't train on it. It isn't shared with employers or "
+                                 "anyone else, and I can delete it any time."),
 }
 
 
