@@ -13,3 +13,6 @@ __pycache__/
 # committed by accident regardless of what it ends up being named. No tracked file has
 # ever lived under any poc/ data/ directory (verified), so nothing is un-tracked by this.
 auth-service/data/
+
+# EverJobs build copied from pi05 (not ours to publish): see everjobs/README.md
+everjobs/runtime/

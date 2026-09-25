@@ -60,3 +60,9 @@ def test_goes_to_telegram_when_configured(tmp_path, monkeypatch):
     send_alert("x.service", sender, log_path=tmp_path / "none.log", host="pi09")
     [(chat_id, text)] = sender.sent
     assert chat_id == "4242" and "x.service FAILED on pi09" in text
+
+
+def test_a_cron_job_alert_points_at_its_log():
+    from datetime import datetime
+    text = build_message("pipeline", "srv", datetime(2026, 9, 25, 6, 0), ["boom"], check="the log logs/pipeline.log")
+    assert "pipeline FAILED on srv" in text and "Check: the log logs/pipeline.log" in text and "systemctl" not in text

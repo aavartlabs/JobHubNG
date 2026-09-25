@@ -107,3 +107,10 @@ def test_downloads_are_cleaned_up(tmp_path):
     work.mkdir()
     drill(store, TARGETS, today=TODAY, max_age_days=2, workdir=work)
     assert list(work.iterdir()) == []
+
+
+def test_drill_targets_follow_where_the_databases_live():
+    from jobhub_poc.ops.restore_drill import targets
+    assert [(t.host, t.name) for t in targets({})] == [("pi09", "jobhub.db"), ("pi09", "auth.db"), ("pi05", "warehouse.db")]
+    moved = targets({"JOBSHUB_DRILL_APP_HOST": "hostinger", "JOBSHUB_DRILL_WAREHOUSE_HOST": "hostinger"})
+    assert {t.host for t in moved} == {"hostinger"}

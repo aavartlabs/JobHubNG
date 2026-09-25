@@ -110,3 +110,44 @@ def test_missing_database_fails_loudly_without_uploading(tmp_path):
 def test_credentials_never_reach_the_command_line(tmp_path):
     _, _, calls = _run(tmp_path, _db(tmp_path / "jobhub.db"))
     assert calls and not any("s" == a or "k:s" in a for call in calls for a in call)
+
+
+PULL = SCRIPT.parent / "pull_backup.sh"
+# ssh/scp stand-ins: the "remote" is a directory on this machine, reached with no network.
+FAKE_SSH = """#!/usr/bin/env bash
+host=$1; shift
+cd "$FAKE_REMOTE_HOME" && bash -c "$*"
+"""
+FAKE_SCP = """#!/usr/bin/env bash
+[ "$1" = "-q" ] && shift
+src=${1#*:}; case "$src" in /*) ;; *) src="$FAKE_REMOTE_HOME/$src" ;; esac
+cp "$src" "$2"
+"""
+
+
+def test_pull_backup_copies_the_remote_databases_into_minio(tmp_path):
+    home = tmp_path / "remote-home"
+    site = home / "aavartlabs" / "jobshub"
+    for rel, rows in (("data/jobhub.db", 4), ("auth-service/data/auth.db", 2), ("scraper/data/warehouse.db", 7)):
+        (site / rel).parent.mkdir(parents=True, exist_ok=True)
+        _db(site / rel, rows=rows)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, body in (("ssh", FAKE_SSH), ("scp", FAKE_SCP)):
+        (bin_dir / name).write_text(body)
+        (bin_dir / name).chmod(0o755)
+    stub = tmp_path / "mc"
+    stub.write_text(STUB_MC)
+    stub.chmod(0o755)
+    store = tmp_path / "store"
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_REMOTE_HOME": str(home),
+           "MC": str(stub), "STUB_STORE": str(store), "STUB_LOG": str(tmp_path / "mc.log"),
+           "BACKUP_DATE": "2026-09-24", "MINIO_ENDPOINT": "http://minio.test:9000", "MINIO_ACCESS_KEY": "k",
+           "MINIO_SECRET_KEY": "s", "MINIO_BUCKET": "jobshub-data", "JOBSHUB_MINIO_ENV": "/dev/null"}
+    proc = subprocess.run(["bash", str(PULL)], env=env, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    for name, rows in (("jobhub.db", 4), ("auth.db", 2), ("warehouse.db", 7)):
+        obj = store / f"jobshub-data/backups/daily/2026-09-24/hostinger/{name}.gz"
+        restored = tmp_path / f"r-{name}"
+        restored.write_bytes(gzip.decompress(obj.read_bytes()))
+        assert sqlite3.connect(restored).execute("SELECT count(*) FROM t").fetchone()[0] == rows

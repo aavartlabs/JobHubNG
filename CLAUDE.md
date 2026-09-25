@@ -253,6 +253,25 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - To change the pipeline cadence: edit `OnCalendar=` in that timer file on **pi09**, then
   `ssh pi09 "systemctl --user daemon-reload && systemctl --user restart jobhub-pipeline.timer"`.
 
+- **Moving to the Hostinger server `testprepup` (planned 2026-09-25, not yet cut over):**
+  runbook `poc/deploy/hostinger.md`. That host is shared with other production sites (CRM,
+  DIP, aanvik, testprepup) and has no swap, so it gets `docker-compose.hostinger.yml`:
+  - a memory and CPU cap on every container;
+  - loopback-only ports;
+  - EverJobs as the `everjobs` container (`poc/everjobs/`; 2.6 GB peak).
+
+  The code pieces:
+  - `SCRAPER_HOST=local` runs the pi05 steps on the same host.
+  - `scripts/cron_job.sh` schedules jobs (no user linger or sudo there) and alerts the
+    admin when one fails.
+  - `scripts/pull_backup.sh` lets pi09 pull the server's DBs into MinIO, which the server
+    can't reach. The restore drill takes `JOBSHUB_DRILL_*_HOST`.
+  - The resume AI moves to Cloudflare Workers AI: `AI_BACKEND=workers_ai`, `ai/llm.py`,
+    `ai/workers_ai.py`, with gateway logging off. That changes the consent wording
+    (`resume_consent.py`): with `RESUME_CONSENT_SINCE` set, existing resume holders agree
+    again on /profile before any parsing or tailoring.
+  - The monthly cold export isn't scheduled there (it needs MinIO).
+
 ## Backups (MinIO on pi06, since 2026-09-24)
 
 - **What/when:** `jobshub-backup.timer` on pi09 (02:30 IST, user unit; templates in

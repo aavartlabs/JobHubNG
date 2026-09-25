@@ -6,6 +6,7 @@ of backup.log -- to the admin only: Telegram, else WhatsApp (admin_notify.py). S
 never get these.
 
     python -m jobhub_poc.ops.alert_admin jobshub-backup.service
+    python -m jobhub_poc.ops.alert_admin pipeline logs/pipeline.log   # a cron job (scripts/cron_job.sh)
 """
 import socket
 import sys
@@ -21,12 +22,12 @@ _TAIL_LINES = 8
 _MAX_LINE = 160
 
 
-def build_message(unit, host, when, log_lines):
+def build_message(unit, host, when, log_lines, check=None):
     lines = [f"JobsHub ops alert: {unit} FAILED on {host} at {when:%Y-%m-%d %H:%M}."]
     if log_lines:
         lines += ["", "Last log lines:"]
         lines += [line[:_MAX_LINE] for line in log_lines]
-    lines += ["", f"Check: systemctl --user status {unit}"]
+    lines += ["", f"Check: {check or f'systemctl --user status {unit}'}"]
     return "\n".join(lines)
 
 
@@ -38,17 +39,20 @@ def tail(path, n=_TAIL_LINES):
         return []
 
 
-def send_alert(unit, sender, log_path=LOG_PATH, host=None, now=None):
+def send_alert(unit, sender, log_path=LOG_PATH, host=None, now=None, check=None):
     """Sends the alert; returns the channel it went by. Raises if no admin channel took it."""
-    text = build_message(unit, host or socket.gethostname(), now or datetime.now(), tail(log_path))
+    text = build_message(unit, host or socket.gethostname(), now or datetime.now(), tail(log_path), check)
     return notify_admin(text, sender)
 
 
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("usage: python -m jobhub_poc.ops.alert_admin <failed unit>")
+    if len(sys.argv) not in (2, 3):
+        sys.exit("usage: python -m jobhub_poc.ops.alert_admin <failed unit or job> [its log file]")
     try:
-        channel = send_alert(sys.argv[1], LiveSender())
+        if len(sys.argv) == 3:  # a cron job: its own log, no systemd unit to look at
+            channel = send_alert(sys.argv[1], LiveSender(), log_path=sys.argv[2], check=f"the log {sys.argv[2]}")
+        else:
+            channel = send_alert(sys.argv[1], LiveSender())
     except Exception as exc:  # the failure itself is already in the journal; say why we couldn't tell anyone
         sys.exit(f"admin alert for {sys.argv[1]} not sent: {exc}")
     print(f"admin alert sent for {sys.argv[1]} by {channel}")

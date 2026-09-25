@@ -42,11 +42,20 @@ class Result:
     problem: str | None = None
 
 
-TARGETS = (
-    Target("pi09", "jobhub.db", ("jobs",)),
-    Target("pi09", "auth.db", ("user", "account")),
-    Target("pi05", "warehouse.db", ("jobs", "ingest_runs")),
-)
+def targets(env=os.environ):
+    """The backups to check, by the host label they're uploaded under. When the databases
+    move (e.g. to the Hostinger server, backed up by scripts/pull_backup.sh as "hostinger"),
+    set JOBSHUB_DRILL_APP_HOST / JOBSHUB_DRILL_WAREHOUSE_HOST in the drill's environment."""
+    app = env.get("JOBSHUB_DRILL_APP_HOST", "pi09")
+    warehouse = env.get("JOBSHUB_DRILL_WAREHOUSE_HOST", "pi05")
+    return (
+        Target(app, "jobhub.db", ("jobs",)),
+        Target(app, "auth.db", ("user", "account")),
+        Target(warehouse, "warehouse.db", ("jobs", "ingest_runs")),
+    )
+
+
+TARGETS = targets()
 
 
 def _check_one(store, target, today, max_age_days, workdir):
@@ -150,7 +159,7 @@ def main():
     env = {**os.environ, "MC_HOST_jb": f"{scheme}://{cfg['MINIO_ACCESS_KEY']}:{cfg['MINIO_SECRET_KEY']}@{hostport}"}
     store = McStore(os.environ.get("MC", str(Path.home() / "bin" / "mc")), cfg["MINIO_BUCKET"], env)
     with tempfile.TemporaryDirectory() as workdir:
-        results = drill(store, TARGETS, today=date.today(), max_age_days=2, workdir=workdir)
+        results = drill(store, targets(), today=date.today(), max_age_days=2, workdir=workdir)
     for r in results:
         status = "PASS" if r.ok else "FAIL"
         detail = ", ".join(f"{t}={n}" for t, n in r.counts.items()) if r.ok else r.problem

@@ -1,0 +1,51 @@
+# The Hostinger server (testprepup), layered over docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.hostinger.yml up -d
+# That host is shared with other production sites and has no swap, so every JobsHub
+# container gets a hard memory cap and a CPU share (a runaway scrape gets itself killed and
+# restarted, not its neighbours), and nothing is published beyond 127.0.0.1: the public
+# reaches the site only through the Cloudflare Tunnel (Turnstile, Cloudflare in front).
+# Docker-published ports bypass ufw, so loopback binds are the firewall here.
+services:
+  web:
+    ports: !override
+      - "127.0.0.1:8100:3000"
+    mem_limit: 768m
+    cpus: 1.0
+
+  ai:  # HTTP calls to Workers AI only (AI_BACKEND=workers_ai)
+    mem_limit: 256m
+    cpus: 0.5
+
+  auth-service:
+    mem_limit: 384m
+    cpus: 0.5
+
+  telegram:
+    mem_limit: 128m
+    cpus: 0.25
+
+  tunnel:
+    mem_limit: 128m
+    cpus: 0.25
+
+  # pi05's job-scraper service. It keeps each sweep in memory: 1.4 GB idle, 2.6 GB peak
+  # measured on pi05 (2026-09-25). The pipeline's scraper steps run on the host
+  # (SCRAPER_HOST=local) and call it on loopback.
+  everjobs:
+    build: ./everjobs
+    image: jobhub-everjobs
+    container_name: jobhub-everjobs
+    ports:
+      - "127.0.0.1:3001:3001"
+    mem_limit: 3g
+    cpus: 1.5
+    networks:
+      - jobhub
+    restart: unless-stopped
+
+  # Admin-message fallback only (Telegram is primary); its WhatsApp session belongs to pi09.
+  # Off here unless started on purpose: --profile whatsapp (after moving or re-pairing it).
+  whatsapp:
+    profiles: ["whatsapp"]
+    ports: !override
+      - "127.0.0.1:3100:3100"
