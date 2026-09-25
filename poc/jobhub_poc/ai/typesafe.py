@@ -17,7 +17,7 @@ class TypeSafeUnavailable(Unavailable):
 
 
 def available():
-    return bool(config.TYPESAFE_API_KEY)
+    return bool(config.TYPESAFE_API_KEY) and not config.AI_PAUSED
 
 
 def ask(state, questions, *, timeout=60):
@@ -26,6 +26,8 @@ def ask(state, questions, *, timeout=60):
     waits); RuntimeError when the request itself is wrong (the task fails)."""
     if not config.TYPESAFE_API_KEY:
         raise TypeSafeUnavailable("TYPESAFE_API_KEY is not set")
+    if config.AI_PAUSED:
+        raise TypeSafeUnavailable("AI is paused (AI_PAUSED=1)")
     try:
         resp = requests.post(URL, timeout=timeout, headers={"Authorization": f"Bearer {config.TYPESAFE_API_KEY}"},
                              json={"model": config.TYPESAFE_MODEL, "state": state, "questions": questions})

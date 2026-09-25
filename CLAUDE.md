@@ -390,8 +390,15 @@ verbatim are flagged ⚠) → the user reviews/edits it, and that edited version
 truth for later matching and tailoring. AI services unreachable: tasks wait (backing off), the
 UI says so. Delete button and admin deletion purge it (`routes_profile.purge_user_resume_data`).
 
-**AI (since 2026-09-25; Ollama removed): Jev decides, Muse finds, Luna writes, code has the
-final say.**
+**AI: two setups from one code base (2026-09-25).**
+- **Prod (pi09): `AI_BACKEND=ollama`** (the default). The local gemma4:e2b on Sanjay's
+  laptop does everything, one task at a time; there's no Jev key, so readings are the
+  model's own and matching is literal. Consent wording: "processed on JobsHub's own machines".
+- **Dev (testprepup): hosted and fully built, but `AI_PAUSED=1`.** No paid AI calls until
+  there's funding. Sanjay's call after about $5.45 of Meta spend in one day of testing, all
+  on this project's key, far above list price for the token counts shown. Unpausing
+  (`AI_PAUSED=`, `AI_READ_ALL_JOBS=1`) turns on: Jev decides, Muse finds, Luna writes,
+  code has the final say.
 - **Jev** (TypeSafe, `ai/typesafe.py`; every question set and threshold in `ai/judgments.py`)
   answers choice / noul / score questions in about 1 s per request.
 - **General models** (`ai/llm.py`) run as a chain per task. `task="write"` (resume data):

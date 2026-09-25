@@ -1,6 +1,7 @@
-"""The general (writing) LLMs the resume and job features use, through OpenRouter
-(ai/openrouter.py) and, for public job text only, providers' own APIs (ai/direct.py).
-Judgments are Jev's (ai/typesafe.py), not these.
+"""The general (writing) LLMs the resume and job features use, chosen by AI_BACKEND: "ollama"
+(a local model on the LAN, ai/ollama.py) or "openrouter" (hosted, ai/openrouter.py, plus
+providers' own APIs for public job text only, ai/direct.py). Judgments are Jev's
+(ai/typesafe.py), not these. AI_PAUSED=1: no calls at all.
 
 Every call says what it carries: task="write" is resume data (parsing, tailoring) and may
 only go to providers that don't train on it; task="jobs" is public job text and may also
@@ -25,18 +26,33 @@ class Unavailable(RuntimeError):
 
 
 def _backend():
-    from jobhub_poc.ai import openrouter
-    return openrouter
+    from jobhub_poc import config
+    if config.AI_BACKEND == "openrouter":
+        from jobhub_poc.ai import openrouter
+        return openrouter
+    from jobhub_poc.ai import ollama
+    return ollama
+
+
+def _paused():
+    from jobhub_poc import config
+    return config.AI_PAUSED
 
 
 def available(timeout=3):
-    return _backend().available(timeout=timeout)
+    return not _paused() and _backend().available(timeout=timeout)
 
 
 def generate(prompt, schema, *, timeout=300, task="write"):
     if task not in TASKS:
         raise ValueError(f"unknown task kind {task!r}")
+    if _paused():
+        raise Unavailable("AI is paused (AI_PAUSED=1)")
     backend = _backend()
+    if backend.__name__.endswith("ollama"):  # on the LAN: nothing leaves it, whatever the task
+        answer = backend.generate(prompt, schema, timeout=timeout)
+        _state.model = backend.model_name()
+        return answer
     from jobhub_poc.ai import direct
     # The chain for this task, in order: OpenRouter models, and (public job text only)
     # "direct:<name>" providers. chain() refuses a resume chain that names anything that

@@ -205,6 +205,7 @@ def test_no_jev_or_stale_consent_means_plain_matching_and_nothing_sent(conn, req
     monkeypatch.setattr(config, "TYPESAFE_API_KEY", "")
     assert client.get("/jobs/1/match").status_code == 200  # no Jev: literal now
     monkeypatch.setattr(config, "TYPESAFE_API_KEY", "ts-key")
+    monkeypatch.setattr(config, "AI_BACKEND", "openrouter")  # hosted: consent before the switch doesn't count
     conn.execute("UPDATE resumes SET consent_at = '2026-01-01T00:00:00+00:00'")
     conn.commit()
     assert client.get("/jobs/1/match").status_code == 200  # old consent: never sent to Jev
@@ -276,3 +277,14 @@ def test_a_skill_counts_as_written_only_as_whole_words():
     out = job_requirements.normalise({"required_skills": ["EMI", "Kafka"], "preferred_skills": []},
                                      "Our preeminent team uses Kafka daily.")
     assert out["required_skills"] == ["Kafka"]
+
+
+def test_reading_every_job_is_opt_in_and_off_while_paused(conn, monkeypatch, capsys):
+    from jobhub_poc.ai import queue_reads
+    monkeypatch.setattr("sys.argv", ["queue_reads"])
+    monkeypatch.setattr(config, "AI_READ_ALL_JOBS", False)
+    queue_reads.main()
+    monkeypatch.setattr(config, "AI_READ_ALL_JOBS", True)
+    monkeypatch.setattr(config, "AI_PAUSED", True)
+    queue_reads.main()
+    assert capsys.readouterr().out.count("not queueing") == 2

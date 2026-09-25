@@ -131,6 +131,9 @@ def _loop(n):
     conn = db.get_connection()
     wait = 5
     while True:
+        if config.AI_PAUSED:  # paid AI switched off: queued work simply waits
+            time.sleep(60)
+            continue
         if tasks.pending_count(conn) == 0:
             time.sleep(3)
             continue

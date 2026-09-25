@@ -31,10 +31,14 @@ def queue(conn, limit=None, reread_old=False):
 
 
 def main():
+    from jobhub_poc import config
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--limit", type=int)
     ap.add_argument("--reread-old", action="store_true", help="also re-read jobs read before Jev")
     args = ap.parse_args()
+    if config.AI_PAUSED or not config.AI_READ_ALL_JOBS:
+        print("not queueing job readings (AI_READ_ALL_JOBS=1 and AI_PAUSED unset turn it on)")
+        return
     conn = db.get_connection()
     db.init_db(conn)
     print(f"queued {queue(conn, args.limit, args.reread_old)} job reading(s)")

@@ -8,7 +8,7 @@ import requests
 from cryptography.fernet import Fernet
 
 from jobhub_poc import config, crypto, resume_parse
-from jobhub_poc.ai import llm, tasks, worker
+from jobhub_poc.ai import llm, ollama, tasks, worker
 from jobhub_poc.resume_text import ResumeUnreadable, detect_kind, extract_text
 from jobhub_poc.webapp.app import create_app
 
@@ -196,6 +196,37 @@ def test_worker_waits_when_the_llm_is_away_and_gives_up_after_errors(conn, monke
     assert conn.execute("SELECT parse_status FROM resumes").fetchone()[0] == "failed"
 
 
+def test_ollama_client_needs_configuration(monkeypatch):
+    monkeypatch.setattr(config, "OLLAMA_URL", "")
+    assert ollama.available() is False
+    with pytest.raises(ollama.OllamaUnavailable):
+        ollama.generate("x", {})
+
+
+def test_ollama_client_parses_structured_answer(monkeypatch, requests_mock):
+    monkeypatch.setattr(config, "OLLAMA_URL", "http://llm.test:11434")
+    requests_mock.post("http://llm.test:11434/api/generate", json={"response": '{"ok": true}'})
+    assert ollama.generate("x", {"type": "object"}) == {"ok": True}
+    body = requests_mock.last_request.json()
+    assert body["format"] == {"type": "object"} and body["options"]["temperature"] == 0 and body["stream"] is False
+    requests_mock.post("http://llm.test:11434/api/generate", json={"response": "not json"})
+    with pytest.raises(RuntimeError):
+        ollama.generate("x", {})
+
+
+def test_paused_ai_makes_no_calls_at_all(monkeypatch, requests_mock):
+    from jobhub_poc.ai import typesafe
+    _openrouter(monkeypatch)
+    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "ts-key")
+    monkeypatch.setattr(config, "AI_PAUSED", True)
+    assert llm.available() is False and typesafe.available() is False
+    with pytest.raises(llm.Unavailable):
+        llm.generate("x", {}, task="jobs")
+    with pytest.raises(typesafe.TypeSafeUnavailable):
+        typesafe.ask("s", {"q": {}})
+    assert requests_mock.call_count == 0
+
+
 # ---- /profile routes ----
 
 def _client(conn, requests_mock, user_id="u1", verified=True):
@@ -340,6 +371,7 @@ OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def _openrouter(monkeypatch, write=("openai/test-a", "deepseek/test-b"), jobs=("meta/test-contributor",)):
+    monkeypatch.setattr(config, "AI_BACKEND", "openrouter")
     monkeypatch.setattr(config, "OPENROUTER_API_KEY", "or-key")
     monkeypatch.setattr(config, "AI_MODELS_WRITE", list(write))
     monkeypatch.setattr(config, "AI_MODELS_JOBS", list(jobs))
@@ -352,14 +384,16 @@ def _answer(content, model="openai/test-a"):
 
 def test_backend_is_chosen_by_config(monkeypatch):
     _openrouter(monkeypatch)
-    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
-    assert llm.available() is False
+    monkeypatch.setattr(config, "AI_BACKEND", "ollama")
+    monkeypatch.setattr(config, "OLLAMA_URL", "")
+    assert llm.available() is False and llm.model_name() == config.OLLAMA_MODEL
     with pytest.raises(llm.Unavailable):
         llm.generate("x", {})
     _openrouter(monkeypatch)
     assert llm.available() is True and llm.model_name() == "openai/test-a"
-    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
-    assert llm.available() is False
+    monkeypatch.setattr(config, "AI_BACKEND", "ollama")
+    monkeypatch.setattr(config, "OLLAMA_URL", "")
+    assert llm.available() is False and llm.model_name() == config.OLLAMA_MODEL
 
 
 def test_resume_data_goes_only_to_providers_that_dont_train_on_it(monkeypatch, requests_mock):
