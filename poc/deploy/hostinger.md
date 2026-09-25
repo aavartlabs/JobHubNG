@@ -40,7 +40,7 @@ Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge
 2. **Network:** `docker network create jobhub`. The shared `edge` network already exists.
 3. **Env files.** Copy them straight from pi09 to the server, never through this repo;
    key files are one bare token each, on harita.
-   - `.env`, from pi09's, then set:
+   - `.env`, from pi09's, then set (`AI_WORKERS=6` too: hosted models take parallel requests):
 
      | Setting | Value |
      |---|---|
@@ -52,7 +52,7 @@ Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge
      | `OPENROUTER_API_KEY` | from harita `~/.env.openrouter` |
      | `AI_MODELS_WRITE`, `AI_MODELS_JOBS` | from the bake-off |
      | `DEEPSEEK_API_KEY` | from `~/.env.deepseek` |
-     | `META_API_KEY` | from `~/.env.meta`; plus `META_BASE_URL=https://api.meta.ai/v1`, `META_MODEL=muse-spark-1.3-contributor`, `META_JSON=schema`, `META_REASONING_EFFORT=minimal`. `AI_MODELS_JOBS=direct:meta,openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash`. Muse contributor trains on prompts, so it gets public job text only (enforced in code). |
+     | `META_API_KEY` | from `~/.env.meta`; plus `META_BASE_URL=https://api.meta.ai/v1`, `META_MODEL=muse-spark-1.2-contributor` (from this server Meta offers only 1.2 — check `GET /v1/models` from the server itself), `META_JSON=schema`, `META_REASONING_EFFORT=minimal`. `AI_MODELS_JOBS=direct:meta,openai/gpt-6-luna-pro,deepseek/deepseek-v4-flash`. Muse contributor trains on prompts, so it gets public job text only (enforced in code). |
      | `TYPESAFE_API_KEY` | from `~/.env.typesafe.ai` (Phase B) |
      | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | the **dev bot's** |
      | `RESUME_ENCRYPTION_KEY` | kept as on pi09, so copied resumes still decrypt |
