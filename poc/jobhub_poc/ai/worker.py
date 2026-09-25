@@ -4,7 +4,7 @@ kept, never dropped. Container `jobhub-ai`: `python -m jobhub_poc.ai.worker`."""
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from jobhub_poc import config, crypto, db, job_requirements, resume_consent, resume_parse, tailoring
 from jobhub_poc.webapp.job_text import plain_text
@@ -139,7 +139,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     conn = db.get_connection()
     db.init_db(conn)
-    tasks.requeue_stale(conn)
+    # One worker process (the jobhub-ai container): anything still 'running' now was cut off
+    # by its restart, so it goes straight back to the queue rather than after 15 minutes.
+    tasks.requeue_stale(conn, older_than=timedelta(0))
     conn.close()
     count = max(1, config.AI_WORKERS)
     log.info("AI worker: %d thread(s)", count)
