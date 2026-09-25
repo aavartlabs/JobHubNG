@@ -50,7 +50,10 @@ def model_name():
     return models[0] if models else ""
 
 
-def _ask(model, prompt, schema, task, timeout):
+def ask(model, prompt, schema, task, timeout):
+    """One model, one try: (answer, the model that served it, usage incl. cost in USD)."""
+    if task in SENSITIVE and TRAINS_ON_PROMPTS.search(model):
+        raise RuntimeError(f"refusing to send resume data to {model}: it trains on prompts")
     provider = {"require_parameters": True}
     if task in SENSITIVE:
         provider["data_collection"] = "deny"
@@ -63,7 +66,8 @@ def _ask(model, prompt, schema, task, timeout):
             "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_schema",
                                 "json_schema": {"name": "answer", "strict": config.OPENROUTER_STRICT, "schema": schema}},
-            "temperature": 0, "max_tokens": config.AI_MAX_TOKENS, "provider": provider})
+            "temperature": 0, "max_tokens": config.AI_MAX_TOKENS, "provider": provider,
+            "usage": {"include": True}})
     except requests.RequestException as exc:  # never echo it: the headers hold the key
         raise OpenRouterUnavailable(f"{model}: unreachable ({type(exc).__name__})") from None
     if resp.status_code in (402, 408, 429) or resp.status_code >= 500:
@@ -78,7 +82,7 @@ def _ask(model, prompt, schema, task, timeout):
         raise _BadAnswer(f"{model}: answer wasn't the JSON asked for") from exc
     if not isinstance(answer, dict):
         raise _BadAnswer(f"{model}: answer wasn't a JSON object")
-    return answer, body.get("model") or model
+    return answer, body.get("model") or model, body.get("usage") or {}
 
 
 def generate(prompt, schema, *, timeout=300, task="write"):
@@ -91,7 +95,8 @@ def generate(prompt, schema, *, timeout=300, task="write"):
     busy, bad = [], []
     for model in models:
         try:
-            return _ask(model, prompt, schema, task, timeout)
+            answer, served, _usage = ask(model, prompt, schema, task, timeout)
+            return answer, served
         except OpenRouterUnavailable as exc:
             busy.append(str(exc))
         except _BadAnswer as exc:

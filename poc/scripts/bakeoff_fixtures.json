@@ -1,0 +1,82 @@
+{
+  "_note": "Made-up people and postings for scripts/ai_bakeoff.py. No real user data. Some pairs are deliberate mismatches: a good model stays within the resume instead of stretching it.",
+  "resumes": [
+    {
+      "name": "Asha Rao", "headline": "Senior SRE", "location": "Bengaluru", "links": [],
+      "summary": "SRE with 8 years running payment platforms.",
+      "skills": ["Kubernetes", "Terraform", "AWS", "Python", "Prometheus"],
+      "roles": [
+        {"id": "r1", "title": "Senior SRE", "company": "Acme Pay", "location": "", "start": "Jan 2020", "end": "Present",
+         "bullets": [
+           {"id": "r1b1", "text": "Ran 12 Kubernetes clusters serving 3M daily payments."},
+           {"id": "r1b2", "text": "Cut paging noise by 40% with Prometheus alert rules."},
+           {"id": "r1b3", "text": "Led the move of 30 services from VMs to Kubernetes over 9 months."},
+           {"id": "r1b4", "text": "Organised the office football league."}]},
+        {"id": "r2", "title": "Systems Engineer", "company": "Beta Labs", "location": "", "start": "2016", "end": "Dec 2019",
+         "bullets": [
+           {"id": "r2b1", "text": "Automated server builds with Terraform on AWS."},
+           {"id": "r2b2", "text": "Wrote Python tooling for backups."}]}],
+      "education": ["B.E. Computer Science, 2015"]
+    },
+    {
+      "name": "Rahul Mehta", "headline": "Data Engineer", "location": "Pune", "links": [],
+      "summary": "Data engineer building batch and streaming pipelines for retail analytics.",
+      "skills": ["Python", "SQL", "Apache Spark", "Airflow", "Kafka", "BigQuery"],
+      "roles": [
+        {"id": "r1", "title": "Data Engineer", "company": "ShopKart", "location": "Pune", "start": "Mar 2021", "end": "Present",
+         "bullets": [
+           {"id": "r1b1", "text": "Built Spark jobs that process 2 TB of order events every night."},
+           {"id": "r1b2", "text": "Moved 40 Airflow DAGs to a shared template, cutting failures by half."},
+           {"id": "r1b3", "text": "Set up a Kafka stream feeding stock levels to BigQuery within 5 minutes."}]},
+        {"id": "r2", "title": "Analyst", "company": "Metrix", "location": "Mumbai", "start": "2018", "end": "Feb 2021",
+         "bullets": [
+           {"id": "r2b1", "text": "Wrote SQL reports used by 6 regional sales teams."},
+           {"id": "r2b2", "text": "Automated weekly Excel exports with Python."}]}],
+      "education": ["B.Tech Information Technology, 2018"]
+    },
+    {
+      "name": "Neha Iyer", "headline": "Frontend Developer", "location": "Chennai", "links": [],
+      "summary": "Frontend developer focused on fast, accessible web apps.",
+      "skills": ["TypeScript", "React", "CSS", "Accessibility", "Jest"],
+      "roles": [
+        {"id": "r1", "title": "Frontend Developer", "company": "TravelNest", "location": "Chennai", "start": "2022", "end": "Present",
+         "bullets": [
+           {"id": "r1b1", "text": "Rebuilt the booking flow in React and TypeScript, lifting completed bookings by 12%."},
+           {"id": "r1b2", "text": "Brought the site to WCAG 2.1 AA across 40 pages."},
+           {"id": "r1b3", "text": "Added Jest tests that cover 80% of UI components."}]},
+        {"id": "r2", "title": "Web Developer", "company": "PixelWorks", "location": "Chennai", "start": "2019", "end": "2021",
+         "bullets": [
+           {"id": "r2b1", "text": "Built marketing sites for 15 clients with HTML and CSS."}]}],
+      "education": ["B.Sc Computer Science, 2019"]
+    },
+    {
+      "name": "Imran Sheikh", "headline": "Project Manager", "location": "Hyderabad", "links": [],
+      "summary": "Project manager delivering software projects for banking clients.",
+      "skills": ["Project planning", "Scrum", "Jira", "Stakeholder management", "Risk management"],
+      "roles": [
+        {"id": "r1", "title": "Project Manager", "company": "FinServe", "location": "Hyderabad", "start": "2019", "end": "Present",
+         "bullets": [
+           {"id": "r1b1", "text": "Ran delivery for a 25-person team building a loan origination system."},
+           {"id": "r1b2", "text": "Introduced Scrum and Jira, shortening release cycles from 8 to 3 weeks."},
+           {"id": "r1b3", "text": "Kept a 2 crore budget within 5% over 18 months."}]},
+        {"id": "r2", "title": "Business Analyst", "company": "CodeBridge", "location": "Hyderabad", "start": "2015", "end": "2019",
+         "bullets": [
+           {"id": "r2b1", "text": "Wrote requirements for 12 banking integrations."}]}],
+      "education": ["MBA, 2015"]
+    }
+  ],
+  "jobs": [
+    {"title": "Platform Engineer", "company": "Zeta",
+     "text": "Zeta is hiring a Platform Engineer. You will run our Kubernetes platform on GCP and write tooling in Go. Required: 5+ years of experience, Kubernetes, Go, GCP. Nice to have: Terraform and Prometheus. Hybrid in Bengaluru.",
+     "requirements": {"required_skills": ["Kubernetes", "Go", "GCP"], "preferred_skills": ["Terraform", "Prometheus"]}},
+    {"title": "Senior Data Engineer", "company": "Kappa Retail",
+     "text": "We need a Senior Data Engineer to own our streaming platform. Must have: Python, Apache Spark, Kafka and 4 years of data engineering. Good to have: dbt, Snowflake. Remote within India.",
+     "requirements": {"required_skills": ["Python", "Apache Spark", "Kafka"], "preferred_skills": ["dbt", "Snowflake"]}},
+    {"title": "Frontend Engineer", "company": "Lumen",
+     "text": "Lumen is looking for a Frontend Engineer (React, TypeScript). You'll build accessible product UI. Required: React, TypeScript, 3+ years. Preferred: Next.js, GraphQL, accessibility experience. On-site in Chennai.",
+     "requirements": {"required_skills": ["React", "TypeScript"], "preferred_skills": ["Next.js", "GraphQL", "accessibility"]}},
+    {"title": "Technical Program Manager", "company": "Orbit Bank",
+     "text": "Orbit Bank seeks a Technical Program Manager to run cross-team programs. Required: 7 years of program or project management, Agile, stakeholder management. Preferred: PMP certification, cloud migration experience. Mumbai, hybrid.",
+     "requirements": {"required_skills": ["program management", "Agile", "stakeholder management"], "preferred_skills": ["PMP", "cloud migration"]}}
+  ]
+}
