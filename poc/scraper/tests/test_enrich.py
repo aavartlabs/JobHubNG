@@ -134,3 +134,18 @@ def test_jobs_the_site_shows_are_fetched_first(conn):
     fetch = _fake(("gone", None, None))
     enrich.enrich(conn, 1, 7, 0, now=NOW, fetch=fetch, first_terms=("engineer",))
     assert fetch.calls == [("C", "2")]
+
+
+def test_a_repost_under_a_new_id_is_enriched_under_the_id_its_record_carries(conn):
+    """The same job reposted under a new EverJobs id folds into the first row by
+    fingerprint; the stored record (and every later sweep) carries the new id."""
+    ingest(conn, [_sr_job("tt-1")], max_posted_age_days=60, now=NOW)
+    repost = _sr_job("tt-2", url="https://api.smartrecruiters.com/v1/companies/TurnerTownsend/postings/2")
+    ingest(conn, [repost], max_posted_age_days=60, now=NOW + timedelta(hours=6))
+    assert conn.execute("SELECT source_id FROM jobs").fetchone()[0] == "tt-1"
+    fetch = _fake(("ok", "Job Description:\n<p>x</p>", "https://jobs.smartrecruiters.com/TurnerTownsend/2-x"))
+    stats = enrich.enrich(conn, 10, 7, 0, now=NOW + timedelta(hours=6), fetch=fetch)
+    assert fetch.calls == [("TurnerTownsend", "2")] and stats["updated"] == 1
+    assert conn.execute("SELECT description FROM jobs").fetchone()[0] == "Job Description:\n<p>x</p>"
+    again = ingest(conn, [repost], max_posted_age_days=60, now=NOW + timedelta(hours=12))
+    assert again["unchanged"] == 1

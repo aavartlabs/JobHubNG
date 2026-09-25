@@ -202,11 +202,11 @@ def overlay(conn, job):
             "_enriched": found["source"]}
 
 
-def refresh_enriched(conn, source_id, now=None):
-    """Apply a new enrichment to the stored job now (a normal content change: the old
-    version goes to job_versions and updated_at moves, so export.py sends it in full).
-    True if the row changed. Doesn't commit."""
-    row = conn.execute("SELECT * FROM jobs WHERE source_id = ?", (source_id,)).fetchone()
+def refresh_enriched(conn, job_id, now=None):
+    """Apply a new enrichment to the stored job (jobs.id) now -- a normal content change:
+    the old version goes to job_versions and updated_at moves, so export.py sends it in
+    full. True if the row changed. Doesn't commit."""
+    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if row is None:
         return False
     job = json.loads(row["raw_json"])

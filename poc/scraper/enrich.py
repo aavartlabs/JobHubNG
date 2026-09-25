@@ -74,8 +74,11 @@ def fetch_posting(company, posting, session=None, timeout=15):
 
 
 def candidates(conn, retry_after_days, now, first_terms=()):
-    """(source_id, company, posting id) for SmartRecruiters jobs in the latest sweep that
-    have no description and no enrichment worth keeping (ok / gone / a recent error).
+    """(jobs row id, enrichment key, company, posting id) for SmartRecruiters jobs in the
+    latest sweep that have no description and no enrichment worth keeping (ok / gone / a
+    recent error). The key is the EverJobs id of the record carrying the link -- the one
+    warehouse.overlay looks up -- which isn't always the row's source_id: a repost matched
+    by fingerprint keeps the row's first id but brings a new record.
     Jobs whose title contains one of `first_terms` (the site's [serving] search terms --
     what export.py sends to pi09) come first, newest first: the per-run cap is spent on
     jobs people can actually see."""
@@ -84,17 +87,22 @@ def candidates(conn, retry_after_days, now, first_terms=()):
         return []
     retry_before = (now - timedelta(days=retry_after_days)).isoformat()
     rows = conn.execute(
-        """SELECT j.source_id, j.title, j.raw_json FROM jobs j LEFT JOIN enrichments e ON e.source_id = j.source_id
-           WHERE j.last_seen_at = ? AND j.source_id IS NOT NULL AND COALESCE(TRIM(j.description), '') = ''
-             AND (e.source_id IS NULL OR (e.status = 'error' AND e.fetched_at < ?))
-           ORDER BY j.first_seen_at DESC""", (latest, retry_before)).fetchall()
+        """SELECT id, source_id, title, raw_json FROM jobs
+           WHERE last_seen_at = ? AND COALESCE(TRIM(description), '') = '' ORDER BY first_seen_at DESC""",
+        (latest,)).fetchall()
+    done = {r["source_id"]: (r["status"], r["fetched_at"]) for r in conn.execute("SELECT * FROM enrichments")}
     shown, rest = [], []
     for row in rows:
         raw = json.loads(row["raw_json"])
         parts = smartrecruiters_api(raw.get("jobUrl")) or smartrecruiters_api(raw.get("applyUrl"))
-        if parts:
-            title = (row["title"] or "").lower()
-            (shown if any(t in title for t in first_terms) else rest).append((row["source_id"], *parts))
+        key = str(raw["id"]) if raw.get("id") is not None else row["source_id"]
+        if not parts or not key:
+            continue
+        status, fetched_at = done.get(key, (None, None))
+        if status in ("ok", "gone") or (status == "error" and fetched_at >= retry_before):
+            continue
+        title = (row["title"] or "").lower()
+        (shown if any(t in title for t in first_terms) else rest).append((row["id"], key, *parts))
     return shown + rest
 
 
@@ -114,7 +122,7 @@ def enrich(conn, max_per_run, retry_after_days, delay_ms, now=None, fetch=fetch_
     stats = {"candidates": len(todo), "fetched": 0, "ok": 0, "gone": 0, "errors": 0, "updated": 0,
              "rate_limited": False}
     session = requests.Session()
-    for i, (source_id, company, posting) in enumerate(todo[:max_per_run]):
+    for i, (row_id, source_id, company, posting) in enumerate(todo[:max_per_run]):
         if i and delay_ms:
             sleep(delay_ms / 1000)
         stats["fetched"] += 1
@@ -130,7 +138,7 @@ def enrich(conn, max_per_run, retry_after_days, delay_ms, now=None, fetch=fetch_
             continue
         with conn:  # one job at a time: a crash keeps what was done
             _record(conn, source_id, status, description, page, now=now)
-            if status == "ok" and refresh_enriched(conn, source_id, now):
+            if status == "ok" and refresh_enriched(conn, row_id, now):
                 stats["updated"] += 1
         stats[status] += 1
     return stats
