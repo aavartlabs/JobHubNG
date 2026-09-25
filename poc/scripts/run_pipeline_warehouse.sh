@@ -55,6 +55,11 @@ PREV_TERMS_FP=$(.venv/bin/python -m jobhub_poc.loader.load_delta --print-terms-f
 if [ "${TERMS_FP}" != "${PREV_TERMS_FP}" ]; then
     echo "alert terms changed (${PREV_TERMS_FP:-none} -> ${TERMS_FP}): full re-scan"
     SINCE=""
+elif [ "${FULL_SYNC:-0}" = "1" ]; then
+    # On request: every matching warehouse row in full -- e.g. to send descriptions enriched
+    # in earlier runs (before the watermark), which a normal delta never picks up again.
+    echo "full re-scan requested (FULL_SYNC=1)"
+    SINCE=""
 fi
 to_scraper "${TERMS_FILE}" "${TERMS_FILE}"
 EXPORT_JSON=$(on_scraper ".venv/bin/python export.py --out ${REMOTE_DELTA} --extra-terms-file ${TERMS_FILE} ${SINCE:+--since '${SINCE}'}")

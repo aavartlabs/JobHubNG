@@ -27,7 +27,7 @@ def _venv(root):
     python.chmod(python.stat().st_mode | stat.S_IEXEC)
 
 
-def test_local_mode_runs_every_step_without_ssh(tmp_path):
+def _run(tmp_path, **extra):
     app = tmp_path / "app"
     (app / "scripts").mkdir(parents=True)
     shutil.copy(SCRIPT, app / "scripts" / SCRIPT.name)
@@ -42,9 +42,13 @@ def test_local_mode_runs_every_step_without_ssh(tmp_path):
     env = {**os.environ, "SCRAPER_HOST": "local", "LOG": str(log), "PATH": f"{bin_dir}:{os.environ['PATH']}",
            "REMOTE_DELTA": str(tmp_path / "delta.jsonl.gz"), "TERMS_FILE": str(tmp_path / "terms.json"),
            "NEW_IDS": str(tmp_path / "new_ids.json")}
-    result = subprocess.run(["bash", str(app / "scripts" / SCRIPT.name)], env=env, capture_output=True, text=True)
+    result = subprocess.run(["bash", str(app / "scripts" / SCRIPT.name)], env={**env, **extra}, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    calls = log.read_text().splitlines()
+    return result, log.read_text().splitlines()
+
+
+def test_local_mode_runs_every_step_without_ssh(tmp_path):
+    result, calls = _run(tmp_path)
     scraper = [c for c in calls if c.startswith("scraper ")]
     assert [c.split()[1] for c in scraper] == ["ingest.py", "enrich.py", "export.py"]
     assert "--since 2026-09-25T00:00:00+00:00" in scraper[2]
@@ -53,3 +57,9 @@ def test_local_mode_runs_every_step_without_ssh(tmp_path):
     assert any("jobhub_poc.loader.purge" in c for c in calls) and any("run_alerts" in c for c in calls)
     assert any("jobhub_poc.ai.queue_reads" in c for c in calls)
     assert "pipeline complete" in result.stdout
+
+
+def test_full_sync_exports_everything_without_a_watermark(tmp_path):
+    result, calls = _run(tmp_path, FULL_SYNC="1")
+    export = next(c for c in calls if c.startswith("scraper export.py"))
+    assert "--since" not in export and "full re-scan requested (FULL_SYNC=1)" in result.stdout
