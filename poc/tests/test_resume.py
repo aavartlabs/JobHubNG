@@ -529,3 +529,27 @@ def test_a_resume_chain_naming_a_direct_provider_is_refused(monkeypatch, request
     with pytest.raises(RuntimeError, match="public job text only"):
         llm.generate("resume text", {}, task="write")
     assert requests_mock.call_count == 0
+
+
+def test_turning_jev_on_with_the_local_model_asks_for_consent_again(conn, requests_mock, monkeypatch):
+    from jobhub_poc import match_evidence
+    client = _client(conn, requests_mock)
+    _upload(client)
+    owner = conn.execute("SELECT owner_auth_user_id FROM resumes").fetchone()[0]
+    conn.execute("UPDATE resumes SET consent_at = '2026-09-20T10:00:00+00:00'")  # agreed: local model only
+    conn.commit()
+    assert "TypeSafe" not in client.get("/profile").get_data(as_text=True)
+    monkeypatch.setattr(config, "AI_BACKEND", "ollama")
+    monkeypatch.setattr(config, "TYPESAFE_API_KEY", "k")
+    monkeypatch.setattr(config, "RESUME_CONSENT_SINCE", "2026-09-25T00:00:00+00:00")  # the moment Jev goes on
+
+    page = client.get("/profile").get_data(as_text=True)
+    assert "changed how we read resumes" in page and "TypeSafe" in page and "not my name or contact details" in page
+    # Jev sees no resume data (match evidence) until they agree again: matching stays literal.
+    reqs = {"required_skills": ["Go"]}
+    assert match_evidence.state(conn, owner, "k1", {"skills": ["Go"]}, reqs, 5) == ("literal", None)
+    assert conn.execute("SELECT COUNT(*) FROM ai_tasks WHERE kind = 'match'").fetchone()[0] == 0
+
+    assert client.post("/profile/consent", data={"consent": "on"}).status_code == 302
+    assert "changed how we read resumes" not in client.get("/profile").get_data(as_text=True)
+    assert match_evidence.state(conn, owner, "k1", {"skills": ["Go"]}, reqs, 5) == ("pending", None)
