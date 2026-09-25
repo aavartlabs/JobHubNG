@@ -1,119 +1,178 @@
 # JobsHub on the Hostinger server (testprepup)
 
 This runbook moves the whole site, the web app and the scraper, from the two Raspberry Pis
-onto one server. That server is **shared with other production sites** (CRM, DIP, aanvik,
-testprepup) and has no swap.
+onto one server. It runs first at `jobshub-dev.aavartlabs.com`, side by side with the live
+site, then takes over `jobshub.aavartlabs.com`.
 
-The rules here follow from that:
-- Every container gets a hard memory and CPU cap (`docker-compose.hostinger.yml`).
-- Nothing is published beyond `127.0.0.1`. Docker-published ports bypass `ufw`, so the
-  loopback binds are the firewall.
-- JobsHub keeps its own `jobhub` network.
-- The shared `edge-nginx` isn't touched: the public keeps reaching the site through the
-  Cloudflare Tunnel, as on pi09.
+The server is **shared with other production sites** (CRM, DIP, aanvik, testprepup.com) and
+has no swap. So:
+- every JobsHub container has a hard memory and CPU cap (`docker-compose.hostinger.yml`);
+- nothing is published beyond `127.0.0.1` (Docker's published ports bypass `ufw`);
+- the only public way in is the host's shared `edge-nginx`, and only from Cloudflare.
 
-Every step on that server needs Sanjay's go.
+**Every step on that server needs Sanjay's go.**
 
-## Layout on the server
+## What runs where
 
 ```
-~/aavartlabs/jobshub/            rsync of poc/ (like ~/jobhub-poc on pi09; not a git checkout)
-  .env, auth-service/.env        copied from pi09, then edited (see below)
-  secrets/cloudflare-tunnel.token
-  data/jobhub.db                 serving DB        (was pi09)
-  auth-service/data/auth.db      accounts          (was pi09)
-  scraper/data/warehouse.db      warehouse         (was pi05)
-  .venv/, scraper/.venv/         host venvs for the pipeline CLIs (python3.12 is there)
+Browser → Cloudflare (proxied DNS, TLS, Access on dev) → testprepup:443 edge-nginx (shared)
+  → jobhub-web:3000 over the "edge" network (deploy/nginx/<host>.conf)
+~/aavartlabs/jobshub/            rsync of poc/ (not a git checkout)
+  containers   web, auth-service, telegram, ai (queue worker), everjobs   (tunnel, whatsapp: off)
+  data/jobhub.db  auth-service/data/auth.db  scraper/data/warehouse.db   (SQLite, local disk)
+  .venv/, scraper/.venv/         host venvs for the pipeline CLIs
   logs/                          cron job logs (scripts/cron_job.sh)
+~/.jobshub-r2.env (0600)         R2 credentials for backups and cold export
 ```
 
-## 1. Set up (no traffic yet)
+**AI:** `AI_BACKEND=openrouter`.
+- **Resume work** (`AI_MODELS_WRITE`) goes only to models that don't train on it.
+- **Public job text** (`AI_MODELS_JOBS`) may use any model, and direct DeepSeek/Meta keys
+  when OpenRouter is down.
+- The chains come from `scripts/ai_bakeoff.py` (see "Model choice" below).
 
-1. Copy the code: `rsync -a --exclude .env --exclude data/ --exclude .venv/ --exclude
+## 1. Set up (nothing public)
+
+1. **Code:** `rsync -a --exclude .env --exclude data/ --exclude .venv/ --exclude
    'whatsapp-sender/auth_info/' --exclude 'auth-service/data/' --exclude secrets/ poc/
-   testprepup:aavartlabs/jobshub/`.
-2. Copy EverJobs' bundle into `everjobs/runtime/` first (`everjobs/README.md`).
-3. Create the network: `docker network create jobhub`.
-4. Set up the env files. Copy pi09's `.env` and `auth-service/.env` (scp from pi09 to the
-   server; never through this repo), then set:
-   - `AI_BACKEND=workers_ai`, `WORKERS_AI_ACCOUNT_ID`, `WORKERS_AI_GATEWAY`,
-     `WORKERS_AI_TOKEN` (and `WORKERS_AI_GATEWAY_TOKEN` for an authenticated gateway).
-     Turn logging off on the gateway itself too.
-   - `NOTIFIER_BACKEND=console` until the cutover.
-   - `EVER_JOBS_API_URL=http://127.0.0.1:3001` in `scraper/.env`.
-5. Create the venvs:
-   - `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
-   - the same in `scraper/`
-6. Start the containers except the tunnel:
+   testprepup:aavartlabs/jobshub/`. Also copy EverJobs' bundle into `everjobs/runtime/`
+   (`everjobs/README.md`).
+2. **Network:** `docker network create jobhub`. The shared `edge` network already exists.
+3. **Env files.** Copy them straight from pi09 to the server, never through this repo;
+   key files are one bare token each, on harita.
+   - `.env`, from pi09's, then set:
+
+     | Setting | Value |
+     |---|---|
+     | `WEB_ORIGIN` | `https://jobshub-dev.aavartlabs.com` |
+     | `TURNSTILE_HOSTNAMES` | `jobshub-dev.aavartlabs.com` |
+     | `LEGACY_HOSTS` | empty |
+     | `NOTIFIER_BACKEND` | `console` (no digests from dev) |
+     | `AI_BACKEND` | `openrouter` |
+     | `OPENROUTER_API_KEY` | from harita `~/.env.openrouter` |
+     | `AI_MODELS_WRITE`, `AI_MODELS_JOBS` | from the bake-off |
+     | `DEEPSEEK_API_KEY` | from `~/.env.deepseek` |
+     | `META_API_KEY`, `META_BASE_URL`, `META_MODEL` | from `~/.env.meta`, and add `meta` to `DIRECT_JOBS_PROVIDERS` |
+     | `TYPESAFE_API_KEY` | from `~/.env.typesafe.ai` (Phase B) |
+     | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | the **dev bot's** |
+     | `RESUME_ENCRYPTION_KEY` | kept as on pi09, so copied resumes still decrypt |
+
+   - `auth-service/.env`: from pi09's, unchanged.
+   - `scraper/.env`: `EVER_JOBS_API_URL=http://127.0.0.1:3001`.
+   - `~/.jobshub-r2.env` (0600):
+     - `MINIO_ENDPOINT=https://<account>.r2.cloudflarestorage.com`
+     - `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` (the R2 token's pair)
+     - `MINIO_BUCKET`
+4. **mc:** `~/bin/mc` (linux-amd64, the same final release as on pi09). Check R2 with
+   `backup_to_minio.sh` on a scratch DB: upload, `stat` shows the sha256, download,
+   `integrity_check`.
+5. **Venvs:** `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, and the
+   same in `scraper/`.
+6. **Seed the databases:** SQLite online-backup copies of pi09's `jobhub.db` and `auth.db`
+   and pi05's `warehouse.db`, copied over, then `PRAGMA integrity_check`. Dev data is
+   disposable: it's replaced by fresh copies at the switch.
+7. **Containers:**
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.hostinger.yml build
-   docker compose -f docker-compose.yml -f docker-compose.hostinger.yml up -d everjobs web auth-service ai
+   C="docker compose -f docker-compose.yml -f docker-compose.hostinger.yml"
+   $C build && $C up -d
    ```
-   `telegram` can wait until the cutover. Starting it early is harmless, though: on boot
-   it re-registers the same webhook URL and secret, and Telegram keeps posting to the
-   public URL, which reaches pi09 until the tunnel moves.
+   This starts web, auth-service, telegram, ai and everjobs. The tunnel and WhatsApp are
+   profiles and stay off.
 
-## 2. Shadow run (1–2 days, nothing public)
+## 2. Ingress for dev
 
-Seed the databases:
-- `warehouse.db` from pi05.
-- `jobhub.db` and `auth.db` from pi09.
+1. **DNS:** `jobshub-dev.aavartlabs.com` is proxied to this server (done by Sanjay).
+2. **Cloudflare Access app** on `jobshub-dev`: Sanjay's email only, plus a **bypass** policy
+   for `/telegram/webhook` (Telegram's calls are still checked with the webhook secret).
+3. **nginx:**
+   ```bash
+   cp poc/deploy/nginx/jobshub-dev.aavartlabs.com.conf ~/projects/edge/nginx/conf.d/
+   docker exec edge-nginx nginx -t && docker exec edge-nginx nginx -s reload
+   ```
+   The file reuses the host's testprepup.com certificate; the zone's SSL mode is "Full", as
+   for crm/dip. It admits only Cloudflare's addresses and overwrites `CF-Connecting-IP`
+   with the verified visitor IP. It resolves `jobhub-web` per request, so a stopped JobsHub
+   can't break the shared nginx's reload.
 
-Use SQLite online-backup copies, the same method as `scripts/pull_backup.sh`. Then run the
-pipeline by hand, with alerts off:
+   **Rollback:** remove the file, then `nginx -t && nginx -s reload`.
+4. **Checks:**
+   - Through Cloudflare: the Access login appears, then the site returns 200.
+   - Straight to the server's IP with that Host header: 403.
+   - The other sites still return 200.
 
-```bash
-SUPPRESS_ALERTS=1 scripts/cron_job.sh pipeline env SCRAPER_HOST=local scripts/run_pipeline_warehouse.sh
+## 3. Trial (1–2 days)
+
+- **Pipeline** by hand, then from cron:
+  `scripts/cron_job.sh pipeline env SUPPRESS_ALERTS=1 SCRAPER_HOST=local scripts/run_pipeline_warehouse.sh`.
+  Compare sweep size, new jobs and enrich counts with pi05's `ingest_runs`. **Job boards may
+  block a datacenter IP.** If the sweep is much smaller, keep EverJobs and ingest on pi05 and
+  have it push the sweep here.
+- **Account flows:** sign-up OTP, Turnstile, Telegram linking on the dev bot, a resume upload
+  and a tailoring.
+- **Backups:** one backup to R2 and the restore drill against it.
+- **Load:** `docker stats` within the caps (everjobs peaked at 2.6 GB on pi05; cap 3 GB), and
+  the neighbours' health stays green.
+
+## 4. Cron (IST; check `timedatectl` and convert if the server isn't on IST)
+
+```cron
+0 0,6,12,18 * * * cd ~/aavartlabs/jobshub && scripts/cron_job.sh pipeline env SCRAPER_HOST=local scripts/run_pipeline_warehouse.sh
+30 2 * * *        cd ~/aavartlabs/jobshub && scripts/cron_job.sh backup env JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env scripts/nightly_backup_local.sh
+0 4 * * 0         cd ~/aavartlabs/jobshub && scripts/cron_job.sh restore-drill env JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env JOBSHUB_DRILL_APP_HOST=hostinger JOBSHUB_DRILL_WAREHOUSE_HOST=hostinger .venv/bin/python -m jobhub_poc.ops.restore_drill
+30 3 1 * *        cd ~/aavartlabs/jobshub && scripts/cron_job.sh cold-export bash -c 'cd scraper && JOBSHUB_MINIO_ENV=$HOME/.jobshub-r2.env .venv/bin/python cold_export.py'
 ```
 
-Compare against pi05's `ingest_runs` for the same hours:
-- sweep size (jobs seen)
-- new jobs
-- enrich counts
+A failed job sends the admin a Telegram message (`cron_job.sh` → `ops.alert_admin`).
 
-**Job boards may block a datacenter IP.** If the sweep is much smaller, keep EverJobs and
-ingest on pi05 and have pi05 push each sweep here instead (plan fallback).
+On R2, set lifecycle rules for `backups/daily/`, `weekly/` and `monthly/` at 14, 84 and 365
+days. Optionally add a bucket lock on `backups/`: the R2 token can delete, which the old
+MinIO user couldn't.
 
-Also watch:
-- `docker stats`: everjobs peaked at 2.6 GB on pi05 (cap 3 GB).
-- The other sites' health checks, which must stay green.
-
-## 3. Cutover (a few minutes)
+## 5. The switch
 
 1. pi09: `systemctl --user stop jobhub-pipeline.timer`.
-2. Final copies of the three databases (online backup), copied over. Run `PRAGMA
-   integrity_check` on each.
-3. Set `RESUME_CONSENT_SINCE=<now, ISO UTC>` in `.env`. Everyone who uploaded a resume is
-   asked to agree to the Workers AI wording before more AI work (`resume_consent.py`).
-4. Server: `up -d` the stack including `telegram`. pi09: `docker stop jobhub-telegram jobhub-cloudflare-tunnel jobhub-web jobhub-ai`.
-5. Server: `up -d tunnel` (same token file). Check that the site returns 200 and that sign-in works.
-6. Set `NOTIFIER_BACKEND=live`, then install the cron lines:
-   ```cron
-   0 0,6,12,18 * * * cd ~/aavartlabs/jobshub && scripts/cron_job.sh pipeline env SCRAPER_HOST=local scripts/run_pipeline_warehouse.sh
-   ```
-   Cron runs in the server's time zone. Check it (`timedatectl`) and shift the hours if it
-   isn't IST.
+2. Fresh online-backup copies of the three databases, copied over, then `integrity_check`.
+3. `.env`:
+   - `WEB_ORIGIN=https://jobshub.aavartlabs.com`
+   - `TURNSTILE_HOSTNAMES=jobshub.aavartlabs.com`
+   - `LEGACY_HOSTS=jobhubs.aavartlabs.com`
+   - the **prod** Telegram bot token and username
+   - `RESUME_CONSENT_SINCE=<now, ISO UTC>`
+   - `NOTIFIER_BACKEND=live`
 
-   **Not scheduled here: the monthly cold export** (`scraper/cold_export.py`). It uploads to
-   MinIO, which this server can't reach. Until it's reworked to be pulled like the backups,
-   the warehouse keeps its old history. That's a few MB a day, against 163 GB free.
-7. Backups on pi09:
-   - Point `jobshub-backup.service` at `scripts/pull_backup.sh` (label `hostinger`).
-   - Set `JOBSHUB_DRILL_APP_HOST=hostinger` and `JOBSHUB_DRILL_WAREHOUSE_HOST=hostinger`
-     for the restore drill.
+   Then `$C up -d`.
+4. Copy the nginx file as `jobshub.aavartlabs.com.conf` with
+   `server_name jobshub.aavartlabs.com jobhubs.aavartlabs.com;`, then `nginx -t` and reload.
+5. Cloudflare DNS: `jobshub` and `jobhubs` move from the tunnel CNAME to proxied records for
+   this server.
+6. pi09: `docker stop jobhub-web jobhub-ai jobhub-telegram jobhub-cloudflare-tunnel`.
+7. Checks: site 200, sign-in, one pipeline run, one Telegram digest, a resume tailoring.
+8. After two quiet weeks: delete the tunnel in the Cloudflare dashboard, and disable the Pis'
+   units for good.
 
-## Rollback
+**Rollback:**
+1. DNS back to the tunnel CNAME.
+2. pi09: `docker start` its four containers and the pipeline timer.
+3. Server: cron lines commented out.
 
-1. Server: `docker stop jobhub-cloudflare-tunnel jobhub-telegram` and comment out the cron lines.
-2. pi09: `docker start jobhub-web jobhub-ai jobhub-telegram jobhub-cloudflare-tunnel`, then
-   `systemctl --user start jobhub-pipeline.timer`.
+Anything written on the server in between (accounts, alerts, saved jobs) would need copying
+back. Take a backup first.
 
-The Pis keep their data and units, disabled but not deleted, for 2 weeks after the cutover.
-Anything written on the server in between (new accounts, alerts, saved jobs) would need
-copying back. Before rolling back, take a pull of the server's DBs first.
+## Model choice
+
+`scripts/ai_bakeoff.py` scores each candidate with the site's own checks. Rerun it when a
+new model is worth trying.
+- **tailor:** 16 made-up resume × job pairs, measuring fabrications caught and anything
+  ungrounded left over (must be 0).
+- **parse:** 4 made-up resumes.
+- **jobs:** the fixtures plus real public postings.
+
+```bash
+OPENROUTER_API_KEY=... .venv/bin/python scripts/ai_bakeoff.py --write-models A,B --jobs-models C,D \
+    --jobs-db data/jobhub.db --real-jobs 50 --out bakeoff.json
+```
 
 ## WhatsApp fallback
 
-It's off here (compose profile `whatsapp`); admin messages go by Telegram. To keep it,
-either move `whatsapp-sender/auth_info/` from pi09 with pi09's container stopped for good,
-or pair it again. Never run two sessions on one number.
+It's off here (compose profile `whatsapp`); admin messages go by Telegram. Never run two
+sessions on one number.

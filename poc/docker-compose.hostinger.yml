@@ -2,13 +2,17 @@
 #   docker compose -f docker-compose.yml -f docker-compose.hostinger.yml up -d
 # That host is shared with other production sites and has no swap, so every JobsHub
 # container gets a hard memory cap and a CPU share (a runaway scrape gets itself killed and
-# restarted, not its neighbours), and nothing is published beyond 127.0.0.1: the public
-# reaches the site only through the Cloudflare Tunnel (Turnstile, Cloudflare in front).
+# restarted, not its neighbours), and nothing is published beyond 127.0.0.1. The public
+# reaches the site through Cloudflare and the host's shared edge-nginx, which proxies to
+# jobhub-web:3000 over the "edge" network (deploy/nginx/). No tunnel on this host.
 # Docker-published ports bypass ufw, so loopback binds are the firewall here.
 services:
   web:
     ports: !override
       - "127.0.0.1:8100:3000"
+    networks:
+      - jobhub
+      - edge
     mem_limit: 768m
     cpus: 1.0
 
@@ -24,7 +28,8 @@ services:
     mem_limit: 128m
     cpus: 0.25
 
-  tunnel:
+  tunnel:  # replaced by edge-nginx here; kept only to start by hand in an emergency
+    profiles: ["tunnel"]
     mem_limit: 128m
     cpus: 0.25
 
@@ -49,3 +54,8 @@ services:
     profiles: ["whatsapp"]
     ports: !override
       - "127.0.0.1:3100:3100"
+
+networks:
+  edge:  # the shared edge-nginx's network (owned by the edge stack, not this project)
+    external: true
+    name: edge

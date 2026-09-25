@@ -253,24 +253,37 @@ stack. `poc/`'s and `poc/scraper/`'s test suites are currently verified manually
 - To change the pipeline cadence: edit `OnCalendar=` in that timer file on **pi09**, then
   `ssh pi09 "systemctl --user daemon-reload && systemctl --user restart jobhub-pipeline.timer"`.
 
-- **Moving to the Hostinger server `testprepup` (planned 2026-09-25, not yet cut over):**
-  runbook `poc/deploy/hostinger.md`. That host is shared with other production sites (CRM,
-  DIP, aanvik, testprepup) and has no swap, so it gets `docker-compose.hostinger.yml`:
-  - a memory and CPU cap on every container;
-  - loopback-only ports;
-  - EverJobs as the `everjobs` container (`poc/everjobs/`; 2.6 GB peak).
+- **Moving to the Hostinger server `testprepup` (designed 2026-09-25, not yet cut over).**
+  Runbook: `poc/deploy/hostinger.md`. The site runs first at `jobshub-dev.aavartlabs.com`
+  (Cloudflare Access, Sanjay only), then takes over the live names.
 
-  The code pieces:
-  - `SCRAPER_HOST=local` runs the pi05 steps on the same host.
-  - `scripts/cron_job.sh` schedules jobs (no user linger or sudo there) and alerts the
-    admin when one fails.
-  - `scripts/pull_backup.sh` lets pi09 pull the server's DBs into MinIO, which the server
-    can't reach. The restore drill takes `JOBSHUB_DRILL_*_HOST`.
-  - The resume AI moves to Cloudflare Workers AI: `AI_BACKEND=workers_ai`, `ai/llm.py`,
-    `ai/workers_ai.py`, with gateway logging off. That changes the consent wording
-    (`resume_consent.py`): with `RESUME_CONSENT_SINCE` set, existing resume holders agree
-    again on /profile before any parsing or tailoring.
-  - The monthly cold export isn't scheduled there (it needs MinIO).
+  The host is shared with other production sites (CRM, DIP, aanvik, testprepup.com) and
+  has no swap:
+  - **Containers:** `docker-compose.hostinger.yml` caps memory and CPU on every container,
+    publishes loopback-only ports, adds EverJobs as `everjobs` (`poc/everjobs/`; 2.6 GB
+    peak), and keeps the tunnel and WhatsApp as off-by-default profiles.
+  - **Ingress:** **no tunnel there.** Cloudflare (proxied DNS) → the host's shared
+    `edge-nginx` → `jobhub-web:3000` over the `edge` network. The site file,
+    `poc/deploy/nginx/`, admits only Cloudflare's ranges and overwrites `CF-Connecting-IP`
+    with the verified visitor IP. It resolves the upstream per request, so JobsHub being
+    down can't break the shared nginx.
+  - **Data:** SQLite stays on local disk. D1 was rejected: from a server it's reachable
+    only through the rate-limited HTTP API, with no transactions.
+  - **Storage:** R2 through the same `mc` scripts (`~/.jobshub-r2.env`,
+    `scripts/nightly_backup_local.sh`, cold export). The restore drill takes
+    `JOBSHUB_DRILL_*_HOST=hostinger`.
+  - **Scheduling:** cron via `scripts/cron_job.sh` (no user linger there), which alerts
+    the admin on failure. `SCRAPER_HOST=local` runs the pi05 steps on the same host.
+  - **AI:** `AI_BACKEND=openrouter` (`ai/llm.py`, `ai/openrouter.py`).
+    - Each call is `task="write"` (resume data) or `"jobs"` (public postings).
+    - Resume data goes only with `data_collection=deny`; `-contributor` (train-on-prompts)
+      models are refused in code.
+    - Only public job text may fall back to direct DeepSeek/Meta APIs (`ai/direct.py`)
+      when OpenRouter is down.
+    - Model chains `AI_MODELS_WRITE` / `AI_MODELS_JOBS` are chosen with
+      `scripts/ai_bakeoff.py`, which is scored by the site's own honesty checks.
+    - TypeSafe Jev for judgments is Phase B.
+    - The consent text changes with the backend (`resume_consent.py`, `RESUME_CONSENT_SINCE`).
 
 ## Backups (MinIO on pi06, since 2026-09-24)
 

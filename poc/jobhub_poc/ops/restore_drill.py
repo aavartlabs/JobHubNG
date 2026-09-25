@@ -44,7 +44,7 @@ class Result:
 
 def targets(env=os.environ):
     """The backups to check, by the host label they're uploaded under. When the databases
-    move (e.g. to the Hostinger server, backed up by scripts/pull_backup.sh as "hostinger"),
+    move (e.g. to the Hostinger server, backed up by scripts/nightly_backup_local.sh as "hostinger"),
     set JOBSHUB_DRILL_APP_HOST / JOBSHUB_DRILL_WAREHOUSE_HOST in the drill's environment."""
     app = env.get("JOBSHUB_DRILL_APP_HOST", "pi09")
     warehouse = env.get("JOBSHUB_DRILL_WAREHOUSE_HOST", "pi05")
