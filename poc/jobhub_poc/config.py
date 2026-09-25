@@ -70,9 +70,9 @@ AI_MAX_TOKENS = int(os.environ.get("AI_MAX_TOKENS", "4096"))
 # How hard reasoning models think before answering (sent only to models that take it):
 # "low" keeps judgments and rewrites quick; the honesty checks run on the answer either way.
 AI_REASONING_EFFORT = os.environ.get("AI_REASONING_EFFORT", "low")
-# How many AI tasks run at once (ai/worker.py). Hosted
-# models take several requests at once, so the server runs more.
-AI_WORKERS = int(os.environ.get("AI_WORKERS", "1"))
+# How many AI tasks run at once (ai/worker.py): the hosted models take many requests in
+# parallel, and a job list queues ~25 reads.
+AI_WORKERS = int(os.environ.get("AI_WORKERS", "6"))
 # When OpenRouter is down, public job text may go straight to these (ai/direct.py; each needs
 # <NAME>_API_KEY / _BASE_URL / _MODEL in .env). Never resume data.
 DIRECT_JOBS_PROVIDERS = [p.strip() for p in os.environ.get("DIRECT_JOBS_PROVIDERS", "deepseek").split(",") if p.strip()]
