@@ -303,3 +303,39 @@ def test_vocab_seed_writes_once_and_completes_an_interrupted_seed(conn):
     job_reading.seed_vocab(conn, complete=True)
     rows = dict(conn.execute("SELECT skill, seen FROM skills_vocab").fetchall())
     assert rows == {"go": 7, "kubernetes": 2, "terraform": 1}
+
+
+def test_connections_wait_for_a_writer_instead_of_failing(tmp_path, monkeypatch):
+    import sqlite3 as _sqlite3
+    import threading
+    import time as _time
+    from jobhub_poc import config, db
+    path = str(tmp_path / "busy.db")
+    setup = db.get_connection(path)
+    setup.execute("CREATE TABLE t (x)")
+    setup.commit()
+    locked, release = threading.Event(), threading.Event()
+
+    def pipeline_load():  # holds the write lock until released, like load_delta
+        conn = db.get_connection(path)
+        conn.execute("INSERT INTO t VALUES (1)")
+        locked.set()
+        release.wait(5)
+        conn.commit()
+        conn.close()
+
+    monkeypatch.setattr(config, "SQLITE_BUSY_TIMEOUT", 0.1)
+    t = threading.Thread(target=pipeline_load)
+    t.start()
+    locked.wait(5)
+    with pytest.raises(_sqlite3.OperationalError):  # the old behaviour, with a short timeout
+        db.get_connection(path).execute("INSERT INTO t VALUES (2)")
+    monkeypatch.setattr(config, "SQLITE_BUSY_TIMEOUT", 10)
+    threading.Timer(1.0, release.set).start()
+    started = _time.monotonic()
+    other = db.get_connection(path)
+    other.execute("INSERT INTO t VALUES (3)")  # waits for the load instead of failing
+    other.commit()
+    t.join()
+    assert _time.monotonic() - started >= 0.5
+    assert other.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 2

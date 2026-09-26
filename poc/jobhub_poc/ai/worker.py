@@ -153,6 +153,15 @@ def _loop(n):
         try:
             while run_once(conn):
                 wait = 5
+        except sqlite3.OperationalError as exc:
+            # Locked past the busy timeout, even while recording a failure: wait, then put back
+            # anything this worker left 'running' (the task is retried, not lost).
+            log.warning("database busy (%s); retrying", exc)
+            time.sleep(5)
+            try:
+                tasks.requeue_stale(conn, older_than=timedelta(minutes=15) if config.AI_WORKERS > 1 else timedelta(0))
+            except sqlite3.OperationalError:
+                pass
         except llm.Unavailable as exc:
             # Busy (429) or unreachable: back off instead of retrying at once in a loop.
             log.info("AI service unavailable (%s); retrying in %d s", str(exc)[:120], wait)
@@ -168,7 +177,13 @@ def main():
     db.init_db(conn)
     # One worker process (the jobhub-ai container): anything still 'running' now was cut off
     # by its restart, so it goes straight back to the queue rather than after 15 minutes.
-    tasks.requeue_stale(conn, older_than=timedelta(0))
+    for attempt in range(10):
+        try:
+            tasks.requeue_stale(conn, older_than=timedelta(0))
+            break
+        except sqlite3.OperationalError as exc:  # the pipeline is loading: wait for it
+            log.warning("startup: database busy (%s); retrying", exc)
+            time.sleep(10)
     conn.close()
     count = max(1, config.AI_WORKERS)
     log.info("AI worker: %d thread(s)", count)

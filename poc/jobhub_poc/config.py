@@ -12,6 +12,8 @@ else:
 
 
 SQLITE_PATH = os.environ.get("JOBHUB_SQLITE_PATH", "./data/jobhub.db")
+# Seconds a connection waits for another writer's lock before "database is locked".
+SQLITE_BUSY_TIMEOUT = float(os.environ.get("SQLITE_BUSY_TIMEOUT") or 60)
 
 WEB_PORT = int(os.environ.get("WEB_PORT", "8100"))
 WEB_SECRET_KEY = os.environ.get("WEB_SECRET_KEY", "dev-only-change-me")

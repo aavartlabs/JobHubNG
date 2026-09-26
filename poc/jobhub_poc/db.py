@@ -10,7 +10,9 @@ def get_connection(path: str | None = None) -> sqlite3.Connection:
     db_path = path or config.SQLITE_PATH
     if db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    # Wait for another writer instead of failing at once: the pipeline's load holds the lock for
+    # ~20+ s on the Pi, and SQLite's default 5 s crashed the AI worker (2026-09-26).
+    conn = sqlite3.connect(db_path, timeout=config.SQLITE_BUSY_TIMEOUT)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
