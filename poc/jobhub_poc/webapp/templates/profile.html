@@ -2,26 +2,9 @@
 {% block title %}Your profile · JobsHub{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-<h1>Your resume</h1>
+<h1>{{ "Your resume" if ai_on else "Your profile" }}</h1>
 {% if notice %}<p class="flash">{{ notice }}</p>{% endif %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-
-{% if not enabled %}
-  <div class="card p-5"><p class="my-0">Resume features aren't switched on yet.</p></div>
-{% else %}
-
-{% if resume and not consent_current %}
-<section class="card mb-5 border-brand p-5 sm:p-6" id="consent-update">
-  <h2 class="mt-0">We've changed how we read resumes</h2>
-  <p>Until you agree, we won't use AI on your resume: no reading a new upload, no tailoring.
-    Matching keeps using the resume you already checked.</p>
-  <form method="post" action="{{ url_for('profile.consent') }}">
-    <label class="font-normal"><input type="checkbox" name="consent" required> I agree that {{ consent_text }}</label>
-    <button type="submit" class="btn">Agree</button>
-  </form>
-  <p class="mb-0 text-sm text-muted">Or delete your resume at the bottom of this page.</p>
-</section>
-{% endif %}
 
 {% if prefs %}
 <section class="card mb-5 p-5 sm:p-6" id="preferences">
@@ -36,6 +19,25 @@
 </section>
 {% endif %}
 
+{% if not enabled %}
+  <div class="card p-5"><p class="my-0">Resume features aren't switched on yet.</p></div>
+{% else %}
+
+{% if ai_on and resume and not consent_current %}
+<section class="card mb-5 border-brand p-5 sm:p-6" id="consent-update">
+  <h2 class="mt-0">We've changed how we read resumes</h2>
+  <p>Until you agree, we won't use AI on your resume: no reading a new upload, no tailoring.
+    Matching keeps using the resume you already checked.</p>
+  <form method="post" action="{{ url_for('profile.consent') }}">
+    <label class="font-normal"><input type="checkbox" name="consent" required> I agree that {{ consent_text }}</label>
+    <button type="submit" class="btn">Agree</button>
+  </form>
+  <p class="mb-0 text-sm text-muted">Or delete your resume at the bottom of this page.</p>
+</section>
+{% endif %}
+
+
+{% if ai_on %}
 <section class="card mb-5 p-5 sm:p-6">
   {% if resume %}
     <p class="mt-0"><strong>{{ resume.filename }}</strong> · uploaded {{ resume.uploaded_at[:10] }}
@@ -70,8 +72,17 @@
     <button type="submit" class="btn">{{ "Upload new version" if resume else "Upload" }}</button>
   </form>
 </section>
+{% else %}
+<section class="card mb-5 p-5 sm:p-6" id="resume-paused">
+  <p class="mt-0">{{ paused_text }}</p>
+  {% if resume %}
+    <p class="mb-0 text-sm"><strong>{{ resume.filename }}</strong> · uploaded {{ resume.uploaded_at[:10] }}
+      · <a href="{{ url_for('profile.download') }}">download</a> · you can delete it below.</p>
+  {% endif %}
+</section>
+{% endif %}
 
-{% if resume and (structured or resume.parse_status == "failed") %}
+{% if ai_on and resume and (structured or resume.parse_status == "failed") %}
 {% set s = structured or {} %}
 {# One card per section: green edge when it looks complete, amber with suggestions when
    something probably needs a look (rules in resume_review.py). #}

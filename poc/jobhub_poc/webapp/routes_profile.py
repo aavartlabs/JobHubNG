@@ -23,6 +23,10 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+PAUSED = ("Resume features are paused for now: JobsHub isn't reading resumes, matching or "
+          "tailoring. Search, alerts, saved jobs and your preferences all work as usual.")
+
+
 def _resume_row(conn):
     return conn.execute("SELECT * FROM resumes WHERE owner_auth_user_id = ?", (g.current_user["id"],)).fetchone()
 
@@ -31,7 +35,8 @@ def _page(error=None, status=200, notice=None):
     conn = current_app.get_db()
     row = _resume_row(conn)
     structured, task = None, None
-    if row is not None and row["structured_enc"] and crypto.enabled():
+    ai_on = config.ai_features_on()
+    if ai_on and row is not None and row["structured_enc"] and crypto.enabled():
         try:
             structured = crypto.decrypt_json(row["structured_enc"])
         except crypto.CryptoUnavailable:
@@ -48,10 +53,12 @@ def _page(error=None, status=200, notice=None):
         notes=resume_review.review(structured) if structured else {},
         section_titles={"basics": "Basics", "summary": "Summary", "skills": "Skills",
                         "experience": "Experience", "education": "Education", "links": "Links"},
-        enabled=crypto.enabled(), ai_online=llm.available() if task else True,
+        enabled=crypto.enabled(), ai_online=llm.available() if task else True, ai_on=ai_on, paused_text=PAUSED,
         consent_text=resume_consent.text(),
+        # Always a form: anyone can set their "Jobs for you" roles and places by hand.
         prefs=(job_preferences.get(conn, g.current_user["id"])
-               or (job_preferences.propose(structured) if structured else None)),
+               or (job_preferences.propose(structured) if structured else None)
+               or {"roles": [], "locations": [], "include_remote": True}),
         consent_current=bool(row is not None and resume_consent.is_current(row["consent_at"])),
         max_mb=config.MAX_RESUME_BYTES // (1024 * 1024), max_bytes=config.MAX_RESUME_BYTES,
     ), status
@@ -76,6 +83,8 @@ def profile():
 @bp.route("/profile/resume", methods=["POST"])
 @login_required
 def upload():
+    if not config.ai_features_on():  # nothing would read it: don't store resumes meanwhile
+        return _page(PAUSED, 503)
     if not crypto.enabled():
         return _page("Resume upload isn't switched on yet.", 503)
     conn = current_app.get_db()
@@ -189,6 +198,8 @@ def structured_from_form(form, previous):
 @bp.route("/profile/resume/save", methods=["POST"])
 @login_required
 def save():
+    if not config.ai_features_on():
+        return redirect(url_for("profile.profile"))
     conn = current_app.get_db()
     row = _resume_row(conn)
     if row is None or not crypto.enabled():

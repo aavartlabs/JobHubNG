@@ -1,9 +1,12 @@
 {# The apply kit on a job (routes_jobs._detail): the resume to send, then the tracker.
    tailor_state: no_resume | none | pending | ready (routes_tailor.tailor_state). #}
 {% from "_icons.html" import icon %}
+{% set tracked = track_status in ("applied", "interviewing", "offer", "rejected") %}
+{% if ai_features_on() or tracked or clicked_apply %}
 <section class="mt-5 rounded-lg border border-line p-4">
   <h3 class="mb-2 flex items-center gap-2 text-base font-semibold">{{ icon("file", "size-4 text-brand") }} Your application</h3>
-  {% if tailor_state == "no_resume" %}
+  {% if not ai_features_on() %}
+  {% elif tailor_state == "no_resume" %}
     <p class="my-0 text-sm text-muted"><a href="{{ url_for('profile.profile') }}">Add your resume</a> to get a version tailored for this job.</p>
   {% elif tailor_state == "ready" %}
     <p class="my-0 mb-2 text-sm">Your resume, tailored for this job from what it already says.</p>
@@ -41,3 +44,4 @@
     </form>
   {% endif %}
 </section>
+{% endif %}

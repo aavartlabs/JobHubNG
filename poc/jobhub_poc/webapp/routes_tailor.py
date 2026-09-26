@@ -16,12 +16,19 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, Response, abort, current_app, g, redirect, render_template, request, url_for
 
-from jobhub_poc import crypto, resume_consent, resume_render, tailoring
+from jobhub_poc import config, crypto, resume_consent, resume_render, tailoring
 from jobhub_poc.ai import llm, tasks
 from jobhub_poc.webapp.auth import login_required
 from jobhub_poc.webapp.jobs_listing import present_job
 
 bp = Blueprint("tailor", __name__)
+
+
+@bp.before_request
+def _ai_features_only():
+    """Everything here is built by AI or from the AI-read resume: gone while AI is off."""
+    if not config.ai_features_on():
+        abort(404)
 
 
 def _resume(conn, user_id):

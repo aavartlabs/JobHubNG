@@ -82,7 +82,7 @@ def _match_context(conn, resume, job, priority):
     """{"match_state": "ready"|"pending"|"no_resume"|None, "match": result or None}. Queues
     what's missing: the job's reading (job_reading.py), then Jev's judgment of this resume
     against it (match_evidence.py); plain matching when Jev can't be used."""
-    if _user_id() is None:
+    if _user_id() is None or not config.ai_features_on():
         return {"match_state": None, "match": None}
     if resume is None:
         return {"match_state": "no_resume", "match": None}
@@ -137,13 +137,15 @@ def list_jobs():
     conn = current_app.get_db()
     q = without_unusable_filters(conn, parse_list_args(request.args))
     usable = reading_filters(conn)
-    resume = _user_resume(conn)
-    # "Jobs for you": a signed-in user with a resume lands on their roles in their places,
-    # unless they asked for everything (?all=1) or typed a search of their own.
+    # AI results (match badges, preferences proposed from the AI-read resume) only while AI is on.
+    resume = _user_resume(conn) if config.ai_features_on() else None
+    # "Jobs for you": a signed-in user lands on their roles in their places -- saved on
+    # /profile, or proposed from their resume -- unless they asked for everything (?all=1) or
+    # typed a search of their own.
     for_you = None
-    if resume is not None and not request.args.get("all") and (q.mine or q == parse_list_args({})):
-        for_you = job_preferences.get(conn, _user_id()) or job_preferences.propose(resume)
-        if for_you["roles"] or for_you["locations"]:
+    if _user_id() and not request.args.get("all") and (q.mine or q == parse_list_args({})):
+        for_you = job_preferences.get(conn, _user_id()) or (job_preferences.propose(resume) if resume is not None else None)
+        if for_you and (for_you["roles"] or for_you["locations"]):
             q = replace(q, mine="1", titles=tuple(job_preferences.title_terms(for_you["roles"])),
                         location=job_preferences.location_text(for_you))
         else:
@@ -345,6 +347,8 @@ def saved_remove():
 def job_match(job_id):
     """The "Your match" card alone, for app.js to refresh while the job is being analysed.
     202 while it's still pending."""
+    if not config.ai_features_on():
+        abort(404)
     conn = current_app.get_db()
     row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if row is None:

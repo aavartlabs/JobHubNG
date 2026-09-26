@@ -69,6 +69,13 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
 OLLAMA_NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX") or 0)
 AI_PAUSED = os.environ.get("AI_PAUSED", "") == "1"
 AI_READ_ALL_JOBS = os.environ.get("AI_READ_ALL_JOBS", "") == "1"
+
+
+def ai_features_on():
+    """AI-backed features -- resume reading, match cards and badges, tailoring -- are offered
+    only while AI isn't paused. With AI_PAUSED=1 they're hidden for everyone and nothing is
+    queued for AI (the no-AI freeze of 2026-09-26: no AI spend until it's funded)."""
+    return not AI_PAUSED
 TYPESAFE_API_KEY = os.environ.get("TYPESAFE_API_KEY", "")
 TYPESAFE_MODEL = os.environ.get("TYPESAFE_MODEL", "jev-latest")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")

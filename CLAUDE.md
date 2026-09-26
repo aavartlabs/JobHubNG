@@ -404,6 +404,29 @@ verbatim are flagged ⚠) → the user reviews/edits it, and that edited version
 truth for later matching and tailoring. AI services unreachable: tasks wait (backing off), the
 UI says so. Delete button and admin deletion purge it (`routes_profile.purge_user_resume_data`).
 
+**NO-AI FREEZE (since 2026-09-26; release tag `v1.0-no-ai`).** Sanjay's decision: no AI
+spend until Aavart Labs pays for an AI subscription from funding. The AI below is built but
+**switched off**, on prod and dev: `AI_PAUSED=1` in `.env`, the `jobhub-ai` container is kept
+stopped, and there's no TypeSafe key or model address in pi09's `.env`. What changes with
+`config.ai_features_on()` false:
+- **Hidden:** resume reading, match cards and badges, tailoring and its downloads (those
+  routes return 404), and the AI-read resume on /profile.
+- **Closed:** new resume uploads return 503, so no resume is stored with nothing to read it.
+  Existing files can still be downloaded and deleted.
+- **Nothing queued for AI:** no web page queues AI work, `queue_reads` and the weekly
+  `skill_index` do nothing, and the worker would only sleep.
+- **Still working:** search, locations, filters, job pages, Apply, saved jobs and the
+  tracker, Share, alerts, accounts, admin, backups. **"Jobs for you" works from preferences
+  anyone can set on /profile.**
+- **Kept, not deleted:** readings already made (~7.2k Jev), existing resumes, and queued
+  tasks.
+- **To bring AI back:** get Sanjay's word first, then restore the keys, unset `AI_PAUSED`,
+  and start `jobhub-ai`. Deploy with `docker compose up -d --no-deps web` so the AI
+  container stays stopped.
+- **Measured cost of Jev:** about 12.7k tokens and $0.0005 per job reading, so ~$7 to read
+  all 13.4k jobs and ~$0.5–1 a day after that. A 26B model on the lent desktop GPU filled
+  its memory and made that machine unusable for anything else.
+
 **AI: two setups from one code base (2026-09-25).**
 - **Prod (pi09): `AI_BACKEND=ollama` plus Jev (since 2026-09-26).**
   - **Model:** gemma4:26b on an always-on desktop GPU of Sanjay's, reached over Tailscale.

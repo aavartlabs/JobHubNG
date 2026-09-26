@@ -115,6 +115,7 @@ def create_app(test_conn=None):
             "is_admin": admin.is_admin,
             "csrf_token": admin.csrf_token,
             "access_state": auth.access_state,
+            "ai_features_on": config.ai_features_on,
         }
 
     app.register_blueprint(auth.bp)

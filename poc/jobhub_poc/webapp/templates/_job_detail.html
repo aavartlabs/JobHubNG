@@ -29,7 +29,7 @@
 </div>
 
 {% if state == "verified" %}
-  {% include "_match.html" %}
+  {% if ai_features_on() %}{% include "_match.html" %}{% endif %}
   {% include "_apply_kit.html" %}
   <div class="mt-5 flex flex-col gap-2 sm:flex-row">
     {% if can_apply %}
